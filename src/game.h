@@ -147,6 +147,11 @@ public:
 	{
 		m_inputEnabled = on;
 	}
+	// Debug mode (--debug): every level can be picked from the start. Saved progress is untouched.
+	void SetDebug( bool on )
+	{
+		m_debug = on;
+	}
 
 	// Used by level builders
 	Scene& GetScene()
@@ -231,6 +236,7 @@ private:
 
 	bool m_headless = false;
 	bool m_inputEnabled = true;
+	bool m_debug = false;
 	Vector2 m_mouseDelta{ 0, 0 };
 	bool m_hadLock = false;
 	int m_lockAttempts = 0;

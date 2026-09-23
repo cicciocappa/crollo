@@ -2949,6 +2949,10 @@ void Game::DrawTitle()
 					  Color{ 255, 255, 255, 170 } );
 	ui::TextCentered( TextFormat( "Demo: %s", m_level ? m_level->name : "" ), W * 0.75f, H - 90 * S, 26, Color{ 255, 255, 255, 140 } );
 	ui::Text( TextFormat( "M: musica %s", m_progress.music ? "on" : "off" ), { 20 * S, 20 * S }, 22, Color{ 255, 255, 255, 150 } );
+	if ( m_debug )
+	{
+		ui::TextShadow( "DEBUG: tutti i livelli sbloccati", { W - 420 * S, 20 * S }, 24, Color{ 255, 150, 110, 255 } );
+	}
 }
 
 void Game::DrawLevelSelect()
@@ -2966,6 +2970,10 @@ void Game::DrawLevelSelect()
 	}
 	ui::Star( { W * 0.5f - 70 * S, 196 * S }, 20 * S, kGold, Color{ 120, 60, 10, 255 } );
 	ui::TextShadow( TextFormat( "%d / %d", totalStars, LevelCount() * 3 ), { W * 0.5f - 40 * S, 176 * S }, 40, WHITE );
+	if ( m_debug )
+	{
+		ui::TextShadow( "DEBUG: tutti i livelli sbloccati", { 30 * S, 30 * S }, 26, Color{ 255, 150, 110, 255 } );
+	}
 
 	int cols = 5;
 	int rows = ( LevelCount() + cols - 1 ) / cols;
@@ -2984,7 +2992,7 @@ void Game::DrawLevelSelect()
 		int row = i / cols;
 		int col = i % cols;
 		Rectangle rc{ x0 + col * ( cw + gap ), y0 + row * ( ch + gap ), cw, ch };
-		bool unlocked = i == 0 || m_progress.stars[i - 1] > 0 || m_progress.stars[i] > 0;
+		bool unlocked = m_debug || i == 0 || m_progress.stars[i - 1] > 0 || m_progress.stars[i] > 0;
 		bool hover = unlocked && ui::Hovered( rc );
 		Color fill = unlocked ? ( hover ? Color{ 255, 226, 150, 245 } : Color{ 250, 236, 205, 235 } ) : Color{ 90, 90, 100, 200 };
 		if ( hover )

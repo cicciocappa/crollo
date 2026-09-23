@@ -83,6 +83,7 @@ scena lo riaggancia.
 ### Strumenti di verifica inclusi
 
 ```bash
+./build/crollo --debug                        # gioca con tutti i livelli sbloccati (i salvataggi non cambiano)
 ./build/crollo --autotest [colpi]             # headless: ogni livello è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?

@@ -2,6 +2,7 @@
 //
 // Usage:
 //   crollo                       play
+//   crollo --debug               play with every level unlocked (progress is not changed)
 //   crollo --autotest [shots]    headless: check every level is stable and winnable
 //   crollo --shot <mode> <level> <frames> <out.png>
 //                                render a screenshot (modes: aim, fire, title, select, won)
@@ -147,6 +148,13 @@ int main( int argc, char** argv )
 
 	Game game( false );
 	game.Init( &renderer, &audio );
+	for ( int i = 1; i < argc; ++i )
+	{
+		if ( strcmp( argv[i], "--debug" ) == 0 )
+		{
+			game.SetDebug( true );
+		}
+	}
 
 	if ( shotMode )
 	{
