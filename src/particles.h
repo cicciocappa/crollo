@@ -15,7 +15,11 @@ enum class PType : uint8_t
 	Spark,	// additive streak-ish billboard with gravity
 	Star,	// sparkly billboard orbiting upwards
 	Ring,	// expanding shockwave billboard
+	Flake,	// weather: leaf, snowflake or sand grain, drifts with the wind and flutters
+	Streak, // weather: a rain drop drawn as a short line along its velocity
 };
+
+enum class Ambient : uint8_t;
 
 struct Particle
 {
@@ -30,6 +34,7 @@ struct Particle
 	float maxLife;
 	float drag;
 	float gravity;
+	Vector3 drift; // weather only: steady breeze on top of the level's wind
 	PType type;
 };
 
@@ -52,6 +57,8 @@ public:
 	void Stars( Vector3 pos, int count );
 	void Sparkle( Vector3 pos, Color color, int count );
 	void Trail( Vector3 pos, Color color, float size );
+	// Keeps a realm's weather falling around the point the camera looks at.
+	void Weather( Ambient kind, Vector3 focus, float dt, Vector3 wind, Color a, Color b );
 
 	int Count() const
 	{
@@ -60,4 +67,5 @@ public:
 
 private:
 	std::vector<Particle> m_items;
+	float m_weatherDebt = 0.0f;
 };

@@ -1,6 +1,7 @@
 #include "levels.h"
 
 #include <algorithm>
+#include <cstring>
 #include <cfloat>
 
 // Royal robe palette
@@ -20,6 +21,11 @@ Builder::Builder( Game& g, uint32_t seed )
 	, scene( g.GetScene() )
 	, rng( seed )
 {
+}
+
+const Biome& Builder::Look() const
+{
+	return biome ? *biome : GetBiome( 0 );
 }
 
 Entity* Builder::Island( Vector3 top, float radius, float depth )
@@ -44,6 +50,13 @@ Entity* Builder::Island( Vector3 top, float radius, float depth )
 		Vector3 p{ cosf( a ) * r, -slab - h, sinf( a ) * r };
 		scene.AddHull( e, p, b3Quat_identity, scene.Cone( h, radius * 0.08f, radius * rng.Range( 0.3f, 0.45f ), 10 ), Mat::Rock, so );
 	}
+	for ( Part& part : e->parts )
+	{
+		if ( part.mat == Mat::Rock )
+		{
+			part.tint = Look().rock;
+		}
+	}
 	scene.FinalizeEntity( e );
 
 	// scattered grass tufts and pebbles
@@ -57,7 +70,7 @@ Entity* Builder::Island( Vector3 top, float radius, float depth )
 		d.pos = { top.x + cosf( a ) * r, top.y, top.z + sinf( a ) * r };
 		d.scale = rng.Range( 0.7f, 1.3f );
 		d.rot = rng.Range( 0.0f, 6.28f );
-		d.color = ColorMix( Color{ 70, 130, 50, 255 }, Color{ 120, 170, 60, 255 }, rng.Float() );
+		d.color = ColorMix( Look().tuftA, Look().tuftB, rng.Float() );
 		game.AddDecoration( d );
 	}
 	for ( int i = 0; i < (int)( radius * 0.6f ); ++i )
@@ -69,7 +82,7 @@ Entity* Builder::Island( Vector3 top, float radius, float depth )
 		d.pos = { top.x + cosf( a ) * r, top.y, top.z + sinf( a ) * r };
 		d.scale = rng.Range( 0.15f, 0.35f );
 		d.rot = rng.Range( 0.0f, 6.28f );
-		d.color = GRAY;
+		d.color = ColorBrightness( Look().rock, 0.15f );
 		game.AddDecoration( d );
 	}
 	return e;
@@ -93,12 +106,19 @@ void Builder::PlayerIsland( Vector3 pos, float yaw )
 		game.AddDecoration( d );
 	};
 	// keep the trees out of the aiming camera's view: far to the sides or behind it
-	place( -4.6f, 3.0f, Decoration::Pine, 1.3f, Color{ 50, 110, 60, 255 } );
-	place( 4.7f, 2.4f, Decoration::Tree, 1.1f, Color{ 80, 150, 60, 255 } );
-	place( -3.4f, 4.9f, Decoration::Pine, 1.0f, Color{ 45, 100, 55, 255 } );
-	place( 3.3f, 5.1f, Decoration::Pine, 1.2f, Color{ 55, 115, 60, 255 } );
-	place( 4.2f, -1.5f, Decoration::Rock, 0.4f, GRAY );
-	place( -4.0f, -2.5f, Decoration::Rock, 0.3f, GRAY );
+	const Biome& look = Look();
+	Color pine = look.pinesOnly ? look.leafA : Color{ 50, 110, 60, 255 };
+	if ( biome && biome != &GetBiome( 0 ) && look.pinesOnly == false )
+	{
+		pine = ColorMix( look.leafA, Color{ 50, 110, 60, 255 }, 0.35f );
+	}
+	Color rock = ColorBrightness( look.rock, 0.15f );
+	place( -4.6f, 3.0f, Decoration::Pine, 1.3f, pine );
+	place( 4.7f, 2.4f, look.pinesOnly ? Decoration::Pine : Decoration::Tree, 1.1f, look.pinesOnly ? look.leafB : ColorMix( look.leafA, look.leafB, 0.6f ) );
+	place( -3.4f, 4.9f, Decoration::Pine, 1.0f, ColorBrightness( pine, -0.08f ) );
+	place( 3.3f, 5.1f, Decoration::Pine, 1.2f, ColorBrightness( pine, 0.05f ) );
+	place( 4.2f, -1.5f, Decoration::Rock, 0.4f, rock );
+	place( -4.0f, -2.5f, Decoration::Rock, 0.3f, rock );
 	Flag( Vector3Add( pos, Vector3Add( Vector3Scale( side, 4.2f ), Vector3Scale( back, 0.5f ) ) ), Color{ 40, 90, 200, 255 }, 0.9f );
 }
 
@@ -713,11 +733,13 @@ void Builder::Trees( Vector3 center, float radius, int count, float minR )
 		float a = rng.Range( 0.0f, 2.0f * PI );
 		float r = rng.Range( minR, radius - 0.8f );
 		Decoration d;
-		d.type = rng.Float() < 0.5f ? Decoration::Pine : Decoration::Tree;
+		// draw the same random numbers in every realm so a level's layout never depends on its look
+		bool pine = rng.Float() < 0.5f;
+		d.type = pine || Look().pinesOnly ? Decoration::Pine : Decoration::Tree;
 		d.pos = { center.x + cosf( a ) * r, center.y, center.z + sinf( a ) * r };
 		d.scale = rng.Range( 0.7f, 1.2f );
 		d.rot = rng.Range( 0.0f, 6.28f );
-		d.color = ColorMix( Color{ 45, 105, 55, 255 }, Color{ 95, 160, 60, 255 }, rng.Float() );
+		d.color = ColorMix( Look().leafA, Look().leafB, rng.Float() );
 		game.AddDecoration( d );
 	}
 }
@@ -1063,37 +1085,142 @@ static void Level14( Builder& b )
 }
 
 static const LevelDef s_levels[] = {
-	{ "Primo Colpo", "Il re di legno", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
-	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01 },
-	{ "Mura di Pietra", "Tre re, ma ne vedi due", "Conta le corone: un re si nasconde. Premi TAB per guardare dietro le mura. La BOMBA (2) esplode all'impatto.",
-	  { 5, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02 },
-	{ "Il Ponte", "Un re sospeso nel vuoto", "La PALLA INCATENATA (tasto 4) spazza tutto. Le corde si spezzano!",
-	  { 3, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03 },
-	{ "Palazzo di Ghiaccio", "Fragile e scivoloso", "Il ghiaccio si frantuma. Il GRAPPOLO (tasto 3) si divide con SPAZIO.",
-	  { 3, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, Level04 },
-	{ "Mongolfiere", "Re tra le nuvole", "Buca i palloni e i cesti precipiteranno tra le nuvole.",
-	  { 3, 0, 2, 0, 0 }, 3, { 0.8f, 0, 0 }, Level05 },
-	{ "Il Mulino", "Le pale girano", "Aspetta il momento giusto, oppure passa sopra le pale. Prova il MACIGNO (5).",
-	  { 4, 2, 0, 0, 1 }, 3, { 0, 0, 0 }, Level06 },
-	{ "Il Pendolo", "Una palla d'acciaio", "Colpisci il pendolo e lascia fare alla fisica. Occhio al vento!",
-	  { 3, 1, 0, 0, 0 }, 2, { -2.2f, 0, 0 }, Level07 },
-	{ "Polveriera", "Maneggiare con cura", "Il TNT esplode se colpito forte. Le esplosioni si propagano...",
-	  { 2, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level08 },
-	{ "Scudi Mobili", "Tempismo", "Gli scudi scorrono su binari. Spara nel varco!",
-	  { 4, 0, 0, 1, 2 }, 4, { 1.4f, 0, 0.4f }, Level09 },
-	{ "La Cittadella", "L'ultimo assedio", "Sei re, tre isole. Usa tutto l'arsenale.", { 4, 3, 2, 2, 2 }, 6, { -1.0f, 0, 0 },
-	  Level10 },
-	{ "Cristalli Guardiani", "Il muro che respira",
+	{ "Primo Colpo", "Una torre di legno basta e avanza. Chi mai sparerebbe a un re?", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
+	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01, "prati_primo_colpo" },
+	{ "Mura di Pietra", "Tre re, due in vista. Il terzo? Segreto di stato.", "Conta le corone: un re si nasconde. Premi TAB per guardare dietro le mura. La BOMBA (2) esplode all'impatto.",
+	  { 5, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02, "prati_mura" },
+	{ "Il Ponte", "Il mio ponte regge un re. Anche due, se stanno fermi.", "La PALLA INCATENATA (tasto 4) spazza tutto. Le corde si spezzano!",
+	  { 3, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03, "prati_ponte" },
+	{ "Palazzo di Ghiaccio", "Le mie torri di ghiaccio non si sciolgono, figuriamoci sotto le tue palle di ferro.", "Il ghiaccio si frantuma. Il GRAPPOLO (tasto 3) si divide con SPAZIO.",
+	  { 3, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, Level04, "gelo_palazzo" },
+	{ "Mongolfiere", "Da quassù i tuoi cannoni sembrano giocattoli.", "Buca i palloni e i cesti precipiteranno tra le nuvole.",
+	  { 3, 0, 2, 0, 0 }, 3, { 0.8f, 0, 0 }, Level05, "prati_mongolfiere" },
+	{ "Il Mulino", "Le mie pale girano da cent'anni. Non si fermeranno per te.", "Aspetta il momento giusto, oppure passa sopra le pale. Prova il MACIGNO (5).",
+	  { 4, 2, 0, 0, 1 }, 3, { 0, 0, 0 }, Level06, "mulini_mulino" },
+	{ "Il Pendolo", "Tic, tac. Il pendolo decide chi resta in piedi.", "Colpisci il pendolo e lascia fare alla fisica. Occhio al vento!",
+	  { 3, 1, 0, 0, 0 }, 2, { -2.2f, 0, 0 }, Level07, "mulini_pendolo" },
+	{ "Polveriera", "La polvere da sparo è ben custodita: proprio sotto di noi.", "Il TNT esplode se colpito forte. Le esplosioni si propagano...",
+	  { 2, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level08, "prati_polveriera" },
+	{ "Scudi Mobili", "Muri che vanno e vengono. Come le tue speranze.", "Gli scudi scorrono su binari. Spara nel varco!",
+	  { 4, 0, 0, 1, 2 }, 4, { 1.4f, 0, 0.4f }, Level09, "mulini_scudi" },
+	{ "La Cittadella", "Hai buttato giù i miei cugini. Ma me, non mi prendi.", "Sei re, tre isole. Usa tutto l'arsenale.", { 4, 3, 2, 2, 2 }, 6, { -1.0f, 0, 0 },
+	  Level10, "prati_cittadella" },
+	{ "Cristalli Guardiani", "Il cristallo protegge. Il cristallo aspetta. Il cristallo non sbaglia.",
 	  "Gli scudi di cristallo si spengono a intervalli: guarda l'anello sopra ogni scudo e spara al momento giusto.",
-	  { 4, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11 },
-	{ "Doppia Guardia", "Tempismo perfetto", "Due scudi in fila: si passa solo quando sono spenti entrambi. Tieni conto del volo.",
-	  { 4, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12 },
-	{ "Sponde di Gomma", "Rimbalzi e sacchi di sabbia",
+	  { 4, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11, "gelo_cristalli" },
+	{ "Doppia Guardia", "Due guardie di cristallo sono meglio di una.", "Due scudi in fila: si passa solo quando sono spenti entrambi. Tieni conto del volo.",
+	  { 4, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12, "gelo_doppia" },
+	{ "Sponde di Gomma", "Qui tutto rimbalza, perfino le tue minacce.",
 	  "La gomma rimanda indietro i colpi: usa il muro di gomma dietro il re. I sacchi assorbono urti ed esplosioni.",
-	  { 5, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13 },
-	{ "Il Bunker", "Dentro i sacchi", "Novità: il VORTICE (6) risucchia i blocchi, la bomba ADESIVA (7) si attacca ed esplode dopo 3 s.",
-	  { 3, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14 },
+	  { 5, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13, "prati_gomma" },
+	{ "Il Bunker", "Sacchi di sabbia. Tanti, tanti sacchi di sabbia.", "Novità: il VORTICE (6) risucchia i blocchi, la bomba ADESIVA (7) si attacca ed esplode dopo 3 s.",
+	  { 3, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14, "prati_bunker" },
 };
+
+// ---------------------------------------------------------------------------------------------
+// Campaigns
+// ---------------------------------------------------------------------------------------------
+
+static std::vector<Campaign> BuildCampaigns()
+{
+	auto idx = []( const char* id ) { return FindLevelById( id ); };
+	std::vector<Campaign> c;
+	c.push_back( { "Prati Alti", "Re Bernardo il Tondo", kPurple, 0,
+				   "Le isole del Regno di Sopra restano in cielo grazie alla Corona dei Venti. Sei re avidi l'hanno spezzata "
+				   "e se ne sono presi un frammento ciascuno: senza la corona intera, le isole scendono piano verso le nuvole. "
+				   "Mastra Bombarda carica il cannone. Si parte dai Prati Alti, dove regna Re Bernardo il Tondo.",
+				   "Re Bernardo rotola gi\u00f9 dalla sua cittadella e il primo frammento della Corona torna a brillare. "
+				   "L'isola di Mastra Bombarda risale di qualche metro. Verso ovest, il vento porta il cigolio di cento mulini.",
+				   { idx( "prati_primo_colpo" ), idx( "prati_mura" ), idx( "prati_ponte" ), idx( "prati_mongolfiere" ),
+					 idx( "prati_polveriera" ), idx( "prati_gomma" ), idx( "prati_bunker" ), idx( "prati_cittadella" ) } } );
+	c.push_back( { "Valle dei Mulini", "Regina Ottavia", kOrange, 1,
+				   "Nella Valle dei Mulini il tramonto non finisce mai. La Regina Ottavia ha costruito difese che si muovono: "
+				   "pale, pendoli, scudi su binari. Qui non basta mirare bene: bisogna scegliere il momento.",
+				   "Le pale si fermano e il secondo frammento torna al suo posto. Pi\u00f9 in alto, dove l'aria si fa gelida, "
+				   "qualcuno ha costruito un palazzo di ghiaccio.",
+				   { idx( "mulini_mulino" ), idx( "mulini_pendolo" ), idx( "mulini_scudi" ) } } );
+	c.push_back( { "Picchi Gelati", "Re Ghiacciolo III", kTeal, 2,
+				   "Sui Picchi Gelati regna Re Ghiacciolo III, che non si fida di nessuno, e meno che mai dei muri normali: "
+				   "i suoi sono di cristallo, e si accendono e si spengono quando vuole lui.",
+				   "Il cristallo si spegne per sempre. Tre frammenti su sei: la Corona dei Venti ricomincia a soffiare.",
+				   { idx( "gelo_palazzo" ), idx( "gelo_cristalli" ), idx( "gelo_doppia" ) } } );
+	c.push_back( { "Dune Sospese", "Sultana Zaira", { 225, 170, 40, 255 }, 3,
+				   "Sulle Dune Sospese la sabbia vola pi\u00f9 in alto delle isole. La Sultana Zaira si nasconde dietro montagne "
+				   "di sacchi, e il vento cambia a ogni colpo.",
+				   "La tempesta di sabbia si posa. Quattro frammenti su sei.", {} } );
+	c.push_back( { "Arcipelago delle Tempeste", "Re Fulmine", { 40, 60, 140, 255 }, 4,
+				   "Nell'Arcipelago delle Tempeste le isole non stanno ferme un attimo, e Re Fulmine ama far piovere lampi sui "
+				   "suoi nemici.",
+				   "Le nuvole si aprono. Cinque frammenti su sei.", {} } );
+	c.push_back( { "Fucina del Vulcano", "l'Imperatore di Ferro", { 190, 40, 30, 255 }, 5,
+				   "Sopra un mare di lava, l'Imperatore di Ferro ha forgiato l'ultima fortezza del Regno di Sopra. Custodisce "
+				   "l'ultimo frammento della Corona, e tutto quello che hai imparato ti servir\u00e0.",
+				   "La Corona dei Venti \u00e8 di nuovo intera. Le isole tornano a salire, e Mastra Bombarda pu\u00f2 finalmente "
+				   "riposare. Per un po'.",
+				   {} } );
+	return c;
+}
+
+static const std::vector<Campaign>& Campaigns()
+{
+	static std::vector<Campaign> c = BuildCampaigns();
+	return c;
+}
+
+const Campaign& GetCampaign( int index )
+{
+	return Campaigns()[index];
+}
+
+int CampaignCount()
+{
+	return (int)Campaigns().size();
+}
+
+int CampaignOfLevel( int levelIndex )
+{
+	for ( int c = 0; c < CampaignCount(); ++c )
+	{
+		for ( int l : GetCampaign( c ).levels )
+		{
+			if ( l == levelIndex )
+			{
+				return c;
+			}
+		}
+	}
+	return -1;
+}
+
+int PositionInCampaign( int levelIndex )
+{
+	int c = CampaignOfLevel( levelIndex );
+	if ( c < 0 )
+	{
+		return 0;
+	}
+	const std::vector<int>& ls = GetCampaign( c ).levels;
+	for ( size_t i = 0; i < ls.size(); ++i )
+	{
+		if ( ls[i] == levelIndex )
+		{
+			return (int)i;
+		}
+	}
+	return 0;
+}
+
+int FindLevelById( const char* id )
+{
+	for ( int i = 0; i < LevelCount(); ++i )
+	{
+		if ( strcmp( GetLevel( i ).id, id ) == 0 )
+		{
+			return i;
+		}
+	}
+	return -1;
+}
 
 const LevelDef& GetLevel( int index )
 {

@@ -555,6 +555,8 @@ struct MusicState
 	OnePole windLp;
 	OnePole outLp;
 	std::atomic<float> musicGain{ 0.0f };
+	std::atomic<int> requestedStyle{ 0 };
+	int style = 0;
 	std::atomic<float> windGain{ 0.0f };
 	float musicGainSmoothed = 0.0f;
 	float windGainSmoothed = 0.0f;
@@ -589,31 +591,77 @@ void TriggerPluck( int midi, float velocity, float brightness )
 	p.active = true;
 }
 
+// One mood per realm: a four-chord loop, a scale for the wandering melody, tempo and touch.
+struct MusicStyle
+{
+	int chords[4][3];
+	int scale[10];
+	float bpm;
+	float arpChance; // how busy the arpeggio is
+	float bright;	 // pluck brightness of arpeggio and melody
+	int arpOctave;	 // semitones added to the arpeggio
+	float bassGain;
+};
+
+static const MusicStyle s_styles[] = {
+	// Prati Alti: Andalusian cadence in D minor, Dm - C - Bb - A
+	{ { { 50, 53, 57 }, { 48, 52, 55 }, { 46, 50, 53 }, { 45, 49, 52 } }, { 62, 64, 65, 67, 69, 70, 72, 73, 74, 76 }, 88.0f, 0.8f, 0.55f, 12,
+	  0.55f },
+	// Valle dei Mulini: warm F major, F - Dm - Bb - C
+	{ { { 53, 57, 60 }, { 50, 53, 57 }, { 46, 50, 53 }, { 48, 52, 55 } }, { 60, 62, 64, 65, 67, 69, 70, 72, 74, 76 }, 96.0f, 0.85f, 0.6f, 12,
+	  0.5f },
+	// Picchi Gelati: slow and high, glassy E minor, Em - C - G - D
+	{ { { 52, 55, 59 }, { 48, 52, 55 }, { 43, 47, 50 }, { 50, 54, 57 } }, { 64, 66, 67, 69, 71, 72, 74, 76, 78, 79 }, 68.0f, 0.55f, 0.85f, 24,
+	  0.35f },
+	// Dune Sospese: E phrygian dominant, E - F - E - Dm
+	{ { { 52, 56, 59 }, { 53, 57, 60 }, { 52, 56, 59 }, { 50, 53, 57 } }, { 64, 65, 68, 69, 71, 72, 74, 76, 77, 80 }, 104.0f, 0.9f, 0.5f, 12,
+	  0.6f },
+	// Arcipelago delle Tempeste: low A minor, Am - F - Dm - E
+	{ { { 45, 48, 52 }, { 41, 45, 48 }, { 50, 53, 57 }, { 40, 44, 47 } }, { 57, 59, 60, 62, 64, 65, 68, 69, 71, 72 }, 80.0f, 0.75f, 0.4f, 12,
+	  0.65f },
+	// Fucina del Vulcano: driving C minor, Cm - Ab - Fm - G
+	{ { { 48, 51, 55 }, { 44, 48, 51 }, { 41, 44, 48 }, { 43, 47, 50 } }, { 60, 62, 63, 65, 67, 68, 71, 72, 74, 75 }, 116.0f, 0.95f, 0.45f, 12,
+	  0.7f },
+};
+
+const MusicStyle& CurrentStyle()
+{
+	return s_styles[g_music.style];
+}
+
 void SequencerStep()
 {
 	MusicState& ms = g_music;
-	// Andalusian cadence in D minor: Dm - C - Bb - A
-	static const int chords[4][3] = { { 50, 53, 57 }, { 48, 52, 55 }, { 46, 50, 53 }, { 45, 49, 52 } };
 	static const int arp[8] = { 0, 1, 2, 1, 0, 2, 1, 2 };
-	static const int scale[] = { 62, 64, 65, 67, 69, 70, 72, 73, 74, 76 };
 	const int scaleCount = 10;
+
+	// a new realm's mood starts on the next phrase, never in the middle of a bar
+	int wanted = ms.requestedStyle.load();
+	if ( wanted != ms.style && ms.step % 8 == 0 )
+	{
+		ms.style = wanted;
+		ms.step = 0;
+		ms.melody = s_styles[wanted].scale[0];
+	}
+	const MusicStyle& st = s_styles[ms.style];
+	const int* scale = st.scale;
 
 	int bar = ( ms.step / 8 ) % 4;
 	int s = ms.step % 8;
-	const int* chord = chords[bar];
+	const int* chord = st.chords[bar];
 
 	if ( s == 0 )
 	{
-		TriggerPluck( chord[0] - 12, 0.55f, 0.35f );
+		TriggerPluck( chord[0] - 12, st.bassGain, 0.35f );
 	}
 	if ( s == 4 )
 	{
-		TriggerPluck( chord[0] - 5, 0.4f, 0.35f );
+		TriggerPluck( chord[0] - 5, st.bassGain * 0.73f, 0.35f );
 	}
 
-	if ( ms.rng.Uniform() < 0.8f )
+	if ( ms.rng.Uniform() < st.arpChance )
 	{
-		TriggerPluck( chord[arp[s]] + 12, 0.22f + 0.08f * ms.rng.Uniform(), 0.55f );
+		TriggerPluck( chord[arp[s]] + st.arpOctave, 0.22f + 0.08f * ms.rng.Uniform(), st.bright );
 	}
 
 	bool melodyBeat = ( s == 0 || s == 3 || s == 6 );
@@ -635,7 +683,7 @@ void SequencerStep()
 		{
 			ms.melody = chord[( ms.step / 8 ) % 3] + 12;
 		}
-		TriggerPluck( ms.melody + 12, 0.3f, 0.7f );
+		TriggerPluck( ms.melody + 12, 0.3f, std::min( 0.9f, st.bright + 0.15f ) );
 	}
 
 	ms.step += 1;
@@ -645,7 +693,6 @@ void MusicCallback( void* bufferData, unsigned int frames )
 {
 	MusicState& ms = g_music;
 	float* out = (float*)bufferData;
-	const int stepLen = (int)( kRate * 60.0f / 88.0f / 2.0f );
 	float targetMusic = ms.musicGain.load();
 	float targetWind = ms.windGain.load();
 
@@ -658,7 +705,8 @@ void MusicCallback( void* bufferData, unsigned int frames )
 		{
 			SequencerStep();
 		}
-		ms.sampleInStep = ( ms.sampleInStep + 1 ) % stepLen;
+		const int stepLen = (int)( kRate * 60.0f / CurrentStyle().bpm / 2.0f );
+		ms.sampleInStep = ms.sampleInStep + 1 >= stepLen ? 0 : ms.sampleInStep + 1;
 
 		float m = 0.0f;
 		for ( Pluck& p : ms.voices )
@@ -807,6 +855,12 @@ void Audio::PlayAt( Sfx sfx, Vector3 position, float volume, float pitch )
 	Play( sfx, volume * atten, pitch, pan );
 }
 
+void Audio::SetMusicStyle( int style )
+{
+	int n = (int)( sizeof( s_styles ) / sizeof( s_styles[0] ) );
+	g_music.requestedStyle.store( ( style % n + n ) % n );
+}
+
 void Audio::SetMusicEnabled( bool on )
 {
 	m_musicOn = on;
@@ -846,14 +900,22 @@ void Audio::ExportAll( const char* dir, float musicSeconds )
 	g_music.musicGainSmoothed = 0.55f;
 	g_music.windGainSmoothed = 0.1f;
 	int frames = (int)( musicSeconds * kRate );
-	std::vector<float> out( frames );
-	MusicCallback( out.data(), (unsigned int)frames );
-	Buffer b( musicSeconds );
-	for ( int i = 0; i < frames && i < b.N(); ++i )
+	int styles = (int)( sizeof( s_styles ) / sizeof( s_styles[0] ) );
+	for ( int st = 0; st < styles; ++st )
 	{
-		b.s[i] = out[i];
+		g_music.requestedStyle.store( st );
+		g_music.style = st;
+		g_music.step = 0;
+		g_music.sampleInStep = 0;
+		std::vector<float> out( frames );
+		MusicCallback( out.data(), (unsigned int)frames );
+		Buffer b( musicSeconds );
+		for ( int i = 0; i < frames && i < b.N(); ++i )
+		{
+			b.s[i] = out[i];
+		}
+		Wave w = ToWave( b );
+		ExportWave( w, TextFormat( "%s/music_%d.wav", dir, st ) );
+		UnloadWave( w );
 	}
-	Wave w = ToWave( b );
-	ExportWave( w, TextFormat( "%s/music.wav", dir ) );
-	UnloadWave( w );
 }

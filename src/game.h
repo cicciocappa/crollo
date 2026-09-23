@@ -33,7 +33,9 @@ const AmmoInfo& GetAmmoInfo( Ammo a );
 enum class Screen
 {
 	Title,
-	LevelSelect,
+	Map,		 // the six realms of the Kingdom Above
+	LevelSelect, // the levels of one campaign
+	Story,		 // a campaign's prologue or epilogue
 	HowTo,
 	Playing,
 	Paused,
@@ -91,10 +93,15 @@ struct ReplayEvent
 	bool big;
 };
 
+// Indexed by level index in memory; saved by the level's stable id, so the level table can grow.
 struct Progress
 {
-	int stars[32] = {};
-	int best[32] = {};
+	static const int kMaxLevels = 64;
+	static const int kMaxCampaigns = 8;
+	int stars[kMaxLevels] = {};
+	int best[kMaxLevels] = {};
+	bool introSeen[kMaxCampaigns] = {};
+	bool outroSeen[kMaxCampaigns] = {};
 	bool shadows = true;
 	bool music = true;
 	bool sfx = true;
@@ -176,6 +183,22 @@ public:
 	void SetFortressCenter( Vector3 c, float radius );
 	int GetLevelCount() const;
 
+	// Campaign progress (also used by the tests)
+	int CampaignStars( int campaign ) const;
+	int CampaignMaxStars( int campaign ) const;
+	int StarsToUnlock( int campaign ) const; // stars needed in the previous campaign
+	bool CampaignUnlocked( int campaign ) const;
+	bool LevelUnlocked( int levelIndex ) const;
+	int ContinueLevel() const; // first unlocked level not beaten yet, or -1
+	// Shows a campaign's prologue or epilogue on the attract scene of that realm.
+	void ShowStory( int campaign, bool outro, int playAfter = -1 );
+	void OpenCampaign( int campaign );
+	void SelectCampaign( int campaign )
+	{
+		m_campaign = campaign;
+	}
+	void TestCampaigns();
+
 private:
 	// flow
 	bool LoadDef( const LevelDef* def, uint32_t seed, bool attract, const ChallengePlan* plan );
@@ -188,6 +211,9 @@ private:
 	void CheckOutcome( float dt );
 	void RestartLevel();
 	void NextLevel();
+	int NextInCampaign() const; // next level of the current campaign, or -1 after its last level
+	void ApplyBiome( int biome );
+	void LoadAttractFor( int campaign ); // a random level of that campaign (any when -1) as the backdrop
 
 	// actions
 	void Fire();
@@ -225,6 +251,8 @@ private:
 	void DrawHUD();
 	void DrawTitle();
 	void DrawLevelSelect();
+	void DrawMap();
+	void DrawStory();
 	void DrawHowTo();
 	void DrawPause();
 	void DrawResult( bool won );
@@ -272,6 +300,13 @@ private:
 	LevelDef* m_challengeDef = nullptr;
 	ChallengePlan* m_plan = nullptr;
 	char m_challengeName[64] = {};
+
+	// campaigns
+	int m_biome = 0;
+	int m_campaign = 0; // the one open in the level grid
+	int m_storyCampaign = 0;
+	bool m_storyOutro = false;
+	int m_storyPlay = -1; // level to start when the story card closes (-1: back to the map / grid)
 
 	// level
 	int m_levelIndex = 0;

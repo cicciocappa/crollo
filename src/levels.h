@@ -1,6 +1,8 @@
 // Level definitions and the builder used to assemble fortresses out of Box3D bodies.
 #pragma once
 
+#include "render.h"
+
 #include "game.h"
 
 struct LevelDef
@@ -12,10 +14,29 @@ struct LevelDef
 	int par; // shots for three stars
 	Vector3 wind;
 	void ( *build )( Builder& b );
+	const char* id; // stable name used by the save file, never changes once shipped
 };
 
 const LevelDef& GetLevel( int index );
 int LevelCount();
+int FindLevelById( const char* id );
+
+// A campaign: one realm of the Kingdom Above, its king, its look and its levels.
+struct Campaign
+{
+	const char* name;
+	const char* king;
+	Color robe;
+	int biome;
+	const char* intro; // read before the first level
+	const char* outro; // read after the last one, when the fragment of the crown comes back
+	std::vector<int> levels; // indices into the level table, in play order
+};
+
+const Campaign& GetCampaign( int index );
+int CampaignCount();
+int CampaignOfLevel( int levelIndex );	 // -1 if the level belongs to no campaign
+int PositionInCampaign( int levelIndex ); // 0-based
 
 // Endless challenge: fortresses generated from a seed, harder every round.
 struct ChallengePlan
@@ -48,6 +69,8 @@ public:
 	float homeY = 0.0f;
 	Vector3 faceTarget{ 0, 0, 0 }; // kings look at the cannon
 	const ChallengePlan* plan = nullptr; // set for procedural rounds
+	const Biome* biome = nullptr;		 // colors of trees, tufts and rocks (Prati Alti when null)
+	const Biome& Look() const;
 
 	// terrain
 	Entity* Island( Vector3 top, float radius, float depth = 9.0f );

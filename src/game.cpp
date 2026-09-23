@@ -194,10 +194,36 @@ int Game::KingsRemaining() const
 	return n;
 }
 
+void Game::ApplyBiome( int biome )
+{
+	// CROLLO_BIOME forces a look on every level, for screenshots and tuning
+	if ( const char* force = getenv( "CROLLO_BIOME" ) )
+	{
+		biome = atoi( force );
+	}
+	int n = BiomeCount();
+	m_biome = ( biome % n + n ) % n;
+	const Biome& b = GetBiome( m_biome );
+	if ( m_renderer )
+	{
+		m_renderer->SetBiome( b );
+	}
+	if ( m_audio )
+	{
+		m_audio->SetMusicStyle( b.musicStyle );
+	}
+}
+
 void Game::LoadLevel( int index, bool attract )
 {
 	m_challenge = false;
 	m_levelIndex = index;
+	int c = CampaignOfLevel( index );
+	if ( c >= 0 && attract == false )
+	{
+		m_campaign = c;
+	}
+	ApplyBiome( c >= 0 ? GetCampaign( c ).biome : 0 );
 	LoadDef( &GetLevel( index ), 1000u + (uint32_t)index * 77u, attract, nullptr );
 }
 
@@ -214,6 +240,8 @@ void Game::LoadChallenge( int round, bool fresh )
 	}
 	m_challenge = true;
 	m_round = round;
+	// every round visits a realm, the ones without a campaign yet included
+	ApplyBiome( (int)( ( m_challengeSeed >> 3 ) + (uint32_t)round * 5u ) );
 
 	// A generated fortress might be unstable; try a few seeds until every king stands.
 	for ( int attempt = 0; attempt < 6; ++attempt )
@@ -284,6 +312,7 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 
 	Builder b( *this, seed );
 	b.plan = plan;
+	b.biome = &GetBiome( m_biome );
 	m_level->build( b );
 
 	// Let the structures settle before the player sees them.
@@ -408,9 +437,152 @@ void Game::NextLevel()
 		SetScreen( Screen::Playing );
 		return;
 	}
-	int next = std::min( m_levelIndex + 1, LevelCount() - 1 );
+	int next = NextInCampaign();
+	if ( next < 0 )
+	{
+		SetScreen( Screen::Map );
+		return;
+	}
 	LoadLevel( next, false );
 	SetScreen( Screen::Playing );
+}
+
+int Game::NextInCampaign() const
+{
+	int c = CampaignOfLevel( m_levelIndex );
+	if ( c < 0 )
+	{
+		return -1;
+	}
+	const std::vector<int>& ls = GetCampaign( c ).levels;
+	int pos = PositionInCampaign( m_levelIndex );
+	return pos + 1 < (int)ls.size() ? ls[pos + 1] : -1;
+}
+
+void Game::LoadAttractFor( int campaign )
+{
+	std::vector<int> pool;
+	if ( campaign >= 0 && campaign < CampaignCount() )
+	{
+		pool = GetCampaign( campaign ).levels;
+	}
+	if ( pool.empty() )
+	{
+		for ( int i = 0; i < LevelCount(); ++i )
+		{
+			pool.push_back( i );
+		}
+	}
+	// avoid showing the same siege twice in a row
+	if ( pool.size() > 1 && m_attract )
+	{
+		pool.erase( std::remove( pool.begin(), pool.end(), m_levelIndex ), pool.end() );
+	}
+	LoadLevel( pool[FxRng().Int( 0, (int)pool.size() - 1 )], true );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Campaign progress
+// ---------------------------------------------------------------------------------------------
+
+int Game::CampaignStars( int campaign ) const
+{
+	int n = 0;
+	for ( int l : GetCampaign( campaign ).levels )
+	{
+		n += m_progress.stars[l];
+	}
+	return n;
+}
+
+int Game::CampaignMaxStars( int campaign ) const
+{
+	return 3 * (int)GetCampaign( campaign ).levels.size();
+}
+
+int Game::StarsToUnlock( int campaign ) const
+{
+	if ( campaign <= 0 )
+	{
+		return 0;
+	}
+	// half the stars of the previous realm open the next one
+	return ( CampaignMaxStars( campaign - 1 ) + 1 ) / 2;
+}
+
+bool Game::CampaignUnlocked( int campaign ) const
+{
+	if ( campaign < 0 || campaign >= CampaignCount() || GetCampaign( campaign ).levels.empty() )
+	{
+		return false;
+	}
+	if ( m_debug || campaign == 0 )
+	{
+		return true;
+	}
+	return CampaignUnlocked( campaign - 1 ) && CampaignStars( campaign - 1 ) >= StarsToUnlock( campaign );
+}
+
+bool Game::LevelUnlocked( int levelIndex ) const
+{
+	if ( m_debug )
+	{
+		return true;
+	}
+	int c = CampaignOfLevel( levelIndex );
+	if ( c < 0 || CampaignUnlocked( c ) == false )
+	{
+		return false;
+	}
+	int pos = PositionInCampaign( levelIndex );
+	return pos == 0 || m_progress.stars[GetCampaign( c ).levels[pos - 1]] > 0 || m_progress.stars[levelIndex] > 0;
+}
+
+int Game::ContinueLevel() const
+{
+	for ( int c = 0; c < CampaignCount(); ++c )
+	{
+		if ( CampaignUnlocked( c ) == false )
+		{
+			continue;
+		}
+		for ( int l : GetCampaign( c ).levels )
+		{
+			if ( LevelUnlocked( l ) && m_progress.stars[l] == 0 )
+			{
+				return l;
+			}
+		}
+	}
+	return -1;
+}
+
+void Game::ShowStory( int campaign, bool outro, int playAfter )
+{
+	m_storyCampaign = campaign;
+	m_storyOutro = outro;
+	m_storyPlay = playAfter;
+	if ( campaign >= 0 && campaign < Progress::kMaxCampaigns )
+	{
+		( outro ? m_progress.outroSeen : m_progress.introSeen )[campaign] = true;
+		SaveProgress();
+	}
+	SetScreen( Screen::Story );
+}
+
+void Game::OpenCampaign( int campaign )
+{
+	if ( CampaignUnlocked( campaign ) == false )
+	{
+		return;
+	}
+	m_campaign = campaign;
+	if ( m_progress.introSeen[campaign] == false )
+	{
+		ShowStory( campaign, false );
+		return;
+	}
+	SetScreen( Screen::LevelSelect );
 }
 
 void Game::SetScreen( Screen s )
@@ -442,11 +614,27 @@ void Game::SetScreen( Screen s )
 		m_orbitYaw = atan2f( d.x, d.z );
 	}
 
-	if ( s == Screen::Title || s == Screen::LevelSelect || s == Screen::HowTo )
+	// menus play a demo siege behind them, in the realm they are about
+	bool fresh = m_attract == false || m_scene.IsValid() == false;
+	if ( s == Screen::Title || s == Screen::Map || s == Screen::HowTo )
 	{
-		if ( m_attract == false || m_scene.IsValid() == false )
+		if ( fresh )
 		{
-			LoadLevel( FxRng().Int( 0, LevelCount() - 1 ), true );
+			LoadAttractFor( -1 );
+		}
+	}
+	else if ( s == Screen::LevelSelect )
+	{
+		if ( fresh || CampaignOfLevel( m_levelIndex ) != m_campaign )
+		{
+			LoadAttractFor( m_campaign );
+		}
+	}
+	else if ( s == Screen::Story )
+	{
+		if ( fresh || CampaignOfLevel( m_levelIndex ) != m_storyCampaign )
+		{
+			LoadAttractFor( m_storyCampaign );
 		}
 	}
 }
@@ -458,6 +646,83 @@ void Game::SetScreen( Screen s )
 static const char* SavePath()
 {
 	return TextFormat( "%scrollo_save.txt", GetApplicationDirectory() );
+}
+
+// Save file, one "key value..." per line. Levels are stored by id; the old format ("level <index> <stars>",
+// "best <index> <score>") used the order of the level table, which the ids keep, so it still loads.
+static void ReadSave( FILE* f, Progress& p )
+{
+	char line[256];
+	while ( fgets( line, sizeof( line ), f ) )
+	{
+		char key[64] = {}, arg[64] = {};
+		int v = 0;
+		if ( sscanf( line, "%63s %63s %d", key, arg, &v ) != 3 )
+		{
+			continue;
+		}
+		char* end = nullptr;
+		long num = strtol( arg, &end, 10 );
+		bool numeric = end != arg && *end == 0;
+		int level = numeric ? (int)num : FindLevelById( arg );
+		bool levelOk = level >= 0 && level < LevelCount() && level < Progress::kMaxLevels;
+		bool campOk = numeric && num >= 0 && num < Progress::kMaxCampaigns;
+
+		if ( ( strcmp( key, "star" ) == 0 || strcmp( key, "level" ) == 0 ) && levelOk )
+		{
+			p.stars[level] = std::max( p.stars[level], std::max( 0, std::min( 3, v ) ) );
+		}
+		else if ( strcmp( key, "best" ) == 0 && levelOk )
+		{
+			p.best[level] = std::max( p.best[level], v );
+		}
+		else if ( strcmp( key, "intro" ) == 0 && campOk )
+		{
+			p.introSeen[num] = v != 0;
+		}
+		else if ( strcmp( key, "outro" ) == 0 && campOk )
+		{
+			p.outroSeen[num] = v != 0;
+		}
+		else if ( strcmp( key, "challenge" ) == 0 && numeric )
+		{
+			p.bestChallenge = (int)num;
+			p.bestRound = v;
+		}
+		else if ( strcmp( key, "opt" ) == 0 && numeric )
+		{
+			if ( num == 0 )
+				p.shadows = v != 0;
+			if ( num == 1 )
+				p.music = v != 0;
+			if ( num == 2 )
+				p.sfx = v != 0;
+			if ( num == 3 )
+				p.aimAssist = v != 0;
+		}
+	}
+}
+
+static void WriteSave( FILE* f, const Progress& p )
+{
+	fprintf( f, "version 2 0\n" );
+	for ( int i = 0; i < LevelCount() && i < Progress::kMaxLevels; ++i )
+	{
+		if ( p.stars[i] > 0 || p.best[i] > 0 )
+		{
+			fprintf( f, "star %s %d\n", GetLevel( i ).id, p.stars[i] );
+			fprintf( f, "best %s %d\n", GetLevel( i ).id, p.best[i] );
+		}
+	}
+	for ( int c = 0; c < Progress::kMaxCampaigns; ++c )
+	{
+		if ( p.introSeen[c] )
+			fprintf( f, "intro %d 1\n", c );
+		if ( p.outroSeen[c] )
+			fprintf( f, "outro %d 1\n", c );
+	}
+	fprintf( f, "challenge %d %d\n", p.bestChallenge, p.bestRound );
+	fprintf( f, "opt 0 %d\nopt 1 %d\nopt 2 %d\nopt 3 %d\n", p.shadows, p.music, p.sfx, p.aimAssist );
 }
 
 void Game::LoadProgress()
@@ -474,41 +739,14 @@ void Game::LoadProgress()
 	{
 		return;
 	}
-	char key[64];
-	int a = 0, b = 0;
-	while ( fscanf( f, "%63s %d %d", key, &a, &b ) == 3 )
-	{
-		if ( strcmp( key, "level" ) == 0 && a >= 0 && a < 32 )
-		{
-			m_progress.stars[a] = std::max( 0, std::min( 3, b ) );
-		}
-		else if ( strcmp( key, "best" ) == 0 && a >= 0 && a < 32 )
-		{
-			m_progress.best[a] = b;
-		}
-		else if ( strcmp( key, "challenge" ) == 0 )
-		{
-			m_progress.bestChallenge = a;
-			m_progress.bestRound = b;
-		}
-		else if ( strcmp( key, "opt" ) == 0 )
-		{
-			if ( a == 0 )
-				m_progress.shadows = b != 0;
-			if ( a == 1 )
-				m_progress.music = b != 0;
-			if ( a == 2 )
-				m_progress.sfx = b != 0;
-			if ( a == 3 )
-				m_progress.aimAssist = b != 0;
-		}
-	}
+	ReadSave( f, m_progress );
 	fclose( f );
 }
 
 void Game::SaveProgress()
 {
-	if ( m_headless || m_attract || m_inputEnabled == false )
+	// attract-mode sieges never reach CheckOutcome's bookkeeping, so saving from the menus is safe
+	if ( m_headless || m_inputEnabled == false )
 	{
 		return;
 	}
@@ -517,18 +755,88 @@ void Game::SaveProgress()
 	{
 		return;
 	}
-	for ( int i = 0; i < LevelCount(); ++i )
-	{
-		fprintf( f, "level %d %d\n", i, m_progress.stars[i] );
-		fprintf( f, "best %d %d\n", i, m_progress.best[i] );
-	}
-	fprintf( f, "challenge %d %d\n", m_progress.bestChallenge, m_progress.bestRound );
-	fprintf( f, "opt 0 %d\nopt 1 %d\nopt 2 %d\nopt 3 %d\n", m_progress.shadows, m_progress.music, m_progress.sfx,
-			 m_progress.aimAssist );
+	WriteSave( f, m_progress );
 	fclose( f );
 #if defined( __EMSCRIPTEN__ )
 	WebStoreSave( SavePath() );
 #endif
+}
+
+void Game::TestCampaigns()
+{
+	int failures = 0;
+	auto check = [&]( bool ok, const char* what ) {
+		printf( "  %-62s %s\n", what, ok ? "ok" : "FALLITO" );
+		failures += ok ? 0 : 1;
+	};
+
+	// every level has a unique id and belongs to exactly one campaign
+	bool idsOk = true, ownedOk = true;
+	for ( int i = 0; i < LevelCount(); ++i )
+	{
+		idsOk = idsOk && GetLevel( i ).id && FindLevelById( GetLevel( i ).id ) == i;
+		int owners = 0;
+		for ( int c = 0; c < CampaignCount(); ++c )
+		{
+			for ( int l : GetCampaign( c ).levels )
+			{
+				owners += l == i ? 1 : 0;
+			}
+		}
+		ownedOk = ownedOk && owners == 1;
+	}
+	check( idsOk, "id dei livelli unici" );
+	check( ownedOk, "ogni livello sta in una sola campagna" );
+	check( CampaignCount() == 6 && CampaignCount() <= Progress::kMaxCampaigns, "sei campagne" );
+	check( LevelCount() <= Progress::kMaxLevels, "spazio per tutti i livelli nel salvataggio" );
+
+	// an old save (by index) migrates, and the new format reads back the same
+	const char* legacy = "level 0 3\nbest 0 9000\nlevel 1 2\nbest 1 7000\nlevel 5 1\nbest 5 100\nchallenge 4200 3\nopt 1 0\n";
+	FILE* f = tmpfile();
+	fputs( legacy, f );
+	rewind( f );
+	Progress old;
+	ReadSave( f, old );
+	fclose( f );
+	check( old.stars[0] == 3 && old.stars[1] == 2 && old.stars[5] == 1 && old.best[1] == 7000, "salvataggio vecchio migrato" );
+	check( old.bestChallenge == 4200 && old.bestRound == 3 && old.music == false, "record e opzioni migrati" );
+	old.introSeen[1] = true;
+	old.outroSeen[0] = true;
+	f = tmpfile();
+	WriteSave( f, old );
+	rewind( f );
+	Progress back;
+	ReadSave( f, back );
+	fclose( f );
+	bool same = memcmp( back.stars, old.stars, sizeof( old.stars ) ) == 0 && memcmp( back.best, old.best, sizeof( old.best ) ) == 0 &&
+				back.introSeen[1] && back.outroSeen[0] && back.introSeen[0] == false && back.music == false;
+	check( same, "formato nuovo: scrivi e rileggi" );
+
+	// unlock rules
+	Progress saved = m_progress;
+	bool debug = m_debug;
+	m_debug = false;
+	m_progress = Progress();
+	const Campaign& c0 = GetCampaign( 0 );
+	check( LevelUnlocked( c0.levels[0] ) && LevelUnlocked( c0.levels[1] ) == false, "primo livello aperto, secondo chiuso" );
+	check( CampaignUnlocked( 1 ) == false, "seconda campagna chiusa all'inizio" );
+	check( ContinueLevel() == c0.levels[0], "CONTINUA parte dal primo livello" );
+	m_progress.stars[c0.levels[0]] = 1;
+	check( LevelUnlocked( c0.levels[1] ) && ContinueLevel() == c0.levels[1], "vincere apre il livello dopo" );
+	for ( int i = 0; i < (int)c0.levels.size(); ++i )
+	{
+		m_progress.stars[c0.levels[i]] = i < 5 ? 2 : 0; // 10 stars
+	}
+	check( CampaignUnlocked( 1 ) == false, "10 stelle su 24 non bastano" );
+	m_progress.stars[c0.levels[5]] = 2; // 12 stars
+	check( CampaignUnlocked( 1 ) && StarsToUnlock( 1 ) == 12, "12 stelle su 24 aprono la Valle dei Mulini" );
+	check( CampaignUnlocked( 3 ) == false, "le campagne senza livelli restano chiuse" );
+	m_debug = true;
+	check( CampaignUnlocked( 2 ) && LevelUnlocked( GetCampaign( 2 ).levels.back() ), "--debug apre tutto" );
+	m_debug = debug;
+	m_progress = saved;
+
+	printf( "Campagne: %s\n", failures == 0 ? "tutto ok" : TextFormat( "%d controlli falliti", failures ) );
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1954,6 +2262,36 @@ void Game::UpdateWorld( float dt )
 	}
 
 	m_particles.Update( dt * m_timeScale, m_wind );
+	if ( m_headless == false )
+	{
+		const Biome& bi = GetBiome( m_biome );
+		Color a = bi.leafA, b = bi.leafB;
+		switch ( bi.ambient )
+		{
+			case Ambient::Snow:
+				a = { 255, 255, 255, 255 };
+				b = { 215, 230, 250, 255 };
+				break;
+			case Ambient::Sand:
+				a = { 185, 135, 75, 255 };
+				b = { 215, 165, 100, 255 };
+				break;
+			case Ambient::Rain:
+				a = { 190, 205, 225, 255 };
+				b = { 160, 175, 200, 255 };
+				break;
+			case Ambient::Embers:
+				a = { 255, 170, 60, 255 };
+				b = { 255, 90, 20, 255 };
+				break;
+			default:
+				break;
+		}
+		// the weather falls in front of the camera, wherever it looks
+		Vector3 fwd = Vector3Normalize( Vector3Subtract( m_camera.target, m_camera.position ) );
+		Vector3 focus = Vector3Add( m_camera.position, Vector3Scale( fwd, 14.0f ) );
+		m_particles.Weather( bi.ambient, focus, dt * m_timeScale, m_wind, a, b );
+	}
 	for ( FloatText& t : m_texts )
 	{
 		t.life -= dt;
@@ -2024,7 +2362,7 @@ void Game::CheckOutcome( float dt )
 			m_progress.bestChallenge = std::max( m_progress.bestChallenge, m_challengeTotal );
 			m_progress.bestRound = std::max( m_progress.bestRound, m_round );
 		}
-		else if ( m_levelIndex < 32 )
+		else if ( m_levelIndex < Progress::kMaxLevels )
 		{
 			m_progress.stars[m_levelIndex] = std::max( m_progress.stars[m_levelIndex], m_starsEarned );
 			if ( m_score > m_progress.best[m_levelIndex] )
@@ -2105,12 +2443,14 @@ void Game::Update( float dt )
 	switch ( m_screen )
 	{
 		case Screen::Title:
+		case Screen::Map:
 		case Screen::LevelSelect:
 		case Screen::HowTo:
+		case Screen::Story:
 			UpdateAttract( dt );
 			if ( IsKeyPressed( KEY_ESCAPE ) && m_screen != Screen::Title )
 			{
-				SetScreen( Screen::Title );
+				SetScreen( m_screen == Screen::LevelSelect ? Screen::Map : Screen::Title );
 			}
 			break;
 		case Screen::Playing:
@@ -2134,9 +2474,16 @@ void Game::Update( float dt )
 			{
 				RestartLevel();
 			}
-			if ( m_screen == Screen::Won && IsKeyPressed( KEY_ENTER ) && ( m_challenge || m_levelIndex + 1 < LevelCount() ) )
+			if ( m_screen == Screen::Won && IsKeyPressed( KEY_ENTER ) )
 			{
-				NextLevel();
+				if ( m_challenge || NextInCampaign() >= 0 )
+				{
+					NextLevel();
+				}
+				else if ( CampaignOfLevel( m_levelIndex ) >= 0 )
+				{
+					ShowStory( CampaignOfLevel( m_levelIndex ), true );
+				}
 			}
 			break;
 	}
@@ -2170,8 +2517,8 @@ void Game::UpdateAttract( float dt )
 	}
 	if ( ( remaining == 0 || m_attractShots >= 14 ) && m_attractTimer < -3.5f )
 	{
-		int next = ( m_levelIndex + 1 + FxRng().Int( 0, LevelCount() - 2 ) ) % LevelCount();
-		LoadLevel( next, true );
+		int realm = m_screen == Screen::LevelSelect ? m_campaign : m_screen == Screen::Story ? m_storyCampaign : -1;
+		LoadAttractFor( realm );
 	}
 }
 
@@ -3009,6 +3356,12 @@ void Game::Draw()
 		case Screen::LevelSelect:
 			DrawLevelSelect();
 			break;
+		case Screen::Map:
+			DrawMap();
+			break;
+		case Screen::Story:
+			DrawStory();
+			break;
 		case Screen::HowTo:
 			DrawHowTo();
 			break;
@@ -3208,12 +3561,28 @@ void Game::DrawHUD()
 	if ( m_camMode == CamMode::Intro && m_screen == Screen::Playing )
 	{
 		float a = Clamp01( m_introTime * 2.0f ) * Clamp01( ( kIntroSeconds - 1.0f - m_introTime ) * 2.0f );
-		DrawRectangle( 0, (int)( H * 0.04f ), W, (int)( 210 * S ), WithAlpha( BLACK, 0.35f * a ) );
-		ui::TextOutlined( m_challenge ? "Sfida infinita" : TextFormat( "Livello %d", m_levelIndex + 1 ), W * 0.5f, H * 0.04f + 14 * S, 40, WithAlpha( kCream, a ),
-						  WithAlpha( Color{ 60, 30, 10, 255 }, a ), 3 );
+		int camp = m_challenge ? -1 : CampaignOfLevel( m_levelIndex );
+		const char* over = m_challenge ? "Sfida infinita" : TextFormat( "Livello %d", m_levelIndex + 1 );
+		if ( camp >= 0 )
+		{
+			const Campaign& cc = GetCampaign( camp );
+			over = TextFormat( "%s  •  %d / %d", cc.name, PositionInCampaign( m_levelIndex ) + 1, (int)cc.levels.size() );
+		}
+		DrawRectangle( 0, (int)( H * 0.04f ), W, (int)( ( camp >= 0 ? 250 : 210 ) * S ), WithAlpha( BLACK, 0.35f * a ) );
+		ui::TextOutlined( over, W * 0.5f, H * 0.04f + 14 * S, 40, WithAlpha( kCream, a ), WithAlpha( Color{ 60, 30, 10, 255 }, a ), 3 );
 		ui::TextOutlined( m_level->name, W * 0.5f, H * 0.04f + 58 * S, 92, WithAlpha( kGold, a ), WithAlpha( Color{ 90, 40, 10, 255 }, a ),
 						  5 );
-		ui::TextCentered( m_level->subtitle, W * 0.5f, H * 0.04f + 158 * S, 34, WithAlpha( WHITE, a ) );
+		if ( camp >= 0 )
+		{
+			// the subtitle is the king's own taunt
+			ui::TextCentered( TextFormat( "«%s»", m_level->subtitle ), W * 0.5f, H * 0.04f + 158 * S, 34, WithAlpha( WHITE, a ) );
+			ui::TextCentered( TextFormat( "- %s", GetCampaign( camp ).king ), W * 0.5f, H * 0.04f + 202 * S, 28,
+							  WithAlpha( Color{ 255, 220, 150, 255 }, a ) );
+		}
+		else
+		{
+			ui::TextCentered( m_level->subtitle, W * 0.5f, H * 0.04f + 158 * S, 34, WithAlpha( WHITE, a ) );
+		}
 		ui::TextCentered( "click per iniziare", W * 0.5f, H - 90 * S, 28, WithAlpha( WHITE, 0.5f + 0.5f * sinf( m_time * 4.0f ) ) );
 		return;
 	}
@@ -3222,7 +3591,7 @@ void Game::DrawHUD()
 
 	// top left: level + kings
 	int total = KingsTotal() + ( m_kingsDown - ( KingsTotal() - KingsRemaining() ) );
-	const char* title = m_challenge ? m_level->name : TextFormat( "%d. %s", m_levelIndex + 1, m_level->name );
+	const char* title = m_challenge ? m_level->name : TextFormat( "%d. %s", PositionInCampaign( m_levelIndex ) + 1, m_level->name );
 	float panelW = std::max( ui::Measure( title, 38 ).x + 40 * S, ( 36 + total * 52 ) * S );
 	ui::Panel( { 20 * S, 20 * S, panelW, 110 * S }, Color{ 40, 30, 25, 170 }, Color{ 255, 220, 150, 120 } );
 	ui::TextShadow( title, { 38 * S, 28 * S }, 38, kCream );
@@ -3399,28 +3768,43 @@ void Game::DrawTitle()
 	float x = colX - bw * 0.5f;
 	float y = H * 0.4f;
 
-	int firstOpen = 0;
+	bool started = false;
 	for ( int i = 0; i < LevelCount(); ++i )
 	{
-		if ( m_progress.stars[i] > 0 )
-		{
-			firstOpen = std::min( i + 1, LevelCount() - 1 );
-		}
+		started = started || m_progress.stars[i] > 0;
 	}
-
-	if ( ui::Button( { x, y, bw, bh }, firstOpen > 0 ? TextFormat( "CONTINUA  (liv. %d)", firstOpen + 1 ) : "GIOCA" ) )
+	int cont = ContinueLevel();
+	int contCampaign = cont >= 0 ? CampaignOfLevel( cont ) : -1;
+	if ( started && contCampaign >= 0 )
+	{
+		const Campaign& cc = GetCampaign( contCampaign );
+		ui::TextShadow( TextFormat( "%s  %d/%d", cc.name, PositionInCampaign( cont ) + 1, (int)cc.levels.size() ), { x + bw + 24 * S, y + bh * 0.3f }, 28,
+						Color{ 255, 235, 190, 230 } );
+	}
+	if ( ui::Button( { x, y, bw, bh }, started ? "CONTINUA" : "GIOCA" ) )
 	{
 		if ( m_audio )
 			m_audio->Play( Sfx::Click );
-		LoadLevel( firstOpen, false );
+		if ( contCampaign < 0 )
+		{
+			SetScreen( Screen::Map ); // everything open is beaten: pick from the map
+			return;
+		}
+		m_campaign = contCampaign;
+		if ( m_progress.introSeen[contCampaign] == false )
+		{
+			ShowStory( contCampaign, false, cont );
+			return;
+		}
+		LoadLevel( cont, false );
 		SetScreen( Screen::Playing );
 		return;
 	}
-	if ( ui::Button( { x, y + bh * 1.25f, bw, bh }, "LIVELLI" ) )
+	if ( ui::Button( { x, y + bh * 1.25f, bw, bh }, "MAPPA DEI REGNI" ) )
 	{
 		if ( m_audio )
 			m_audio->Play( Sfx::Click );
-		SetScreen( Screen::LevelSelect );
+		SetScreen( Screen::Map );
 	}
 	if ( ui::Button( { x, y + bh * 2.5f, bw, bh }, "SFIDA INFINITA" ) )
 	{
@@ -3458,6 +3842,235 @@ void Game::DrawTitle()
 	}
 }
 
+static Color Rgb( Vector3 v, unsigned char a = 255 )
+{
+	auto c = []( float x ) { return (unsigned char)( Clamp01( x ) * 255.0f ); };
+	return Color{ c( v.x ), c( v.y ), c( v.z ), a };
+}
+
+// A realm as a little floating island in its own sky, for the map and the story cards.
+static void DrawRealmIsland( Vector2 c, float R, const Biome& b, bool locked, float time )
+{
+	auto tone = [&]( Color col ) { return locked ? ColorMix( col, Color{ 95, 98, 110, col.a }, 0.75f ) : col; };
+	DrawCircleGradient( (int)c.x, (int)( c.y + R * 0.1f ), R * 1.3f, tone( Rgb( b.horizon, 220 ) ), tone( Rgb( b.zenith, 0 ) ) );
+	if ( b.lavaGlow > 0.0f && locked == false )
+	{
+		DrawCircleGradient( (int)c.x, (int)( c.y + R * 1.05f ), R * 0.8f, Color{ 255, 120, 30, 170 }, Color{ 255, 60, 10, 0 } );
+	}
+	Color rock = tone( b.rock );
+	Color rockDark = ColorBrightness( rock, -0.25f );
+	DrawTriangle( { c.x - R, c.y + R * 0.1f }, { c.x + R * 0.05f, c.y + R * 1.05f }, { c.x + R, c.y + R * 0.1f }, rock );
+	DrawTriangle( { c.x - R * 0.2f, c.y + R * 0.2f }, { c.x + R * 0.35f, c.y + R * 0.8f }, { c.x + R * 0.95f, c.y + R * 0.1f }, rockDark );
+	DrawTriangle( { c.x - R * 0.95f, c.y + R * 0.15f }, { c.x - R * 0.55f, c.y + R * 0.7f }, { c.x - R * 0.2f, c.y + R * 0.2f }, rockDark );
+	DrawEllipse( (int)c.x, (int)( c.y + R * 0.12f ), R, R * 0.3f, tone( Rgb( b.dirtA ) ) );
+	DrawEllipse( (int)c.x, (int)c.y, R, R * 0.3f, tone( Rgb( b.grassB ) ) );
+	DrawEllipse( (int)c.x, (int)( c.y + R * 0.04f ), R * 0.8f, R * 0.2f, tone( Rgb( b.grassA ) ) );
+	// three trees and a tiny tower
+	const float tx[3] = { -0.55f, -0.25f, 0.6f };
+	for ( int i = 0; i < 3; ++i )
+	{
+		Vector2 base{ c.x + tx[i] * R, c.y - R * 0.02f + ( i == 1 ? R * 0.1f : 0.0f ) };
+		Color leaf = tone( i % 2 ? b.leafB : b.leafA );
+		float h = R * ( i == 1 ? 0.42f : 0.34f );
+		if ( b.pinesOnly || i == 1 )
+		{
+			DrawTriangle( { base.x, base.y - h }, { base.x - h * 0.33f, base.y }, { base.x + h * 0.33f, base.y }, leaf );
+		}
+		else
+		{
+			DrawRectangleV( { base.x - R * 0.02f, base.y - h * 0.5f }, { R * 0.04f, h * 0.5f }, tone( Color{ 110, 76, 48, 255 } ) );
+			DrawCircleV( { base.x, base.y - h * 0.62f }, h * 0.36f, leaf );
+		}
+	}
+	Color stone = tone( Color{ 170, 165, 160, 255 } );
+	DrawRectangleV( { c.x + R * 0.05f, c.y - R * 0.5f }, { R * 0.22f, R * 0.5f }, stone );
+	for ( int i = 0; i < 3; ++i )
+	{
+		DrawRectangleV( { c.x + R * 0.05f + i * R * 0.08f, c.y - R * 0.57f }, { R * 0.06f, R * 0.08f }, stone );
+	}
+	float wave = sinf( time * 3.0f ) * R * 0.03f;
+	Color flag = tone( Color{ 220, 50, 50, 255 } );
+	DrawLineEx( { c.x + R * 0.16f, c.y - R * 0.57f }, { c.x + R * 0.16f, c.y - R * 0.85f }, R * 0.02f, stone );
+	DrawTriangle( { c.x + R * 0.17f, c.y - R * 0.85f }, { c.x + R * 0.17f, c.y - R * 0.72f }, { c.x + R * 0.36f, c.y - R * 0.78f + wave }, flag );
+}
+
+static void DrawLock( Vector2 c, float s, Color color )
+{
+	DrawRectangleRounded( { c.x - 16 * s, c.y, 32 * s, 26 * s }, 0.2f, 4, color );
+	DrawRing( c, 9 * s, 14 * s, 180, 360, 16, color );
+}
+
+void Game::DrawMap()
+{
+	float S = ui::S();
+	int W = GetScreenWidth();
+	int H = GetScreenHeight();
+	// the demo siege stays a faint backdrop: the map is the picture here
+	DrawRectangleGradientV( 0, 0, W, H, Color{ 10, 16, 38, 228 }, Color{ 30, 44, 78, 215 } );
+
+	ui::TextOutlined( "IL REGNO DI SOPRA", W * 0.5f, 40 * S, 90, kGold, Color{ 90, 40, 10, 255 }, 5 );
+	int fragments = 0;
+	for ( int c = 0; c < CampaignCount(); ++c )
+	{
+		const Campaign& cc = GetCampaign( c );
+		fragments += cc.levels.empty() == false && m_progress.stars[cc.levels.back()] > 0 ? 1 : 0;
+	}
+	ui::TextCentered( TextFormat( "Frammenti della Corona dei Venti recuperati: %d / %d", fragments, CampaignCount() ), W * 0.5f, 158 * S, 32,
+					  Color{ 255, 240, 210, 240 } );
+	if ( m_debug )
+	{
+		ui::TextShadow( "DEBUG: tutti i livelli sbloccati", { 30 * S, 30 * S }, 26, Color{ 255, 150, 110, 255 } );
+	}
+
+	const int n = CampaignCount();
+	auto nodePos = [&]( int i ) {
+		float x = W * 0.5f + ( i - ( n - 1 ) * 0.5f ) * std::min( 300 * S, W * 0.155f );
+		float y = H * ( i % 2 == 0 ? 0.58f : 0.37f ) + sinf( m_time * 0.9f + i * 1.3f ) * 5 * S;
+		return Vector2{ x, y };
+	};
+	const float R = 88 * S;
+
+	// the dotted road between realms
+	for ( int i = 0; i + 1 < n; ++i )
+	{
+		Vector2 a = nodePos( i ), b = nodePos( i + 1 );
+		Vector2 mid{ ( a.x + b.x ) * 0.5f, std::min( a.y, b.y ) - 30 * S };
+		bool open = CampaignUnlocked( i + 1 );
+		Color col = open ? Color{ 255, 210, 90, 230 } : Color{ 220, 225, 235, 110 };
+		const int segs = 16;
+		for ( int k = 0; k < segs; k += 2 )
+		{
+			auto at = [&]( float t ) {
+				float u = 1.0f - t;
+				return Vector2{ u * u * a.x + 2 * u * t * mid.x + t * t * b.x, u * u * a.y + 2 * u * t * mid.y + t * t * b.y };
+			};
+			float t0 = 0.18f + 0.64f * k / segs, t1 = 0.18f + 0.64f * ( k + 1 ) / segs;
+			DrawLineEx( at( t0 ), at( t1 ), 6 * S, col );
+		}
+	}
+
+	for ( int i = 0; i < n; ++i )
+	{
+		const Campaign& cc = GetCampaign( i );
+		const Biome& bi = GetBiome( cc.biome );
+		bool soon = cc.levels.empty();
+		bool open = CampaignUnlocked( i );
+		Vector2 c = nodePos( i );
+		bool hover = open && CheckCollisionPointCircle( GetMousePosition(), c, R * 1.15f ) && IsCursorHidden() == false;
+		float r = hover ? R * 1.07f : R;
+		if ( hover )
+		{
+			DrawRing( { c.x, c.y + r * 0.1f }, r * 1.22f, r * 1.3f, 0, 360, 48, Color{ 255, 220, 120, 200 } );
+		}
+		DrawRealmIsland( c, r, bi, open == false, m_time + i );
+
+		bool freed = soon == false && m_progress.stars[cc.levels.back()] > 0;
+		if ( freed )
+		{
+			ui::Crown( { c.x - r * 0.45f, c.y - r * 0.75f }, 46 * S, kGold );
+		}
+		if ( open == false && soon == false )
+		{
+			DrawLock( { c.x, c.y - r * 0.4f }, S * 1.2f, Color{ 45, 45, 55, 255 } );
+		}
+
+		float ty = c.y + r * 1.15f;
+		ui::TextOutlined( cc.name, c.x, ty, 34, open ? kCream : Color{ 200, 200, 210, 255 }, Color{ 50, 30, 20, 255 }, 3 );
+		ty += 42 * S;
+		if ( soon )
+		{
+			ui::TextCentered( "in arrivo", c.x, ty, 24, Color{ 220, 225, 235, 200 } );
+		}
+		else if ( open )
+		{
+			ui::TextCentered( cc.king, c.x, ty, 24, Color{ 255, 235, 200, 230 } );
+			ty += 34 * S;
+			const char* st = TextFormat( "%d / %d", CampaignStars( i ), CampaignMaxStars( i ) );
+			float w = ui::Measure( st, 26 ).x;
+			ui::Star( { c.x - w * 0.5f - 6 * S, ty + 14 * S }, 13 * S, kGold, Color{ 150, 80, 10, 255 } );
+			ui::TextShadow( st, { c.x - w * 0.5f + 14 * S, ty }, 26, WHITE );
+		}
+		else
+		{
+			int need = StarsToUnlock( i ) - CampaignStars( i - 1 );
+			ui::TextCentered( TextFormat( "servono altre %d stelle", need ), c.x, ty, 24, Color{ 220, 225, 235, 220 } );
+			ty += 30 * S;
+			ui::TextCentered( TextFormat( "in %s", GetCampaign( i - 1 ).name ), c.x, ty, 22, Color{ 220, 225, 235, 180 } );
+		}
+
+		if ( hover && IsMouseButtonPressed( MOUSE_BUTTON_LEFT ) )
+		{
+			if ( m_audio )
+				m_audio->Play( Sfx::Click );
+			OpenCampaign( i );
+			return;
+		}
+	}
+
+	if ( ui::Button( { W * 0.5f - 160 * S, H - 130 * S, 320 * S, 72 * S }, "INDIETRO" ) )
+	{
+		if ( m_audio )
+			m_audio->Play( Sfx::Click );
+		SetScreen( Screen::Title );
+	}
+}
+
+void Game::DrawStory()
+{
+	float S = ui::S();
+	int W = GetScreenWidth();
+	int H = GetScreenHeight();
+	float t = m_screenTime;
+	DrawRectangle( 0, 0, W, H, Color{ 10, 15, 30, (unsigned char)( 150 * Clamp01( t * 3.0f ) ) } );
+
+	const Campaign& cc = GetCampaign( m_storyCampaign );
+	const char* text = m_storyOutro ? cc.outro : cc.intro;
+	// the card grows with the text: a rough line count from the paragraph's width
+	float textW = 1240 * S - 180 * S;
+	int lines = (int)ceilf( ui::Measure( text, 32 ).x / ( textW * 0.9f ) );
+	float panelH = ( 262 + lines * 32 * 1.35f + 150 ) * S;
+	float slide = ( 1.0f - SmoothStep( 0.0f, 0.4f, t ) ) * 120 * S;
+	Rectangle panel{ W * 0.5f - 620 * S, H * 0.5f - panelH * 0.5f + 40 * S + slide, 1240 * S, panelH };
+	ui::Panel( panel, Color{ 250, 238, 210, 246 }, Color{ 120, 70, 20, 255 }, 0.06f );
+	Color ink{ 80, 40, 15, 255 };
+
+	DrawRealmIsland( { panel.x + panel.width * 0.5f, panel.y - 40 * S }, 70 * S, GetBiome( cc.biome ), false, m_time );
+	ui::TextCentered( m_storyOutro ? "EPILOGO" : TextFormat( "CAPITOLO %d", m_storyCampaign + 1 ), panel.x + panel.width * 0.5f,
+					  panel.y + 60 * S, 28, Color{ 170, 100, 30, 255 }, false );
+	ui::TextOutlined( cc.name, panel.x + panel.width * 0.5f, panel.y + 96 * S, 76, kGold, Color{ 110, 55, 10, 255 }, 4 );
+	ui::TextCentered( TextFormat( "Il regno di %s", cc.king ), panel.x + panel.width * 0.5f, panel.y + 190 * S, 30, ink, false );
+	DrawRectangle( (int)( panel.x + panel.width * 0.5f - 160 * S ), (int)( panel.y + 236 * S ), (int)( 320 * S ), (int)( 3 * S ),
+				   Color{ 200, 150, 80, 255 } );
+
+	ui::TextWrapped( text, { panel.x + 90 * S, panel.y + 262 * S }, textW, 32, ink, 1.35f );
+
+	const char* label = m_storyPlay >= 0 ? "ALL'ASSALTO!" : "AVANTI";
+	bool go = ui::Button( { W * 0.5f - 200 * S, panel.y + panel.height - 100 * S, 400 * S, 72 * S }, label );
+	if ( t > 0.4f && ( IsKeyPressed( KEY_ENTER ) || IsKeyPressed( KEY_SPACE ) || IsKeyPressed( KEY_ESCAPE ) ) )
+	{
+		go = true;
+	}
+	if ( go )
+	{
+		if ( m_audio )
+			m_audio->Play( Sfx::Click );
+		if ( m_storyPlay >= 0 )
+		{
+			LoadLevel( m_storyPlay, false );
+			SetScreen( Screen::Playing );
+		}
+		else if ( m_storyOutro )
+		{
+			SetScreen( Screen::Map );
+		}
+		else
+		{
+			m_campaign = m_storyCampaign;
+			SetScreen( Screen::LevelSelect );
+		}
+	}
+}
+
 void Game::DrawLevelSelect()
 {
 	float S = ui::S();
@@ -3465,48 +4078,53 @@ void Game::DrawLevelSelect()
 	int H = GetScreenHeight();
 	DrawRectangle( 0, 0, W, H, Color{ 10, 15, 30, 120 } );
 
-	ui::TextOutlined( "SCEGLI IL LIVELLO", W * 0.5f, 60 * S, 90, kGold, Color{ 90, 40, 10, 255 }, 5 );
-	int totalStars = 0;
-	for ( int i = 0; i < LevelCount(); ++i )
-	{
-		totalStars += m_progress.stars[i];
-	}
-	ui::Star( { W * 0.5f - 70 * S, 196 * S }, 20 * S, kGold, Color{ 120, 60, 10, 255 } );
-	ui::TextShadow( TextFormat( "%d / %d", totalStars, LevelCount() * 3 ), { W * 0.5f - 40 * S, 176 * S }, 40, WHITE );
+	const Campaign& cc = GetCampaign( m_campaign );
+	ui::TextOutlined( cc.name, W * 0.5f, 40 * S, 90, kGold, Color{ 90, 40, 10, 255 }, 5 );
+	ui::TextCentered( TextFormat( "Il regno di %s", cc.king ), W * 0.5f, 150 * S, 32, Color{ 255, 240, 210, 240 } );
+	const char* st = TextFormat( "%d / %d", CampaignStars( m_campaign ), CampaignMaxStars( m_campaign ) );
+	float sw = ui::Measure( st, 40 ).x;
+	ui::Star( { W * 0.5f - sw * 0.5f - 12 * S, 216 * S }, 20 * S, kGold, Color{ 120, 60, 10, 255 } );
+	ui::TextShadow( st, { W * 0.5f - sw * 0.5f + 18 * S, 196 * S }, 40, WHITE );
 	if ( m_debug )
 	{
 		ui::TextShadow( "DEBUG: tutti i livelli sbloccati", { 30 * S, 30 * S }, 26, Color{ 255, 150, 110, 255 } );
 	}
 
-	int cols = 5;
-	int rows = ( LevelCount() + cols - 1 ) / cols;
-	float cw = 250 * S;
+	const int count = (int)cc.levels.size();
+	int cols = std::min( 4, std::max( 1, count ) );
+	int rows = ( count + cols - 1 ) / cols;
+	float cw = 270 * S;
 	float gap = 30 * S;
-	// cards shrink to fit when there are more than two rows of levels
-	float avail = H - 150 * S - 270 * S;
-	float ch = std::min( 220 * S, ( avail - ( rows - 1 ) * gap ) / rows );
+	float avail = H - 170 * S - 280 * S;
+	float ch = std::min( 220 * S, ( avail - ( rows - 1 ) * gap ) / std::max( 1, rows ) );
 	float k = ch / ( 220 * S ); // vertical scale for the card contents
 	float gridW = cols * cw + ( cols - 1 ) * gap;
 	float x0 = W * 0.5f - gridW * 0.5f;
-	float y0 = 270 * S;
+	float y0 = 280 * S + ( avail - rows * ch - ( rows - 1 ) * gap ) * 0.5f;
 
-	for ( int i = 0; i < LevelCount(); ++i )
+	for ( int j = 0; j < count; ++j )
 	{
-		int row = i / cols;
-		int col = i % cols;
+		int i = cc.levels[j];
+		int row = j / cols;
+		int col = j % cols;
 		Rectangle rc{ x0 + col * ( cw + gap ), y0 + row * ( ch + gap ), cw, ch };
-		bool unlocked = m_debug || i == 0 || m_progress.stars[i - 1] > 0 || m_progress.stars[i] > 0;
+		bool unlocked = LevelUnlocked( i );
+		bool finale = j == count - 1;
 		bool hover = unlocked && ui::Hovered( rc );
 		Color fill = unlocked ? ( hover ? Color{ 255, 226, 150, 245 } : Color{ 250, 236, 205, 235 } ) : Color{ 90, 90, 100, 200 };
 		if ( hover )
 		{
 			rc.y -= 6 * S;
 		}
-		ui::Panel( rc, fill, Color{ 120, 70, 20, 255 } );
-		Color ink{ 90, 45, 15, 255 };
-		ui::TextCentered( TextFormat( "%d", i + 1 ), rc.x + cw * 0.5f, rc.y + 10 * S * k, 80 * k, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
+		ui::Panel( rc, fill, finale ? Color{ 200, 140, 20, 255 } : Color{ 120, 70, 20, 255 } );
+		Color ink = unlocked ? Color{ 90, 45, 15, 255 } : Color{ 50, 50, 55, 255 };
+		ui::TextCentered( TextFormat( "%d", j + 1 ), rc.x + cw * 0.5f, rc.y + 10 * S * k, 80 * k, ink, false );
+		if ( finale )
+		{
+			ui::Crown( { rc.x + 40 * S, rc.y + 44 * S * k }, 34 * S * k, unlocked ? kGold : Color{ 60, 60, 66, 255 } );
+		}
 		const LevelDef& L = GetLevel( i );
-		ui::TextCentered( L.name, rc.x + cw * 0.5f, rc.y + 100 * S * k, 30, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
+		ui::TextCentered( L.name, rc.x + cw * 0.5f, rc.y + 100 * S * k, 30, ink, false );
 		for ( int s = 0; s < 3; ++s )
 		{
 			bool got = s < m_progress.stars[i];
@@ -3515,9 +4133,7 @@ void Game::DrawLevelSelect()
 		}
 		if ( unlocked == false )
 		{
-			float lx = rc.x + cw - 42 * S, ly = rc.y + 36 * S;
-			DrawRectangleRounded( { lx - 16 * S, ly, 32 * S, 26 * S }, 0.2f, 4, Color{ 50, 50, 55, 255 } );
-			DrawRing( { lx, ly }, 9 * S, 14 * S, 180, 360, 16, Color{ 50, 50, 55, 255 } );
+			DrawLock( { rc.x + cw - 42 * S, rc.y + 36 * S }, S, Color{ 50, 50, 55, 255 } );
 		}
 		if ( hover && IsMouseButtonPressed( MOUSE_BUTTON_LEFT ) )
 		{
@@ -3529,11 +4145,30 @@ void Game::DrawLevelSelect()
 		}
 	}
 
-	if ( ui::Button( { W * 0.5f - 160 * S, H - 130 * S, 320 * S, 72 * S }, "INDIETRO" ) )
+	float bw = 320 * S, bh = 72 * S, g = 30 * S;
+	bool outro = count > 0 && m_progress.stars[cc.levels.back()] > 0;
+	int buttons = outro ? 3 : 2;
+	float bx = W * 0.5f - ( buttons * bw + ( buttons - 1 ) * g ) * 0.5f;
+	if ( ui::Button( { bx, H - 130 * S, bw, bh }, "MAPPA" ) )
 	{
 		if ( m_audio )
 			m_audio->Play( Sfx::Click );
-		SetScreen( Screen::Title );
+		SetScreen( Screen::Map );
+		return;
+	}
+	if ( ui::Button( { bx + bw + g, H - 130 * S, bw, bh }, "PROLOGO" ) )
+	{
+		if ( m_audio )
+			m_audio->Play( Sfx::Click );
+		ShowStory( m_campaign, false );
+		return;
+	}
+	if ( outro && ui::Button( { bx + 2 * ( bw + g ), H - 130 * S, bw, bh }, "EPILOGO" ) )
+	{
+		if ( m_audio )
+			m_audio->Play( Sfx::Click );
+		ShowStory( m_campaign, true );
+		return;
 	}
 }
 
@@ -3753,7 +4388,7 @@ void Game::DrawResult( bool won )
 		}
 		return;
 	}
-	if ( won && ( m_challenge || m_levelIndex + 1 < LevelCount() ) )
+	if ( won && ( m_challenge || NextInCampaign() >= 0 ) )
 	{
 		if ( ui::Button( { x, y, bw, bh }, m_challenge ? "PROSSIMO ROUND" : "PROSSIMO LIVELLO" ) )
 		{
@@ -3764,9 +4399,16 @@ void Game::DrawResult( bool won )
 		}
 		y += bh * 1.2f;
 	}
-	else if ( won )
+	else if ( won && CampaignOfLevel( m_levelIndex ) >= 0 )
 	{
-		ui::TextCentered( "Hai conquistato tutte le fortezze!", W * 0.5f, y + 14 * S, 34, Color{ 200, 120, 20, 255 }, false );
+		// the realm's last fortress: its fragment of the crown comes home
+		if ( ui::Button( { x, y, bw, bh }, "EPILOGO" ) )
+		{
+			if ( m_audio )
+				m_audio->Play( Sfx::Click );
+			ShowStory( CampaignOfLevel( m_levelIndex ), true );
+			return;
+		}
 		y += bh * 1.2f;
 	}
 	// bottom row: retry, replay, level list (a won challenge round cannot be retried for points)

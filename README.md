@@ -28,11 +28,24 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   12. *Doppia Guardia*: due scudi in fila con ritmi diversi, una cupola sopra una torre, un re raggiungibile solo di pallonetto.
   13. *Sponde di Gomma*: un muro di **gomma** che rimanda indietro i colpi e **sacchi di sabbia** che assorbono urti ed esplosioni.
   14. *Il Bunker*: una torre chiusa fra i sacchi di sabbia, da abbattere con il **Vortice** o la **bomba adesiva**.
+- **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
+  in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
+  una campagna quando nella precedente hai raccolto almeno metà delle stelle; dentro una campagna i livelli si sbloccano
+  in ordine. Un prologo accoglie la prima visita, un epilogo chiude l'ultimo livello, e i sottotitoli dei livelli sono le
+  provocazioni del re di turno.
+  - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 5, 8, 13, 14 e 10 come finale.
+  - *Valle dei Mulini* (Regina Ottavia): 6, 7, 9 — tramonto, foglie al vento.
+  - *Picchi Gelati* (Re Ghiacciolo III): 4, 11, 12 — neve e abeti.
+  - *Dune Sospese*, *Arcipelago delle Tempeste*, *Fucina del Vulcano*: in arrivo. I biomi sono già pronti e si vedono
+    nella sfida infinita.
+- **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
+  il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
 - **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).
 - **Replay del colpo decisivo**: dopo ogni vittoria il colpo viene *ri-simulato* dalla registrazione deterministica di Box3D e mostrato al rallentatore con una telecamera cinematografica (vedi sotto).
 - Stelle in base ai colpi usati, bonus per le munizioni avanzate, progressi salvati.
-- Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong su una cadenza andalusa) con vento ambientale.
+- Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong) con vento ambientale: ogni regno ha accordi, scala e tempo suoi
+  (cadenza andalusa nei Prati Alti, fa maggiore caldo nella Valle, mi minore lento e acuto sui Picchi...).
 - Grafica: shadow mapping con PCF, materiali procedurali nello shader (venature del legno, pietra, ghiaccio con fresnel, TNT), cielo con mare di nuvole procedurale in cui gli oggetti "affondano", particelle, slow motion, screen shake.
 
 ## Comandi
@@ -90,13 +103,23 @@ scena lo riaggancia.
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
 ./build/crollo --test-ammo                    # gomma, sacchi di sabbia, Vortice e bomba adesiva si comportano come previsto?
+./build/crollo --test-campaigns               # campagne, sblocchi e migrazione dei vecchi salvataggi
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
-./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, select, pause, howto, challenge)
-./build/crollo --export-audio <cartella>      # esporta in WAV tutti i suoni sintetizzati e 30 s di musica
+./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, map, select, story, outro, pause, howto, challenge)
+./build/crollo --export-audio <cartella>      # esporta in WAV tutti i suoni sintetizzati e la musica di ogni regno
 ```
 
 Lo scanner `--scan-shots` spara un colpo singolo con ogni munizione su una griglia di 15 punti sopra la fortezza e
 segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7 e 8 è voluto: pendolo e reazione a catena).
+
+Con `select`, `story` e `outro` il numero del livello indica la campagna (0-5). La variabile d'ambiente
+`CROLLO_BIOME=<0-5>` forza un bioma su qualunque livello, utile per gli screenshot e per regolare i colori.
+
+### Salvataggi
+
+`crollo_save.txt` (o il `localStorage` sul web) salva stelle e record per **id del livello** (`star prati_mura 3`), così
+l'ordine dei livelli e delle campagne può cambiare senza perdere i progressi. I salvataggi vecchi, che usavano l'indice
+(`level 1 3`), vengono letti e riscritti nel formato nuovo al primo salvataggio.
 
 L'autotest carica ogni livello senza finestra, lascia assestare le strutture per 5 secondi (nessun re deve cadere da solo)
 e poi fa giocare un'IA che risolve la balistica in modo esatto (gravità + vento come accelerazione costante) e sceglie
@@ -143,10 +166,11 @@ i colpi del mondo ri-simulato generano i loro contact event, quindi suoni e polv
 src/
   main.cpp       finestra, loop principale, modalità di test e screenshot
   game.cpp/.h    regole, cannone, proiettili, esplosioni, re, telecamere, schermate, HUD, IA, replay, sfida
-  levels.cpp/.h  Builder (isole, torri, muri, ponti, mulini, pendoli, mongolfiere...), 10 livelli e generatore procedurale
+  levels.cpp/.h  Builder (isole, torri, muri, ponti, mulini, pendoli, mongolfiere...), livelli, campagne e generatore procedurale
+  biomes.cpp     i sei biomi: cielo, nuvole, luce, colori delle isole, meteo e stile musicale
   physics.cpp/.h Scene: mondo Box3D, entità (corpo + parti renderizzabili), eventi, corde, meccanismi
   render.cpp/.h  shader GLSL (luce, ombre, materiali procedurali, cielo), mesh dai convex hull di Box3D
-  particles.*    polvere, fumo, scintille, schegge, esplosioni
+  particles.*    polvere, fumo, scintille, schegge, esplosioni, meteo dei biomi
   audio.*        sintesi degli effetti e musica generativa nel thread audio
   ui.*           font, pulsanti, pannelli, icone disegnate a mano
 ```

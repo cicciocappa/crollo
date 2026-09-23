@@ -30,12 +30,25 @@ void Particles::Update( float dt, Vector3 wind )
 			// smoke drifts with the wind
 			p.vel = Vector3Add( Vector3Scale( Vector3Subtract( p.vel, wind ), k ), wind );
 		}
+		else if ( p.type == PType::Flake )
+		{
+			// falls at its own terminal speed, carried by the wind, fluttering side to side
+			Vector3 target = Vector3Add( Vector3Add( Vector3Scale( wind, 1.4f ), p.drift ), { 0, -p.gravity, 0 } );
+			p.vel = Vector3Add( Vector3Scale( Vector3Subtract( p.vel, target ), k ), target );
+			float flutter = sinf( p.life * p.spin.y + p.spin.x ) * p.spin.z;
+			p.pos.x += flutter * dt;
+			p.pos.z += cosf( p.life * p.spin.y * 0.7f + p.spin.x ) * p.spin.z * 0.6f * dt;
+			p.vel.y += p.gravity * dt; // undo the generic gravity below: flakes drift at terminal speed
+		}
 		else
 		{
 			p.vel = Vector3Scale( p.vel, k );
 		}
 		p.pos = Vector3Add( p.pos, Vector3Scale( p.vel, dt ) );
-		p.size += p.grow * dt;
+		if ( p.type != PType::Flake ) // for weather, grow is the aspect ratio of the flake
+		{
+			p.size += p.grow * dt;
+		}
 		if ( p.type == PType::Chip )
 		{
 			float w = Vector3Length( p.spin );
@@ -64,11 +77,23 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 
 	Texture2D tex = renderer.SoftTexture();
 
-	// Alpha blended smoke, sorted back to front
+	// rain: short lines along the velocity
+	for ( const Particle& p : m_items )
+	{
+		if ( p.type == PType::Streak )
+		{
+			float t = 1.0f - p.life / p.maxLife;
+			float alpha = std::min( 1.0f, t * 8.0f ) * std::min( 1.0f, p.life * 4.0f );
+			DrawLine3D( p.pos, Vector3Subtract( p.pos, Vector3Scale( p.vel, p.size ) ), WithAlpha( p.color, alpha * ( p.color.a / 255.0f ) ) );
+		}
+	}
+	rlDrawRenderBatchActive();
+
+	// Alpha blended smoke and weather, sorted back to front
 	std::vector<const Particle*> smoke;
 	for ( const Particle& p : m_items )
 	{
-		if ( p.type == PType::Smoke )
+		if ( p.type == PType::Smoke || p.type == PType::Flake )
 		{
 			smoke.push_back( &p );
 		}
@@ -81,6 +106,24 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 	for ( const Particle* p : smoke )
 	{
 		float t = 1.0f - p->life / p->maxLife;
+		if ( p->type == PType::Flake )
+		{
+			// fade in and out at the ends of its life; leaves and grains are stretched and tumble
+			// fade in and out at the ends of its life, and close to the lens where it would be a big blur
+			float a = std::min( 1.0f, t * 6.0f ) * std::min( 1.0f, p->life * 1.5f ) * ( p->color.a / 255.0f );
+			float d = Vector3Distance( p->pos, camera.position );
+			a *= Clamp01( ( d - 2.5f ) / 4.0f );
+			if ( a <= 0.01f )
+			{
+				continue;
+			}
+			float spin = p->life * p->spin.y * 40.0f + p->spin.x * 57.0f;
+			Texture2D flake = renderer.FlakeTexture();
+			Rectangle src{ 0, 0, (float)flake.width, (float)flake.height };
+			Vector2 size{ p->size, p->size * p->grow };
+			DrawBillboardPro( camera, flake, src, p->pos, { 0, 1, 0 }, size, { size.x * 0.5f, size.y * 0.5f }, spin, WithAlpha( p->color, a ) );
+			continue;
+		}
 		float alpha = ( t < 0.1f ? t / 0.1f : 1.0f ) * ( 1.0f - t );
 		DrawBillboard( camera, tex, p->pos, p->size, WithAlpha( p->color, alpha * ( p->color.a / 255.0f ) ) );
 	}
@@ -89,7 +132,7 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 	BeginBlendMode( BLEND_ADDITIVE );
 	for ( const Particle& p : m_items )
 	{
-		if ( p.type == PType::Smoke || p.type == PType::Chip )
+		if ( p.type == PType::Smoke || p.type == PType::Chip || p.type == PType::Flake || p.type == PType::Streak )
 		{
 			continue;
 		}
@@ -339,4 +382,104 @@ void Particles::Trail( Vector3 pos, Color color, float size )
 	p.maxLife = p.life = 0.9f;
 	p.drag = 1.0f;
 	Emit( p );
+}
+
+void Particles::Weather( Ambient kind, Vector3 focus, float dt, Vector3 wind, Color a, Color b )
+{
+	float rate = 0.0f;
+	switch ( kind )
+	{
+		case Ambient::Leaves:
+			rate = 7.0f;
+			break;
+		case Ambient::Snow:
+			rate = 120.0f;
+			break;
+		case Ambient::Sand:
+			rate = 90.0f;
+			break;
+		case Ambient::Rain:
+			rate = 260.0f;
+			break;
+		case Ambient::Embers:
+			rate = 16.0f;
+			break;
+		default:
+			return;
+	}
+	// weather never crowds out the particles of the siege itself
+	if ( m_items.size() > kMaxParticles * 3 / 4 )
+	{
+		return;
+	}
+	Rng& r = FxRng();
+	m_weatherDebt += rate * dt;
+	const float R = 20.0f;
+	while ( m_weatherDebt >= 1.0f )
+	{
+		m_weatherDebt -= 1.0f;
+		Particle p{};
+		p.color = ColorMix( a, b, r.Float() );
+		p.pos = { focus.x + r.Range( -R, R ), focus.y + r.Range( 6.0f, 18.0f ), focus.z + r.Range( -R, R ) };
+		p.rot = QuaternionIdentity();
+		switch ( kind )
+		{
+			case Ambient::Leaves:
+				p.type = PType::Flake;
+				p.size = r.Range( 0.12f, 0.18f );
+				p.grow = 0.5f; // aspect ratio of a leaf
+				p.gravity = r.Range( 0.9f, 1.5f );
+				p.drag = 1.5f;
+				p.spin = { r.Range( 0.0f, 6.28f ), r.Range( 1.5f, 3.0f ), r.Range( 0.8f, 1.6f ) };
+				p.drift = { 0.7f, 0.0f, 0.3f };
+				p.maxLife = p.life = 14.0f;
+				break;
+			case Ambient::Snow:
+				p.type = PType::Flake;
+				p.size = r.Range( 0.09f, 0.15f );
+				p.grow = 1.0f;
+				p.gravity = r.Range( 1.2f, 2.0f );
+				p.drag = 2.0f;
+				p.spin = { r.Range( 0.0f, 6.28f ), r.Range( 1.0f, 2.0f ), r.Range( 0.3f, 0.7f ) };
+				p.maxLife = p.life = 12.0f;
+				p.color.a = 230;
+				break;
+			case Ambient::Sand:
+				// grains stream sideways close to the islands
+				p.type = PType::Flake;
+				p.pos.y = focus.y + r.Range( -2.0f, 8.0f );
+				p.size = r.Range( 0.06f, 0.1f );
+				p.grow = 0.6f;
+				p.gravity = r.Range( 0.1f, 0.4f );
+				p.drag = 1.0f;
+				p.drift = { 4.5f, 0.0f, 1.2f };
+				p.vel = p.drift;
+				p.spin = { r.Range( 0.0f, 6.28f ), r.Range( 4.0f, 8.0f ), r.Range( 0.3f, 0.8f ) };
+				p.maxLife = p.life = 6.0f;
+				p.color.a = 235;
+				break;
+			case Ambient::Rain:
+				p.type = PType::Streak;
+				p.vel = Vector3Add( { 1.5f, -r.Range( 17.0f, 22.0f ), 0.6f }, Vector3Scale( wind, 1.5f ) );
+				p.size = 0.035f; // length of the streak in seconds of travel
+				p.gravity = 0.0f;
+				p.drag = 0.0f;
+				p.maxLife = p.life = 1.6f;
+				p.color.a = 120;
+				break;
+			case Ambient::Embers:
+				// sparks rising from the lava below
+				p.type = PType::Fire;
+				p.pos.y = focus.y + r.Range( -14.0f, 2.0f );
+				p.vel = { r.Range( -0.4f, 0.4f ), r.Range( 1.5f, 3.5f ), r.Range( -0.4f, 0.4f ) };
+				p.size = r.Range( 0.1f, 0.2f );
+				p.gravity = -0.3f;
+				p.drag = 0.2f;
+				p.maxLife = p.life = r.Range( 4.0f, 7.0f );
+				break;
+			default:
+				break;
+		}
+		Emit( p );
+	}
 }

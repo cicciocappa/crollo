@@ -1,5 +1,7 @@
 #include "ui.h"
 
+#include <string>
+
 #include "raymath.h"
 
 #include <cmath>
@@ -19,7 +21,7 @@ void Init()
 	{
 		cps.push_back( c );
 	}
-	const int extra[] = { 0xE0, 0xE8, 0xE9, 0xEC, 0xF2, 0xF9, 0xC0, 0xC8, 0xC9, 0xCC, 0xD2, 0xD9, 0xB0, 0x2022, 0x2192, 0x2190, 0xD7 };
+	const int extra[] = { 0xE0, 0xE8, 0xE9, 0xEC, 0xF2, 0xF9, 0xC0, 0xC8, 0xC9, 0xCC, 0xD2, 0xD9, 0xB0, 0xAB, 0xBB, 0x2022, 0x2192, 0x2190, 0xD7 };
 	for ( int c : extra )
 	{
 		cps.push_back( c );
@@ -105,6 +107,61 @@ void TextOutlined( const char* text, float cx, float y, float size, Color fill, 
 	}
 	DrawTextEx( s_font, text, { p.x, p.y + t * 1.6f }, size * s, 0.0f, outline );
 	DrawTextEx( s_font, text, p, size * s, 0.0f, fill );
+}
+
+float TextWrapped( const char* text, Vector2 pos, float width, float size, Color color, float lineSpacing )
+{
+	std::string line;
+	std::string word;
+	float y = pos.y;
+	float step = size * S() * lineSpacing;
+	auto flush = [&]() {
+		if ( line.empty() == false )
+		{
+			Text( line.c_str(), { pos.x, y }, size, color );
+		}
+		y += step;
+		line.clear();
+	};
+	auto place = [&]() {
+		if ( word.empty() )
+		{
+			return;
+		}
+		std::string candidate = line.empty() ? word : line + " " + word;
+		if ( line.empty() == false && Measure( candidate.c_str(), size ).x > width )
+		{
+			flush();
+			line = word;
+		}
+		else
+		{
+			line = candidate;
+		}
+		word.clear();
+	};
+	for ( const char* c = text; *c; ++c )
+	{
+		if ( *c == ' ' )
+		{
+			place();
+		}
+		else if ( *c == '\n' )
+		{
+			place();
+			flush();
+		}
+		else
+		{
+			word += *c;
+		}
+	}
+	place();
+	if ( line.empty() == false )
+	{
+		flush();
+	}
+	return y - pos.y;
 }
 
 void Panel( Rectangle r, Color fill, Color border, float roundness )

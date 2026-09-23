@@ -17,6 +17,41 @@ struct DrawItem
 	bool castShadow;
 };
 
+// Everything that gives a campaign its look (and sound): sky, clouds, light, ground, trees, weather.
+enum class Ambient : uint8_t
+{
+	None,
+	Leaves,
+	Snow,
+	Sand,
+	Rain,
+	Embers,
+};
+
+struct Biome
+{
+	const char* name;
+	Vector3 zenith, horizon;		// sky gradient; the horizon is also the fog colour
+	Vector3 cloudLit, cloudShade;	// the sea of clouds below
+	Vector3 sinkColor;				// what objects fade into as they fall below the cloud line
+	float cloudY;
+	Vector3 sunDir, sunColor;
+	Vector3 hemiSky, hemiGround;	// ambient light from above and below
+	Vector3 grassA, grassB;			// island tops
+	Vector3 dirtA, dirtB;			// island sides
+	Color leafA, leafB;				// trees
+	Color tuftA, tuftB;				// grass tufts
+	Color rock;						// island undersides
+	float fogDensity;
+	Ambient ambient;
+	int musicStyle;
+	float lavaGlow;
+	bool pinesOnly;
+};
+
+const Biome& GetBiome( int index );
+int BiomeCount();
+
 struct CannonPose
 {
 	Vector3 position;
@@ -53,6 +88,11 @@ class Renderer
 public:
 	void Init();
 	void Shutdown();
+	void SetBiome( const Biome& biome );
+	const Biome& CurrentBiome() const
+	{
+		return *m_biome;
+	}
 
 	// Frame
 	void BeginScene( const Camera3D& camera, Vector3 shadowCenter, float shadowRadius, float time, Vector3 wind );
@@ -77,6 +117,10 @@ public:
 	Texture2D SoftTexture() const
 	{
 		return m_softTex;
+	}
+	Texture2D FlakeTexture() const
+	{
+		return m_flakeTex;
 	}
 
 	const Mesh* HullMesh( const b3HullData* hull );
@@ -115,6 +159,9 @@ private:
 	int m_locTime = -1;
 	int m_locShadowOn = -1;
 	int m_locTexel = -1;
+	int m_locEnv[11] = {};
+	int m_skyLocEnv[6] = {};
+	const Biome* m_biome = nullptr;
 
 	int m_skyLocCamPos = -1, m_skyLocFwd = -1, m_skyLocRight = -1, m_skyLocUp = -1, m_skyLocTan = -1, m_skyLocRes = -1,
 		m_skyLocTime = -1, m_skyLocSun = -1;
@@ -128,6 +175,7 @@ private:
 	Mesh m_cylinder{};
 	Mesh m_cone{};
 	Texture2D m_softTex{};
+	Texture2D m_flakeTex{};
 
 	std::unordered_map<const b3HullData*, Mesh> m_hullMeshes;
 	std::unordered_map<uint64_t, Mesh> m_capsuleMeshes;

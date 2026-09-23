@@ -55,6 +55,7 @@ add_executable(crollo
 	src/levels.cpp
 	src/levels.h
 	src/render.cpp
+	src/biomes.cpp
 	src/render.h
 	src/audio.cpp
 	src/audio.h

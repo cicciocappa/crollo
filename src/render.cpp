@@ -71,9 +71,18 @@ uniform float time;
 
 out vec4 finalColor;
 
-const vec3 horizonColor = vec3(0.78, 0.86, 0.93);
-const vec3 cloudColor = vec3(0.93, 0.94, 0.97);
-const float cloudY = -22.0;
+// environment, set per biome
+uniform vec3 horizonColor;
+uniform vec3 sinkColor;
+uniform float cloudY;
+uniform vec3 sunColor;
+uniform vec3 hemiSky;
+uniform vec3 hemiGround;
+uniform vec3 grassA;
+uniform vec3 grassB;
+uniform vec3 dirtA;
+uniform vec3 dirtB;
+uniform float fogDensity;
 
 float hash(vec3 p)
 {
@@ -209,16 +218,16 @@ void main()
 		{
 			float n = fbm(vWorldPos * 0.45);
 			float m = fbm(vWorldPos * 2.5);
-			albedo = mix(vec3(0.36, 0.60, 0.25), vec3(0.52, 0.72, 0.30), n);
+			albedo = mix(grassA, grassB, n);
 			albedo *= 0.85 + 0.25 * m;
 		}
 		else
 		{
 			float strata = sin(vWorldPos.y * 5.0 + fbm(vWorldPos * 0.8) * 4.0) * 0.5 + 0.5;
-			albedo = mix(vec3(0.46, 0.36, 0.27), vec3(0.60, 0.50, 0.40), strata);
+			albedo = mix(dirtA, dirtB, strata);
 			albedo *= 0.8 + 0.3 * fbm(vWorldPos * 3.0);
 			// grass lip
-			albedo = mix(albedo, vec3(0.36, 0.58, 0.24), smoothstep(-0.35, -0.1, p.y) * step(0.0, -p.y + 0.01));
+			albedo = mix(albedo, grassA, smoothstep(-0.35, -0.1, p.y) * step(0.0, -p.y + 0.01));
 		}
 	}
 	else if (matType == 7) // rock
@@ -296,8 +305,8 @@ void main()
 	float ndl = max(dot(N, L), 0.0);
 	float sh = (shadowOn == 1) ? shadowFactor(N) : 1.0;
 
-	vec3 sunCol = vec3(1.0, 0.93, 0.82) * 1.2;
-	vec3 hemi = mix(vec3(0.55, 0.52, 0.52), vec3(0.52, 0.64, 0.86), N.y * 0.5 + 0.5);
+	vec3 sunCol = sunColor;
+	vec3 hemi = mix(hemiGround, hemiSky, N.y * 0.5 + 0.5);
 	float spec = pow(max(dot(N, H), 0.0), shininess) * specK;
 	float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0) * fresnelK;
 
@@ -306,11 +315,11 @@ void main()
 	col += flash * vec3(1.0, 0.85, 0.5);
 
 	float dist = length(viewPos - vWorldPos);
-	float fog = 1.0 - exp(-pow(dist * 0.0075, 1.5));
+	float fog = 1.0 - exp(-pow(dist * fogDensity, 1.5));
 	col = mix(col, horizonColor, clamp(fog, 0.0, 1.0) * 0.9);
 
 	float sink = smoothstep(cloudY + 3.0, cloudY - 3.0, vWorldPos.y);
-	col = mix(col, cloudColor, sink);
+	col = mix(col, sinkColor, sink);
 
 	finalColor = vec4(col, 1.0);
 }
@@ -346,9 +355,13 @@ uniform float time;
 uniform vec3 sunDir;
 out vec4 finalColor;
 
-const vec3 horizon = vec3(0.78, 0.86, 0.93);
-const vec3 zenith = vec3(0.20, 0.42, 0.78);
-const float cloudY = -22.0;
+uniform vec3 horizon;
+uniform vec3 zenith;
+uniform float cloudY;
+uniform vec3 cloudLit;
+uniform vec3 cloudShade;
+uniform vec3 sunColor;
+uniform float lavaGlow;
 
 float hash(vec2 p)
 {
@@ -387,14 +400,14 @@ void main()
 	float t = clamp(dir.y, 0.0, 1.0);
 	vec3 sky = mix(horizon, zenith, pow(t, 0.5));
 	float sd = max(dot(dir, sunDir), 0.0);
-	sky += vec3(1.0, 0.9, 0.7) * pow(sd, 900.0) * 6.0;
-	sky += vec3(1.0, 0.8, 0.55) * pow(sd, 10.0) * 0.22;
+	sky += sunColor * 0.8 * pow(sd, 900.0) * 6.0;
+	sky += sunColor * vec3(0.85, 0.75, 0.6) * pow(sd, 10.0) * 0.22;
 
 	if (dir.y > 0.0)
 	{
 		vec2 p = dir.xz / (dir.y + 0.1) * 1.3 + vec2(time * 0.006, 0.0);
 		float c = fbm(p);
-		sky = mix(sky, vec3(1.0, 0.99, 0.97), smoothstep(0.55, 0.85, c) * 0.6 * smoothstep(0.0, 0.25, dir.y));
+		sky = mix(sky, cloudLit, smoothstep(0.55, 0.85, c) * 0.6 * smoothstep(0.0, 0.25, dir.y));
 	}
 	else
 	{
@@ -409,13 +422,15 @@ void main()
 			// fake lighting: sample towards the sun for self shadowing
 			float cs = fbm(q + sunDir.xz * 0.08);
 			float lit = clamp(0.6 + (c - cs) * 3.0, 0.3, 1.2);
-			vec3 cl = mix(vec3(0.60, 0.67, 0.80), vec3(1.0, 0.98, 0.95) * lit, dens);
+			vec3 cl = mix(cloudShade, cloudLit * lit, dens);
+			// a volcano's sea glows and breathes
+			cl += cloudLit * lavaGlow * (0.25 + 0.2 * sin(time * 1.3 + P.x * 0.07 + P.z * 0.05)) * (1.0 - dens);
 			float fogd = 1.0 - exp(-tt * 0.0035);
 			sky = mix(cl, horizon, fogd);
 		}
 		else
 		{
-			sky = vec3(0.70, 0.76, 0.84);
+			sky = mix(cloudShade, horizon, 0.5);
 		}
 	}
 
@@ -622,6 +637,12 @@ void Renderer::Init()
 	m_locTime = GetShaderLocation( m_lit, "time" );
 	m_locShadowOn = GetShaderLocation( m_lit, "shadowOn" );
 	m_locTexel = GetShaderLocation( m_lit, "texel" );
+	const char* envNames[11] = { "horizonColor", "sinkColor", "cloudY", "sunColor", "hemiSky", "hemiGround",
+								 "grassA",		 "grassB",	  "dirtA",	"dirtB",	"fogDensity" };
+	for ( int i = 0; i < 11; ++i )
+	{
+		m_locEnv[i] = GetShaderLocation( m_lit, envNames[i] );
+	}
 
 	m_depth = LoadShaderVersioned( s_depthVS, s_depthFS );
 	m_sky = LoadShaderVersioned( nullptr, s_skyFS );
@@ -633,6 +654,11 @@ void Renderer::Init()
 	m_skyLocRes = GetShaderLocation( m_sky, "resolution" );
 	m_skyLocTime = GetShaderLocation( m_sky, "time" );
 	m_skyLocSun = GetShaderLocation( m_sky, "sunDir" );
+	const char* skyNames[6] = { "horizon", "zenith", "cloudY", "cloudLit", "cloudShade", "lavaGlow" };
+	for ( int i = 0; i < 6; ++i )
+	{
+		m_skyLocEnv[i] = GetShaderLocation( m_sky, skyNames[i] );
+	}
 
 	m_litMat = LoadMaterialDefault();
 	m_litMat.shader = m_lit;
@@ -651,7 +677,52 @@ void Renderer::Init()
 	UnloadImage( img );
 	SetTextureFilter( m_softTex, TEXTURE_FILTER_BILINEAR );
 
-	m_lightDir = Vector3Normalize( { 0.45f, 0.78f, -0.42f } );
+	// weather flakes: white everywhere, only the alpha falls off, so edges never turn grey
+	Image flake = GenImageColor( 32, 32, WHITE );
+	Color* px = (Color*)flake.data;
+	for ( int y = 0; y < 32; ++y )
+	{
+		for ( int x = 0; x < 32; ++x )
+		{
+			float dx = ( x + 0.5f ) / 16.0f - 1.0f, dy = ( y + 0.5f ) / 16.0f - 1.0f;
+			float r = sqrtf( dx * dx + dy * dy );
+			float a = Clamp01( ( 1.0f - r ) / 0.35f );
+			px[y * 32 + x].a = (unsigned char)( a * a * ( 3.0f - 2.0f * a ) * 255.0f );
+		}
+	}
+	m_flakeTex = LoadTextureFromImage( flake );
+	UnloadImage( flake );
+	GenTextureMipmaps( &m_flakeTex );
+	SetTextureFilter( m_flakeTex, TEXTURE_FILTER_TRILINEAR );
+
+	SetBiome( GetBiome( 0 ) );
+}
+
+void Renderer::SetBiome( const Biome& b )
+{
+	m_biome = &b;
+	m_lightDir = Vector3Normalize( b.sunDir );
+
+	SetShaderValue( m_lit, m_locEnv[0], &b.horizon, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[1], &b.sinkColor, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[2], &b.cloudY, SHADER_UNIFORM_FLOAT );
+	SetShaderValue( m_lit, m_locEnv[3], &b.sunColor, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[4], &b.hemiSky, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[5], &b.hemiGround, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[6], &b.grassA, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[7], &b.grassB, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[8], &b.dirtA, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[9], &b.dirtB, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_lit, m_locEnv[10], &b.fogDensity, SHADER_UNIFORM_FLOAT );
+
+	SetShaderValue( m_sky, m_skyLocEnv[0], &b.horizon, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_sky, m_skyLocEnv[1], &b.zenith, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_sky, m_skyLocEnv[2], &b.cloudY, SHADER_UNIFORM_FLOAT );
+	SetShaderValue( m_sky, m_skyLocEnv[3], &b.cloudLit, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_sky, m_skyLocEnv[4], &b.cloudShade, SHADER_UNIFORM_VEC3 );
+	SetShaderValue( m_sky, m_skyLocEnv[5], &b.lavaGlow, SHADER_UNIFORM_FLOAT );
+	int loc = GetShaderLocation( m_sky, "sunColor" );
+	SetShaderValue( m_sky, loc, &b.sunColor, SHADER_UNIFORM_VEC3 );
 }
 
 void Renderer::Shutdown()
@@ -671,6 +742,7 @@ void Renderer::Shutdown()
 	UnloadMesh( m_cylinder );
 	UnloadMesh( m_cone );
 	UnloadTexture( m_softTex );
+	UnloadTexture( m_flakeTex );
 	if ( m_shadowRT.id > 0 )
 	{
 		rlUnloadFramebuffer( m_shadowRT.id );
@@ -913,7 +985,7 @@ void Renderer::AddDecoration( const Decoration& d )
 		case Decoration::Rock:
 		{
 			Vector3 sc{ s, s * 0.7f, s };
-			AddMesh( &m_sphere, ComposeTRS( d.pos, q, sc ), sc, Mat::Rock, { 140, 130, 120, 255 } );
+			AddMesh( &m_sphere, ComposeTRS( d.pos, q, sc ), sc, Mat::Rock, d.color );
 			break;
 		}
 		case Decoration::Grass:

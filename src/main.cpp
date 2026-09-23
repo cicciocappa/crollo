@@ -119,6 +119,13 @@ int main( int argc, char** argv )
 		return 0;
 	}
 
+	if ( argc >= 2 && strcmp( argv[1], "--test-campaigns" ) == 0 )
+	{
+		Game game( true );
+		game.Init( nullptr, nullptr );
+		game.TestCampaigns();
+		return 0;
+	}
 	if ( argc >= 2 && strcmp( argv[1], "--test-shields" ) == 0 )
 	{
 		SetTraceLogLevel( LOG_WARNING );
@@ -191,7 +198,16 @@ int main( int argc, char** argv )
 		}
 		else if ( strcmp( shotMode, "select" ) == 0 )
 		{
+			game.SelectCampaign( shotLevel ); // the "level" argument picks the campaign here
 			game.SetScreen( Screen::LevelSelect );
+		}
+		else if ( strcmp( shotMode, "map" ) == 0 )
+		{
+			game.SetScreen( Screen::Map );
+		}
+		else if ( strcmp( shotMode, "story" ) == 0 || strcmp( shotMode, "outro" ) == 0 )
+		{
+			game.ShowStory( shotLevel, strcmp( shotMode, "outro" ) == 0 );
 		}
 		else if ( strcmp( shotMode, "howto" ) == 0 )
 		{

@@ -18,6 +18,8 @@ void Text( const char* text, Vector2 pos, float size, Color color );
 void TextShadow( const char* text, Vector2 pos, float size, Color color, float shadow = 3.0f );
 void TextCentered( const char* text, float cx, float y, float size, Color color, bool shadow = true );
 void TextOutlined( const char* text, float cx, float y, float size, Color fill, Color outline, float thickness );
+// Word-wrapped paragraph inside a column of the given pixel width; returns the height it took.
+float TextWrapped( const char* text, Vector2 pos, float width, float size, Color color, float lineSpacing = 1.3f );
 
 void Panel( Rectangle r, Color fill, Color border, float roundness = 0.18f );
 bool Button( Rectangle r, const char* label, bool enabled = true, bool highlighted = false );

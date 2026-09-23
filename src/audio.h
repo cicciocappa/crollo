@@ -41,6 +41,8 @@ public:
 	void SetListener( Vector3 position, Vector3 right );
 
 	void SetMusicEnabled( bool on );
+	// Switches the generative music to a realm's mood (0..5) at the next phrase.
+	void SetMusicStyle( int style );
 	bool MusicEnabled() const
 	{
 		return m_musicOn;
