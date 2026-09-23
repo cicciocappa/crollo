@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **12 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **14 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: muro a mattoni sfalsati; arriva la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -26,8 +26,10 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   10. *La Cittadella*: tre isole, sei re, tutto l'arsenale.
   11. *Cristalli Guardiani*: **scudi di cristallo** che si spengono e si riaccendono a orario fisso; conta il momento dello sparo.
   12. *Doppia Guardia*: due scudi in fila con ritmi diversi, una cupola sopra una torre, un re raggiungibile solo di pallonetto.
+  13. *Sponde di Gomma*: un muro di **gomma** che rimanda indietro i colpi e **sacchi di sabbia** che assorbono urti ed esplosioni.
+  14. *Il Bunker*: una torre chiusa fra i sacchi di sabbia, da abbattere con il **Vortice** o la **bomba adesiva**.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
-- **5 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano), macigno (convex hull irregolare, enorme e pesante).
+- **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).
 - **Replay del colpo decisivo**: dopo ogni vittoria il colpo viene *ri-simulato* dalla registrazione deterministica di Box3D e mostrato al rallentatore con una telecamera cinematografica (vedi sotto).
 - Stelle in base ai colpi usati, bonus per le munizioni avanzate, progressi salvati.
 - Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong su una cadenza andalusa) con vento ambientale.
@@ -41,7 +43,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 | Rotellina / W-S | potenza (SHIFT per regolazioni fini) |
 | Click sinistro | spara (in volo: torna al cannone) |
 | Click destro (tenuto) | cannocchiale |
-| 1-5, Q/E | scegli la munizione |
+| 1-7, Q/E | scegli la munizione |
 | SPAZIO | abilità speciale del proiettile in volo |
 | TAB | panoramica libera della fortezza |
 | T | mira assistita (traiettoria completa con punto d'impatto) |
@@ -87,6 +89,7 @@ scena lo riaggancia.
 ./build/crollo --autotest [colpi]             # headless: ogni livello è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
+./build/crollo --test-ammo                    # gomma, sacchi di sabbia, Vortice e bomba adesiva si comportano come previsto?
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, select, pause, howto, challenge)
 ./build/crollo --export-audio <cartella>      # esporta in WAV tutti i suoni sintetizzati e 30 s di musica
@@ -106,7 +109,10 @@ la parabola facendo *ray cast* lungo la traiettoria per evitare gli ostacoli. La
 | Convex hull (`b3MakeTransformedBoxHull`, `b3CreateCylinder`, `b3CreateCone`, `b3CreateHull`) | blocchi, isole, re, corone, macigni irregolari |
 | Sfere, corpi multi-shape | proiettili, re (tunica + testa), cesti, pale del mulino |
 | Continuous collision (`isBullet`) | proiettili veloci che non attraversano le torri |
-| `b3World_Explode` | bombe e TNT (con reazioni a catena) |
+| `b3World_Explode` | bombe e TNT (con reazioni a catena); con impulso negativo è il Vortice, che implode |
+| `explosionScale` per shape | i sacchi di sabbia ricevono solo un quarto della spinta delle esplosioni |
+| `restitution` dei materiali | la gomma restituisce circa il 90% della velocità: tiri di sponda |
+| Giunto `Weld` creato a runtime | la bomba adesiva si salda al corpo che colpisce |
 | Contact hit events | suoni per materiale, polvere, rottura del ghiaccio, innesco del TNT, re colpiti |
 | Contact begin events | la bomba esplode anche con un tocco leggero |
 | Body move events | sincronizzazione efficiente delle trasformate da renderizzare |

@@ -76,6 +76,12 @@ public:
 	Entity* Windmill( Vector3 base, float towerHeight, float bladeLength, float speed );
 	Entity* Slider( Vector3 center, Vector3 half, Vector3 axis, float amplitude, float speed, float phase, Mat mat );
 	Entity* BalloonBasket( Vector3 basketCenter, Color balloonColor, Color robe );
+	// Heavy, sluggish bags that soak up hits and shrug off blasts (a quarter of the explosion push).
+	Entity* Sandbag( Vector3 center, float yaw = 0.0f );
+	float SandbagWall( Vector3 start, bool alongX, int bags, int rows );
+	// A fixed rubber wall: shots bounce off it, so it can be used for bank shots.
+	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f );
+
 	// A crystal wall that is solid for `onTime` seconds out of every `period`, shifted by `phase`.
 	Entity* Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase );
 

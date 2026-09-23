@@ -210,6 +210,51 @@ void Particles::Explosion( Vector3 pos, float radius )
 	Emit( core );
 }
 
+void Particles::Implosion( Vector3 pos, float radius )
+{
+	Rng& r = FxRng();
+	// violet sparks start on a shell and rush to the centre
+	for ( int i = 0; i < 70; ++i )
+	{
+		Particle p{};
+		p.type = PType::Spark;
+		Vector3 d = r.OnSphere();
+		float dist = radius * r.Range( 0.8f, 1.2f );
+		float life = r.Range( 0.35f, 0.5f );
+		p.pos = Vector3Add( pos, Vector3Scale( d, dist ) );
+		p.vel = Vector3Scale( d, -dist / life );
+		p.color = ColorMix( Color{ 200, 140, 255, 255 }, Color{ 110, 60, 220, 255 }, r.Float() );
+		p.size = r.Range( 0.15f, 0.3f );
+		p.maxLife = p.life = life;
+		Emit( p );
+	}
+	// dust pulled in from around the blast
+	for ( int i = 0; i < 14; ++i )
+	{
+		Particle p{};
+		p.type = PType::Smoke;
+		Vector3 d = r.OnSphere();
+		d.y = fabsf( d.y ) * 0.4f;
+		p.pos = Vector3Add( pos, Vector3Scale( d, radius * 0.9f ) );
+		p.vel = Vector3Scale( d, -radius * 1.4f );
+		unsigned char g = (unsigned char)r.Range( 120, 170 );
+		p.color = Color{ g, (unsigned char)( g * 0.9f ), g, 170 };
+		p.size = r.Range( 0.6f, 1.2f );
+		p.grow = -0.4f;
+		p.maxLife = p.life = r.Range( 0.6f, 0.9f );
+		p.drag = 2.0f;
+		Emit( p );
+	}
+	Particle core{};
+	core.type = PType::Ring;
+	core.pos = pos;
+	core.color = Color{ 190, 140, 255, 170 };
+	core.size = radius * 1.6f;
+	core.grow = -radius * 3.0f;
+	core.maxLife = core.life = 0.45f;
+	Emit( core );
+}
+
 void Particles::MuzzleBlast( Vector3 pos, Vector3 dir )
 {
 	Rng& r = FxRng();

@@ -449,6 +449,83 @@ Buffer MakeSplit()
 	return b;
 }
 
+Buffer MakeBoing()
+{
+	// a rubbery "boing": a sine that bends upwards with a fast, decaying wobble
+	Buffer b( 0.55f );
+	float phase = 0.0f;
+	for ( int i = 0; i < b.N(); ++i )
+	{
+		float t = Buffer::T( i );
+		float f = 170.0f + 260.0f * ( 1.0f - expf( -t * 9.0f ) );
+		f *= 1.0f + 0.12f * expf( -t * 5.0f ) * sinf( 2.0f * PI * 17.0f * t );
+		phase += 2.0f * PI * f / kRate;
+		b.s[i] = ( sinf( phase ) + 0.3f * sinf( 2.0f * phase ) ) * Env( t, 0.004f, 6.0f );
+	}
+	Normalize( b, 0.7f );
+	return b;
+}
+
+Buffer MakeSandHit()
+{
+	// a dull, muffled thud: low-passed noise and a soft low sine
+	Buffer b( 0.35f );
+	Noise n( 31 );
+	OnePole lp, lp2;
+	for ( int i = 0; i < b.N(); ++i )
+	{
+		float t = Buffer::T( i );
+		b.s[i] = lp2.Low( lp.Low( n(), 500.0f ), 500.0f ) * Env( t, 0.002f, 22.0f ) * 4.0f;
+	}
+	AddSine( b, 0.0f, 75.0f, 0.5f, 18.0f, 0.003f );
+	Normalize( b, 0.8f );
+	return b;
+}
+
+Buffer MakeImplosion()
+{
+	// a deep thump followed by an inward rush that closes down, like air being sucked away
+	Buffer b( 1.2f );
+	Noise n( 57 );
+	OnePole lp;
+	for ( int i = 0; i < b.N(); ++i )
+	{
+		float t = Buffer::T( i );
+		float cutoff = 3200.0f * expf( -t * 3.5f ) + 150.0f;
+		float rush = lp.Low( n(), cutoff ) * sinf( PI * Clamp( t / 1.1f, 0.0f, 1.0f ) ) * 1.6f;
+		b.s[i] = rush;
+	}
+	AddSine( b, 0.0f, 55.0f, 1.1f, 5.0f, 0.004f, 30.0f, 4.0f );
+	AddSine( b, 0.05f, 420.0f, 0.25f, 4.0f, 0.01f, 90.0f, 5.0f );
+	Normalize( b, 0.95f );
+	return b;
+}
+
+Buffer MakeBeep()
+{
+	Buffer b( 0.09f );
+	AddSine( b, 0.0f, 1850.0f, 0.6f, 25.0f, 0.002f );
+	Normalize( b, 0.45f );
+	return b;
+}
+
+Buffer MakeStick()
+{
+	// a wet "splat" as the sticky bomb grabs hold
+	Buffer b( 0.25f );
+	Noise n( 71 );
+	BandPass bp;
+	bp.Set( 700.0f, 1.2f );
+	for ( int i = 0; i < b.N(); ++i )
+	{
+		float t = Buffer::T( i );
+		b.s[i] = bp.Process( n() ) * Env( t, 0.001f, 30.0f ) * 3.0f;
+	}
+	AddSine( b, 0.0f, 140.0f, 0.5f, 25.0f, 0.001f, 80.0f, 20.0f );
+	Normalize( b, 0.7f );
+	return b;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Generative music + ambient wind, synthesized in the audio thread
 // ---------------------------------------------------------------------------------------------
@@ -658,6 +735,11 @@ void Audio::Init()
 	load( Sfx::Pop, MakePop() );
 	load( Sfx::Star, MakeStar() );
 	load( Sfx::Split, MakeSplit() );
+	load( Sfx::Boing, MakeBoing() );
+	load( Sfx::SandHit, MakeSandHit() );
+	load( Sfx::Implosion, MakeImplosion() );
+	load( Sfx::Beep, MakeBeep() );
+	load( Sfx::Stick, MakeStick() );
 
 	SetAudioStreamBufferSizeDefault( 2048 );
 	m_stream = LoadAudioStream( kRate, 32, 1 );
@@ -749,7 +831,8 @@ void Audio::ExportAll( const char* dir, float musicSeconds )
 		{ "explosion", MakeExplosion() }, { "kingdown", MakeKingDown() }, { "win", MakeWin() },
 		{ "lose", MakeLose() },			   { "click", MakeClick() },		{ "whoosh", MakeWhoosh() },
 		{ "snap", MakeRopeSnap() },		   { "pop", MakePop() },			{ "star", MakeStar() },
-		{ "split", MakeSplit() },
+		{ "split", MakeSplit() },		   { "boing", MakeBoing() },		{ "sand", MakeSandHit() },
+		{ "implosion", MakeImplosion() }, { "beep", MakeBeep() },		{ "stick", MakeStick() },
 	};
 	for ( Item& it : items )
 	{

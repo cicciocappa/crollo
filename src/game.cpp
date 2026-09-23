@@ -75,11 +75,19 @@ static const AmmoInfo s_ammo[(int)Ammo::Count] = {
 	{ "Grappolo", "Premi SPAZIO in volo: si divide in sette.", { 90, 115, 75, 255 } },
 	{ "Catena", "Due palle incatenate che ruotano e spazzano.", { 110, 110, 120, 255 } },
 	{ "Macigno", "Enorme e pesante. Lento, ma sfonda tutto.", { 125, 110, 98, 255 } },
+	{ "Vortice", "Implode: risucchia i blocchi verso il centro (SPAZIO in volo).", { 110, 60, 160, 255 } },
+	{ "Adesiva", "Si attacca a ciò che colpisce ed esplode dopo 3 s (o con SPAZIO).", { 70, 140, 70, 255 } },
 };
 
 const AmmoInfo& GetAmmoInfo( Ammo a )
 {
 	return s_ammo[(int)a];
+}
+
+// Ammunition that does something when the player presses SPACE mid-flight.
+static bool HasSpecial( int ammo )
+{
+	return ammo == (int)Ammo::Bomb || ammo == (int)Ammo::Cluster || ammo == (int)Ammo::Implosion || ammo == (int)Ammo::Sticky;
 }
 
 static Color kGold{ 255, 200, 50, 255 };
@@ -560,6 +568,10 @@ bool Game::AnyProjectileFlying() const
 		{
 			return true;
 		}
+		if ( e->alive && e->kind == Kind::Projectile && e->ammo == (int)Ammo::Sticky && e->fuse >= 0.0f )
+		{
+			return true;
+		}
 	}
 	return false;
 }
@@ -794,6 +806,47 @@ void Game::FireProjectile( Ammo type, Vector3 muzzle, Vector3 dir, float speed )
 			first = e;
 			break;
 		}
+		case Ammo::Implosion:
+		{
+			bo.velocity = Vector3Scale( dir, speed );
+			bo.angularVelocity = Vector3Scale( r.OnSphere(), 4.0f );
+			Entity* e = m_scene.CreateEntity( Kind::Projectile, Mat::Dark, muzzle, b3Quat_identity, bo );
+			so.densityScale = 3.0f;
+			so.contactEvents = true;
+			m_scene.AddSphere( e, { 0, 0, 0 }, 0.34f, Mat::Dark, so );
+			e->parts.back().tint = Color{ 70, 35, 110, 255 };
+			Part band;
+			band.geo = Geo::Sphere;
+			band.size = { 0.37f, 0.08f, 0.37f };
+			band.mat = Mat::Shield;
+			band.tint = Color{ 190, 140, 255, 255 };
+			m_scene.AddVisual( e, band );
+			first = e;
+			break;
+		}
+		case Ammo::Sticky:
+		{
+			bo.velocity = Vector3Scale( dir, speed );
+			Entity* e = m_scene.CreateEntity( Kind::Projectile, Mat::Dark, muzzle, b3Quat_identity, bo );
+			so.densityScale = 1.2f;
+			so.contactEvents = true;
+			m_scene.AddSphere( e, { 0, 0, 0 }, 0.3f, Mat::Dark, so );
+			e->parts.back().tint = Color{ 55, 120, 55, 255 };
+			for ( int k = 0; k < 6; ++k )
+			{
+				// blobs of glue around the shell
+				Part blob;
+				blob.geo = Geo::Sphere;
+				float a = k * PI / 3.0f;
+				blob.localPos = { cosf( a ) * 0.27f, ( k % 2 ? 0.1f : -0.12f ), sinf( a ) * 0.27f };
+				blob.size = { 0.09f, 0.09f, 0.09f };
+				blob.mat = Mat::Rubber;
+				blob.tint = Color{ 120, 210, 90, 255 };
+				m_scene.AddVisual( e, blob );
+			}
+			first = e;
+			break;
+		}
 		default:
 			break;
 	}
@@ -831,7 +884,7 @@ void Game::Special( Entity* p )
 	{
 		return;
 	}
-	if ( p->ammo == (int)Ammo::Bomb )
+	if ( p->ammo == (int)Ammo::Bomb || p->ammo == (int)Ammo::Implosion || p->ammo == (int)Ammo::Sticky )
 	{
 		p->specialUsed = true;
 		Detonate( p );
@@ -894,16 +947,83 @@ void Game::Detonate( Entity* e )
 	}
 	Vector3 pos = e->pos;
 	bool tnt = e->mat == Mat::Tnt;
+	bool implosion = e->kind == Kind::Projectile && e->ammo == (int)Ammo::Implosion;
 	Kill( e );
 	if ( tnt )
 	{
 		AddScore( 300, pos, false );
 		Explode( pos, 4.2f, 2600.0f, true );
 	}
+	else if ( implosion )
+	{
+		Implode( pos, 4.5f, 1500.0f );
+	}
 	else
 	{
 		// a bomb is a local tool; big blasts belong to TNT (see --scan-shots)
 		Explode( pos, 2.6f, 1300.0f, false );
+	}
+}
+
+// A negative explosion: Box3D's b3World_Explode accepts a negative impulse, which pulls every shape
+// in range towards the centre. Towers around the blast fold inwards onto it.
+void Game::Implode( Vector3 pos, float radius, float impulse )
+{
+	AddReplayEvent( ReplayEvent::Implosion, pos, { 0, 0, 0 }, radius, false );
+	b3ExplosionDef def = b3DefaultExplosionDef();
+	def.position = ToB3( pos );
+	def.radius = radius;
+	def.falloff = radius * 0.3f;
+	def.impulsePerArea = -impulse;
+	def.maskBits = CatBlock | CatKing | CatProjectile | CatDebris;
+	b3World_Explode( m_scene.World(), &def );
+
+	m_particles.Implosion( pos, radius );
+	if ( m_audio )
+	{
+		m_audio->PlayAt( Sfx::Implosion, pos, 1.0f, FxRng().Range( 0.95f, 1.05f ) );
+	}
+	float camDist = Vector3Distance( m_camPos, pos );
+	Shake( 0.6f * Clamp01( 1.4f - camDist / 60.0f ) );
+	if ( m_attract == false && m_won == false )
+	{
+		m_timeScale = std::min( m_timeScale, 0.5f );
+	}
+	for ( Entity* e : m_scene.entities )
+	{
+		if ( e->alive && e->isStatic == false && Vector3Distance( e->pos, pos ) < radius )
+		{
+			e->flash = std::max( e->flash, 0.25f );
+		}
+	}
+}
+
+// The sticky bomb welds itself to whatever it touched, keeping its current pose, and starts a fuse.
+void Game::StickTo( Entity* bomb, Entity* other )
+{
+	if ( bomb->stuck || other->kind == Kind::Projectile || other->kind == Kind::Shield || other->alive == false )
+	{
+		return;
+	}
+	bomb->stuck = true;
+	bomb->hasHit = true;
+	bomb->fuse = 3.0f;
+
+	b3WorldTransform xa = b3Body_GetTransform( other->body );
+	b3WorldTransform xb = b3Body_GetTransform( bomb->body );
+	b3WeldJointDef jd = b3DefaultWeldJointDef();
+	jd.base.bodyIdA = other->body;
+	jd.base.bodyIdB = bomb->body;
+	jd.base.localFrameA.p = b3Body_GetLocalPoint( other->body, xb.p );
+	jd.base.localFrameA.q = b3InvMulQuat( xa.q, xb.q );
+	jd.base.localFrameB = b3Transform_identity;
+	b3CreateWeldJoint( m_scene.World(), &jd );
+
+	AddReplayEvent( ReplayEvent::Stick, bomb->pos );
+	m_particles.Sparkle( bomb->pos, Color{ 140, 230, 100, 255 }, 10 );
+	if ( m_audio )
+	{
+		m_audio->PlayAt( Sfx::Stick, bomb->pos, 0.9f, FxRng().Range( 0.9f, 1.1f ) );
 	}
 }
 
@@ -1229,10 +1349,26 @@ void Game::FixedStep()
 					Color c = e->ammo == (int)Ammo::Bomb ? Color{ 255, 200, 120, 160 } : Color{ 235, 235, 235, 110 };
 					m_particles.Trail( e->pos, c, e->ammo == (int)Ammo::Boulder ? 0.7f : 0.35f );
 				}
-				if ( e->ammo == (int)Ammo::Bomb )
+				if ( e->ammo == (int)Ammo::Bomb || e->ammo == (int)Ammo::Implosion )
 				{
 					e->flash = ( fmodf( e->age, 0.25f ) < 0.12f ) ? 0.6f : 0.0f;
 					if ( e->age > 7.0f )
+					{
+						Detonate( e );
+					}
+				}
+				else if ( e->ammo == (int)Ammo::Sticky && e->fuse >= 0.0f )
+				{
+					// the fuse beeps faster and faster
+					float before = e->fuse;
+					e->fuse -= dt;
+					float period = e->fuse > 1.0f ? 0.5f : 0.2f;
+					if ( floorf( before / period ) != floorf( e->fuse / period ) && m_audio )
+					{
+						m_audio->PlayAt( Sfx::Beep, e->pos, 0.6f, e->fuse > 1.0f ? 1.0f : 1.3f );
+					}
+					e->flash = fmodf( e->fuse, period ) < period * 0.4f ? 0.8f : 0.0f;
+					if ( e->fuse <= 0.0f )
 					{
 						Detonate( e );
 					}
@@ -1290,7 +1426,8 @@ void Game::HandleEvents()
 			Mat m = struck->isStatic ? other->mat : struck->mat;
 			if ( struck->isStatic && other->kind == Kind::Projectile )
 			{
-				m = struck->mat == Mat::Shield ? Mat::Shield : Mat::Rock;
+				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand;
+				m = keeps ? struck->mat : Mat::Rock;
 			}
 			HitEffects( h.point, h.speed, m, std::max( a->mass, b->mass ), true );
 		}
@@ -1320,10 +1457,15 @@ void Game::HandleEvents()
 						m_impactPoint = h.point;
 					}
 				}
-				if ( x->ammo == (int)Ammo::Bomb && x->age > 0.12f && other->kind != Kind::Projectile )
+				bool impactFuse = x->ammo == (int)Ammo::Bomb || x->ammo == (int)Ammo::Implosion;
+				if ( impactFuse && x->age > 0.12f && other->kind != Kind::Projectile )
 				{
 					Detonate( x );
 					continue;
+				}
+				if ( x->ammo == (int)Ammo::Sticky && x->age > 0.12f && x->stuck == false )
+				{
+					StickTo( x, other );
 				}
 			}
 
@@ -1367,9 +1509,17 @@ void Game::HandleEvents()
 		{
 			Entity* x = pair[s];
 			Entity* other = pair[1 - s];
-			if ( x->alive && x->kind == Kind::Projectile && x->ammo == (int)Ammo::Bomb && x->age > 0.12f && other->kind != Kind::Projectile )
+			if ( x->alive == false || x->kind != Kind::Projectile || x->age <= 0.12f || other->kind == Kind::Projectile )
+			{
+				continue;
+			}
+			if ( x->ammo == (int)Ammo::Bomb || x->ammo == (int)Ammo::Implosion )
 			{
 				Detonate( x );
+			}
+			else if ( x->ammo == (int)Ammo::Sticky && x->stuck == false )
+			{
+				StickTo( x, other );
 			}
 		}
 	}
@@ -1742,6 +1892,12 @@ void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool 
 			case Mat::Shield:
 				sfx = Sfx::IceHit;
 				heavyMass = -1.0f; // bright crystal ping, see below
+				break;
+			case Mat::Rubber:
+				sfx = Sfx::Boing;
+				break;
+			case Mat::Sand:
+				sfx = Sfx::SandHit;
 				break;
 			case Mat::Metal:
 			case Mat::Dark:
@@ -2351,8 +2507,7 @@ void Game::UpdatePlaying( float dt )
 		if ( IsKeyPressed( KEY_SPACE ) )
 		{
 			Entity* best = nullptr;
-			if ( m_focus && m_focus->alive && m_focus->specialUsed == false &&
-				 ( m_focus->ammo == (int)Ammo::Bomb || m_focus->ammo == (int)Ammo::Cluster ) )
+			if ( m_focus && m_focus->alive && m_focus->specialUsed == false && HasSpecial( m_focus->ammo ) )
 			{
 				best = m_focus;
 			}
@@ -2360,8 +2515,8 @@ void Game::UpdatePlaying( float dt )
 			{
 				for ( Entity* e : m_scene.entities )
 				{
-					if ( e->alive && e->kind == Kind::Projectile && e->specialUsed == false &&
-						 ( e->ammo == (int)Ammo::Bomb || e->ammo == (int)Ammo::Cluster ) && ( best == nullptr || e->age < best->age ) )
+					if ( e->alive && e->kind == Kind::Projectile && e->specialUsed == false && HasSpecial( e->ammo ) &&
+						 ( best == nullptr || e->age < best->age ) )
 					{
 						best = e;
 					}
@@ -2678,6 +2833,119 @@ void Game::ScanForEasyShots( int levelIndex )
 		fflush( stdout );
 	}
 	printf( "\n" );
+}
+
+// Checks the session-2 additions one by one, each in a level that contains it.
+void Game::TestMaterialsAndAmmo()
+{
+	auto settle = [&]( int steps ) {
+		for ( int i = 0; i < steps; ++i )
+		{
+			StepSimulation( kFixedDt );
+		}
+	};
+
+	// 1. rubber: a flat shot at the rubber wall of level 14 must come back towards the cannon
+	{
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		FireAt( { 7.0f, 2.6f, 36.2f }, Ammo::Ball, nullptr );
+		Entity* ball = m_focus;
+		float vzBefore = ball ? ToRl( b3Body_GetLinearVelocity( ball->body ) ).z : 0.0f;
+		float vzMin = 1e9f;
+		for ( int i = 0; i < 150 && ball && ball->alive; ++i )
+		{
+			StepSimulation( kFixedDt );
+			vzMin = std::min( vzMin, ToRl( b3Body_GetLinearVelocity( ball->body ) ).z );
+		}
+		printf( "Gomma: velocita' verso la fortezza %.1f m/s, dopo il rimbalzo %.1f m/s -> %s\n", vzBefore, vzMin,
+				vzMin < -0.5f * vzBefore ? "rimbalza" : "NON rimbalza" );
+	}
+
+	// 2. sandbags vs wood: the same blast next to each, how far do the pieces get pushed?
+	{
+		auto blastAndMeasure = [&]( Vector3 at, Mat mat ) {
+			LoadLevel( 12, false );
+			SkipIntro();
+			settle( 60 );
+			std::vector<std::pair<Entity*, Vector3>> start;
+			for ( Entity* e : m_scene.entities )
+			{
+				if ( e->alive && e->kind == Kind::Block && e->mat == mat && Vector3Distance( e->pos, at ) < 2.6f )
+				{
+					start.push_back( { e, e->pos } );
+				}
+			}
+			Explode( at, 2.6f, 1300.0f, false );
+			settle( 120 );
+			float sum = 0.0f;
+			for ( auto& p : start )
+			{
+				sum += Vector3Distance( p.first->pos, p.second );
+			}
+			return start.empty() ? 0.0f : sum / start.size();
+		};
+		float sand = blastAndMeasure( { -5.1f, 0.6f, 33.2f }, Mat::Sand );
+		float wood = blastAndMeasure( { 5.1f, 0.6f, 33.8f }, Mat::Wood );
+		printf( "Sabbia: spostamento medio dopo una bomba %.2f m, legno %.2f m -> %s\n", sand, wood,
+				sand < wood * 0.5f ? "i sacchi resistono" : "i sacchi NON resistono" );
+	}
+
+	// 3. implosion: right after the blast, the pieces around it must be moving towards its centre
+	{
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		Vector3 at{ 0.0f, 3.0f, 35.6f };
+		std::vector<Entity*> near;
+		for ( Entity* e : m_scene.entities )
+		{
+			float d = Vector3Distance( e->pos, at );
+			if ( e->alive && e->kind == Kind::Block && e->mat != Mat::Sand && d < 4.5f && d > 0.5f )
+			{
+				near.push_back( e );
+			}
+		}
+		Implode( at, 4.5f, 1500.0f );
+		StepSimulation( kFixedDt );
+		float inward = 0.0f;
+		int towards = 0;
+		for ( Entity* e : near )
+		{
+			Vector3 v = ToRl( b3Body_GetLinearVelocity( e->body ) );
+			float radial = Vector3DotProduct( v, Vector3Normalize( Vector3Subtract( at, e->pos ) ) );
+			inward += radial;
+			towards += radial > 0.0f ? 1 : 0;
+		}
+		printf( "Vortice: %d pezzi su %d si muovono verso il centro, velocita' media verso il centro %.1f m/s -> %s\n", towards,
+				(int)near.size(), inward / near.size(), towards * 10 >= (int)near.size() * 8 ? "risucchia" : "NON risucchia" );
+	}
+
+	// 4. sticky bomb: it must weld to the tower, hold on, and go off about 3 s later
+	{
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		FireAt( { 0.0f, 3.5f, 35.6f }, Ammo::Sticky, nullptr );
+		Entity* bomb = m_focus;
+		float stuckAt = -1.0f, goneAt = -1.0f;
+		for ( int i = 0; i < 60 * 8 && bomb; ++i )
+		{
+			StepSimulation( kFixedDt );
+			if ( stuckAt < 0.0f && bomb->alive && bomb->stuck )
+			{
+				stuckAt = i * kFixedDt;
+			}
+			if ( bomb->alive == false )
+			{
+				goneAt = i * kFixedDt;
+				break;
+			}
+		}
+		printf( "Adesiva: attaccata a %.2f s, esplosa a %.2f s (miccia %.2f s) -> %s\n", stuckAt, goneAt, goneAt - stuckAt,
+				stuckAt >= 0.0f && fabsf( goneAt - stuckAt - 3.0f ) < 0.1f ? "ok" : "PROBLEMA" );
+	}
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
@@ -3061,8 +3329,7 @@ void Game::DrawHUD()
 	const char* hint = nullptr;
 	if ( m_camMode == CamMode::Follow )
 	{
-		bool special = m_focus && m_focus->alive && m_focus->specialUsed == false &&
-					   ( m_focus->ammo == (int)Ammo::Bomb || m_focus->ammo == (int)Ammo::Cluster );
+		bool special = m_focus && m_focus->alive && m_focus->specialUsed == false && HasSpecial( m_focus->ammo );
 		hint = special ? "SPAZIO: abilità speciale   •   CLICK: torna al cannone" : "CLICK: torna al cannone";
 	}
 	else if ( m_camMode == CamMode::Overview )
@@ -3078,7 +3345,7 @@ void Game::DrawHUD()
 		ui::TextCentered( hint, W * 0.5f, 150 * S, 30, WHITE );
 	}
 
-	ui::Text( "Mouse: mira  •  Rotellina/W-S: potenza  •  Tasto destro: zoom  •  1-5: munizioni  •  TAB: panoramica  •  R: ricomincia  •  ESC: pausa",
+	ui::Text( "Mouse: mira  •  Rotellina/W-S: potenza  •  Tasto destro: zoom  •  1-7: munizioni  •  TAB: panoramica  •  R: ricomincia  •  ESC: pausa",
 			  { 20 * S, H - 30 * S }, 20, Color{ 255, 255, 255, 150 } );
 
 	if ( m_camMode == CamMode::Aim && m_zoom )
@@ -3285,24 +3552,25 @@ void Game::DrawHowTo()
 		"Rotellina / W-S  -  potenza del colpo (SHIFT per regolazioni fini)",
 		"Click sinistro  -  spara (e in volo: torna al cannone)",
 		"Click destro (tieni premuto)  -  cannocchiale",
-		"1 - 5  oppure  Q / E  -  scegli la munizione",
+		"1 - 7  oppure  Q / E  -  scegli la munizione",
 		"SPAZIO  -  abilità speciale del proiettile in volo",
 		"TAB  -  panoramica della fortezza    •    T  -  mira assistita",
 		"R  -  ricomincia    •    O  -  ombre    •    M  -  musica    •    F11  -  schermo intero",
 	};
 	for ( const char* l : lines )
 	{
-		ui::Text( l, { x + 20 * S, y }, 28, ink );
-		y += 42 * S;
+		ui::Text( l, { x + 20 * S, y }, 26, ink );
+		y += 36 * S;
 	}
-	y += 20 * S;
+	y += 14 * S;
+	const float rowH = 54 * S;
 	for ( int i = 0; i < (int)Ammo::Count; ++i )
 	{
-		ui::AmmoIcon( i, { x + 44 * S + ( i % 2 ) * 640 * S, y + 22 * S + ( i / 2 ) * 70 * S }, 22 * S );
-		ui::Text( TextFormat( "%s: %s", s_ammo[i].name, s_ammo[i].description ), { x + 84 * S + ( i % 2 ) * 640 * S, y + 6 * S + ( i / 2 ) * 70 * S },
-				  26, ink );
+		ui::AmmoIcon( i, { x + 40 * S + ( i % 2 ) * 640 * S, y + 20 * S + ( i / 2 ) * rowH }, 18 * S );
+		ui::Text( TextFormat( "%s: %s", s_ammo[i].name, s_ammo[i].description ), { x + 76 * S + ( i % 2 ) * 640 * S, y + 6 * S + ( i / 2 ) * rowH },
+				  22, ink );
 	}
-	y += 3 * 70 * S;
+	y += ( ( (int)Ammo::Count + 1 ) / 2 ) * rowH + 6 * S;
 	ui::Text( "Meno colpi usi, più stelle ottieni. Le munizioni avanzate valgono punti bonus.", { x, y }, 28, ink );
 	y += 44 * S;
 	ui::Text( "SFIDA INFINITA: fortezze sempre nuove, generate a caso. I punti si sommano round dopo round.", { x, y }, 28, ink );
@@ -3781,6 +4049,17 @@ void Game::UpdateReplay( float dt )
 						m_audio->PlayAt( Sfx::Pop, ev.pos, 1.0f, 0.8f );
 					break;
 				}
+				case ReplayEvent::Implosion:
+					m_particles.Implosion( ev.pos, ev.radius );
+					if ( m_audio )
+						m_audio->PlayAt( Sfx::Implosion, ev.pos, 1.0f, 0.8f );
+					Shake( 0.5f );
+					break;
+				case ReplayEvent::Stick:
+					m_particles.Sparkle( ev.pos, Color{ 140, 230, 100, 255 }, 10 );
+					if ( m_audio )
+						m_audio->PlayAt( Sfx::Stick, ev.pos, 0.9f, 0.8f );
+					break;
 				case ReplayEvent::Snap:
 					m_particles.Debris( ev.pos, Color{ 170, 140, 90, 255 }, 6, 3.0f, 0.06f );
 					if ( m_audio )

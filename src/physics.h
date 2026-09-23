@@ -22,6 +22,8 @@ enum class Mat : uint8_t
 	Balloon,
 	Dark,
 	Shield,
+	Rubber,
+	Sand,
 	Count
 };
 
@@ -101,6 +103,7 @@ struct Entity
 
 	// projectile
 	int ammo = -1;
+	bool stuck = false; // sticky bomb welded to what it hit
 	bool specialUsed = false;
 	bool hasHit = false;
 	float restTimer = 0.0f;
@@ -212,6 +215,7 @@ struct BodyOptions
 struct ShapeOptions
 {
 	float densityScale = 1.0f;
+	float explosionScale = 1.0f; // how much b3World_Explode pushes this shape (sandbags: much less)
 	float friction = -1.0f;	  // < 0 uses material default
 	float restitution = -1.0f;
 	float rollingResistance = 0.0f;

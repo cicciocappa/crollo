@@ -265,6 +265,24 @@ void main()
 		specK = 1.0;
 		fresnelK = 0.8;
 	}
+	else if (matType == 14) // rubber: glossy, with dark diagonal bumper stripes
+	{
+		float stripe = step(0.5, fract((p.x + p.y + p.z) * 1.6));
+		albedo *= mix(1.0, 0.72, stripe);
+		albedo *= 0.92 + 0.12 * fbm(p * 5.0);
+		shininess = 28.0;
+		specK = 0.45;
+		fresnelK = 0.12;
+		edge = mix(1.0, boxEdge(), 0.5);
+	}
+	else if (matType == 15) // sandbag: woven burlap with stains
+	{
+		float weave = sin(p.x * 70.0) * sin(p.y * 70.0 + p.z * 70.0);
+		float stain = fbm(p * 3.0 + vec3(3.0));
+		albedo *= 0.9 + 0.08 * weave;
+		albedo *= 0.8 + 0.3 * stain;
+		specK = 0.02;
+	}
 	else if (matType == 0)
 	{
 		albedo *= 0.9 + 0.2 * fbm(vWorldPos * 2.0);

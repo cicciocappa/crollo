@@ -47,6 +47,7 @@ public:
 	void Dust( Vector3 pos, Color color, int count, float speed );
 	void Debris( Vector3 pos, Color color, int count, float speed, float size );
 	void Explosion( Vector3 pos, float radius );
+	void Implosion( Vector3 pos, float radius );
 	void MuzzleBlast( Vector3 pos, Vector3 dir );
 	void Stars( Vector3 pos, int count );
 	void Sparkle( Vector3 pos, Color color, int count );

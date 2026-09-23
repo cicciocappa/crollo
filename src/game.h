@@ -16,6 +16,8 @@ enum class Ammo : int
 	Cluster,
 	Chain,
 	Boulder,
+	Implosion, // "Vortice": pulls everything towards the blast
+	Sticky,	   // welds itself to what it hits, explodes after 3 s
 	Count
 };
 
@@ -78,6 +80,8 @@ struct ReplayEvent
 		Shatter,
 		BalloonPop,
 		Snap,
+		Implosion,
+		Stick,
 	};
 	Type type;
 	int step;
@@ -126,6 +130,7 @@ public:
 	bool RunChallengeTest( int round, uint32_t seed, int maxShots, bool verbose );
 	bool PlayOutAutomatically( int maxShots, int& downAtStart, int& shots );
 	void TestShields();
+	void TestMaterialsAndAmmo();
 	void StepSimulation( float dt );
 	bool AutoFireAtKing(); // false when no shot was fired (nothing to hit, or waiting for a shield)
 	// Aims the cannon at a point (planning around obstacles and shields) and fires; false if it had to wait.
@@ -190,6 +195,8 @@ private:
 	void Special( Entity* projectile );
 	void Detonate( Entity* e );
 	void Explode( Vector3 pos, float radius, float impulse, bool big );
+	void Implode( Vector3 pos, float radius, float impulse );
+	void StickTo( Entity* bomb, Entity* other );
 	void Shatter( Entity* e );
 	void DefeatKing( Entity* king, const char* reason );
 	void PopBalloon( Entity* balloon );

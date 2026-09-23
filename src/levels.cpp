@@ -615,6 +615,61 @@ Entity* Builder::BalloonBasket( Vector3 c, Color balloonColor, Color robe )
 	return balloon;
 }
 
+Entity* Builder::Sandbag( Vector3 center, float yaw )
+{
+	BodyOptions bo;
+	bo.linearDamping = 1.5f;
+	bo.angularDamping = 3.0f;
+	Entity* e = scene.CreateEntity( Kind::Block, Mat::Sand, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.explosionScale = 0.25f;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, { 0.5f, 0.2f, 0.3f }, Mat::Sand, so );
+	// drawn as a plump pillow rather than a brick
+	e->parts.back().visible = false;
+	Part bag;
+	bag.geo = Geo::Sphere;
+	bag.size = { 0.54f, 0.24f, 0.33f };
+	bag.mat = Mat::Sand;
+	bag.tint = ColorBrightness( GetMatProps( Mat::Sand ).color, rng.Range( -0.12f, 0.06f ) );
+	scene.AddVisual( e, bag );
+	e->homeY = homeY;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+float Builder::SandbagWall( Vector3 start, bool alongX, int bags, int rows )
+{
+	Vector3 dir = alongX ? Vector3{ 1, 0, 0 } : Vector3{ 0, 0, 1 };
+	float yaw = alongX ? 0.0f : PI * 0.5f;
+	float y = start.y;
+	for ( int r = 0; r < rows; ++r )
+	{
+		float shift = ( r % 2 ) * 0.5f;
+		int n = bags - ( r % 2 );
+		for ( int i = 0; i < n; ++i )
+		{
+			Vector3 c = Vector3Add( start, Vector3Scale( dir, 0.5f + shift + i * 1.02f ) );
+			c.y = y + 0.2f;
+			Sandbag( c, yaw );
+		}
+		y += 0.4f;
+	}
+	return y;
+}
+
+Entity* Builder::Bumper( Vector3 center, Vector3 half, float yaw )
+{
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Static, Mat::Rubber, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatStatic;
+	so.hitEvents = false;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Rubber, so );
+	scene.FinalizeEntity( e );
+	return e;
+}
+
 Entity* Builder::Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase )
 {
 	BodyOptions bo;
@@ -942,6 +997,66 @@ static void Level12( Builder& b )
 	b.Fortress( { 0, 4.0f, 37.5f }, 13.0f );
 }
 
+static void Level13( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34.5f }, 9.5f );
+
+	// centre: a courtyard walled in stone on three sides; behind the king a tall rubber wall
+	// sends overshooting lobs back down onto him
+	b.Wall( { -2.0f, 0, 31.5f }, true, 4, 6, Mat::Stone );
+	b.Wall( { -2.25f, 0, 32.0f }, false, 3, 6, Mat::Stone );
+	b.Wall( { 2.25f, 0, 32.0f }, false, 3, 6, Mat::Stone );
+	float c = b.Column( { 0, 0, 34.0f }, 2, 0.5f, Mat::Stone );
+	b.King( { 0, c, 34.0f }, kPurple );
+	b.Bumper( { 0, 2.6f, 36.2f }, { 2.6f, 2.6f, 0.2f } );
+
+	// right: a wooden tower behind a low wall of sandbags that swallows direct hits
+	b.SandbagWall( { 3.6f, 0, 32.6f }, true, 3, 3 );
+	float t = b.Tower( { 5.1f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 5.1f, t, 35.0f }, kCrimson );
+
+	// left: a king on a pile of sandbags, which bombs barely move
+	float pile = b.SandbagWall( { -6.1f, 0, 34.0f }, true, 2, 4 );
+	b.Box( { -5.1f, pile + 0.12f, 34.0f }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
+	b.King( { -5.1f, pile + 0.24f, 34.0f }, kGreen );
+
+	b.Trees( { 0, 0, 34.5f }, 9.5f, 4, 7.6f );
+	b.Flag( { 6.5f, 0, 38.5f }, kPurple );
+	b.Fortress( { 0, 3.0f, 34.5f }, 12.0f );
+}
+
+static void Level14( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 1.0f;
+	b.Island( { 0, 1, 36.5f }, 10.0f );
+
+	// centre: a tall wooden tower boxed in by sandbags, so bombs outside do nothing.
+	// A sticky bomb on the tower, or a Vortice beside it, is the way in.
+	b.SandbagWall( { -2.1f, 1.0f, 33.6f }, true, 4, 5 );
+	b.SandbagWall( { -2.4f, 1.0f, 34.2f }, false, 3, 5 );
+	b.SandbagWall( { 2.4f, 1.0f, 34.2f }, false, 3, 5 );
+	float t = b.Tower( { 0, 1.0f, 35.6f }, 3, 1.0f, 1.3f, Mat::Wood, Mat::Wood );
+	b.King( { 0, t, 35.6f }, kOrange );
+
+	// right: a king on stone behind a rubber wall that bounces cannonballs away
+	float c = b.Column( { 7.0f, 1.0f, 38.5f }, 2, 0.5f, Mat::Stone );
+	b.Box( { 7.0f, c + 0.12f, 38.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
+	b.King( { 7.0f, c + 0.24f, 38.5f }, kBlue );
+	b.Bumper( { 7.0f, 2.6f, 36.4f }, { 1.6f, 1.6f, 0.2f } );
+
+	// left: a king on a sandbag mound
+	float pile = b.SandbagWall( { -8.0f, 1.0f, 38.5f }, true, 2, 5 );
+	b.Box( { -7.0f, pile + 0.12f, 38.5f }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
+	b.King( { -7.0f, pile + 0.24f, 38.5f }, kTeal );
+
+	b.Trees( { 0, 1, 36.5f }, 10.0f, 3, 8.6f );
+	b.Flag( { 0.0f, 1.0f, 41.5f }, kOrange );
+	b.Fortress( { 0, 4.0f, 37.0f }, 13.0f );
+}
+
 static const LevelDef s_levels[] = {
 	{ "Primo Colpo", "Il re di legno", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01 },
@@ -968,6 +1083,11 @@ static const LevelDef s_levels[] = {
 	  { 4, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11 },
 	{ "Doppia Guardia", "Tempismo perfetto", "Due scudi in fila: si passa solo quando sono spenti entrambi. Tieni conto del volo.",
 	  { 4, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12 },
+	{ "Sponde di Gomma", "Rimbalzi e sacchi di sabbia",
+	  "La gomma rimanda indietro i colpi: usa il muro di gomma dietro il re. I sacchi assorbono urti ed esplosioni.",
+	  { 5, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13 },
+	{ "Il Bunker", "Dentro i sacchi", "Novità: il VORTICE (6) risucchia i blocchi, la bomba ADESIVA (7) si attacca ed esplode dopo 3 s.",
+	  { 3, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14 },
 };
 
 const LevelDef& GetLevel( int index )
@@ -1011,7 +1131,7 @@ ChallengePlan PlanChallenge( int round, uint32_t seed )
 	int total = p.kings + 2 + ( p.satellite ? 1 : 0 );
 	p.ammo[(int)Ammo::Ball] = std::max( 1, total / 2 );
 	int extra = total - p.ammo[(int)Ammo::Ball];
-	int unlocked[4];
+	int unlocked[6];
 	int nUnlocked = 0;
 	unlocked[nUnlocked++] = (int)Ammo::Bomb;
 	if ( d >= 3 )
@@ -1022,6 +1142,14 @@ ChallengePlan PlanChallenge( int round, uint32_t seed )
 	if ( d >= 4 )
 	{
 		unlocked[nUnlocked++] = (int)Ammo::Boulder;
+	}
+	if ( d >= 5 )
+	{
+		unlocked[nUnlocked++] = (int)Ammo::Sticky;
+	}
+	if ( d >= 6 )
+	{
+		unlocked[nUnlocked++] = (int)Ammo::Implosion;
 	}
 	for ( int i = 0; i < extra; ++i )
 	{
@@ -1112,8 +1240,16 @@ void BuildChallenge( Builder& b )
 				break;
 			default:
 			{
-				int bricks = r.Int( 3, 5 );
-				b.Wall( { s.x - bricks * 0.5f, s.y, s.z }, true, bricks, r.Int( 2, 4 ), Mat::Stone );
+				if ( p.round >= 4 && r.Float() < 0.5f )
+				{
+					int bags = r.Int( 3, 4 );
+					b.SandbagWall( { s.x - bags * 0.5f, s.y, s.z }, true, bags, r.Int( 2, 4 ) );
+				}
+				else
+				{
+					int bricks = r.Int( 3, 5 );
+					b.Wall( { s.x - bricks * 0.5f, s.y, s.z }, true, bricks, r.Int( 2, 4 ), Mat::Stone );
+				}
 				break;
 			}
 		}

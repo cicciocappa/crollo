@@ -240,6 +240,32 @@ void AmmoIcon( int ammo, Vector2 c, float r )
 			DrawCircleV( { c.x - r * 0.25f, c.y - r * 0.3f }, r * 0.2f, Color{ 160, 145, 130, 255 } );
 			break;
 		}
+		case 5: // implosion: a violet orb with arrows pointing in
+		{
+			DrawCircleV( c, r, Color{ 70, 35, 110, 255 } );
+			DrawRing( c, r * 0.55f, r * 0.75f, 0, 360, 24, Color{ 190, 140, 255, 255 } );
+			for ( int i = 0; i < 4; ++i )
+			{
+				float a = i * PI * 0.5f + PI * 0.25f;
+				Vector2 d{ cosf( a ), sinf( a ) };
+				Vector2 tip{ c.x + d.x * r * 1.05f, c.y + d.y * r * 1.05f };
+				Vector2 base{ c.x + d.x * r * 1.55f, c.y + d.y * r * 1.55f };
+				Vector2 n{ -d.y * r * 0.25f, d.x * r * 0.25f };
+				DrawTriangle( tip, Vector2Add( base, n ), Vector2Subtract( base, n ), Color{ 190, 140, 255, 255 } );
+				DrawTriangle( tip, Vector2Subtract( base, n ), Vector2Add( base, n ), Color{ 190, 140, 255, 255 } );
+			}
+			break;
+		}
+		case 6: // sticky bomb: a green bomb dripping glue
+		{
+			DrawCircleV( c, r, Color{ 55, 120, 55, 255 } );
+			DrawCircleV( { c.x - r * 0.45f, c.y + r * 0.95f }, r * 0.22f, Color{ 120, 210, 90, 255 } );
+			DrawCircleV( { c.x + r * 0.2f, c.y + r * 1.1f }, r * 0.28f, Color{ 120, 210, 90, 255 } );
+			DrawCircleV( { c.x + r * 0.6f, c.y + r * 0.85f }, r * 0.18f, Color{ 120, 210, 90, 255 } );
+			DrawRectangleV( { c.x - r * 0.25f, c.y - r * 1.25f }, { r * 0.5f, r * 0.4f }, Color{ 90, 90, 90, 255 } );
+			DrawCircleV( { c.x - r * 0.3f, c.y - r * 0.3f }, r * 0.25f, Color{ 150, 220, 130, 255 } );
+			break;
+		}
 		default:
 			break;
 	}

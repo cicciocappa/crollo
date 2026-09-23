@@ -25,6 +25,8 @@ static const MatProps s_matProps[(int)Mat::Count] = {
 	{ 1.0f, 0.4f, 0.4f, { 230, 60, 80, 255 }, "pallone" },
 	{ 1000.0f, 0.6f, 0.0f, { 40, 36, 40, 255 }, "scuro" },
 	{ 1000.0f, 0.3f, 0.3f, { 110, 215, 255, 255 }, "cristallo" },
+	{ 1100.0f, 0.9f, 0.9f, { 225, 85, 60, 255 }, "gomma" },
+	{ 1600.0f, 1.0f, 0.0f, { 196, 170, 122, 255 }, "sabbia" },
 };
 
 const MatProps& GetMatProps( Mat m )
@@ -210,6 +212,7 @@ static b3ShapeDef MakeShapeDef( Entity* e, Mat mat, const ShapeOptions& opt )
 	const MatProps& props = GetMatProps( mat );
 	b3ShapeDef def = b3DefaultShapeDef();
 	def.density = props.density * opt.densityScale;
+	def.explosionScale = opt.explosionScale;
 	def.baseMaterial.friction = opt.friction >= 0.0f ? opt.friction : props.friction;
 	def.baseMaterial.restitution = opt.restitution >= 0.0f ? opt.restitution : props.restitution;
 	def.baseMaterial.rollingResistance = opt.rollingResistance;

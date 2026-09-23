@@ -22,6 +22,11 @@ enum class Sfx : int
 	Pop,
 	Star,
 	Split,
+	Boing,
+	SandHit,
+	Implosion,
+	Beep,
+	Stick,
 	Count
 };
 

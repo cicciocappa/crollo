@@ -110,6 +110,15 @@ int main( int argc, char** argv )
 		return 0;
 	}
 
+	if ( argc >= 2 && strcmp( argv[1], "--test-ammo" ) == 0 )
+	{
+		SetTraceLogLevel( LOG_WARNING );
+		Game game( true );
+		game.Init( nullptr, nullptr );
+		game.TestMaterialsAndAmmo();
+		return 0;
+	}
+
 	if ( argc >= 2 && strcmp( argv[1], "--test-shields" ) == 0 )
 	{
 		SetTraceLogLevel( LOG_WARNING );
