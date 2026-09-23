@@ -2811,10 +2811,26 @@ bool Game::AutoFireAtKing()
 		{
 			return false;
 		}
-		// nothing else gets through reinforced masonry
+		// nothing else gets through reinforced masonry: keep the boulders for it
+		int ironWalls = 0;
+		for ( const Entity* e : m_scene.entities )
+		{
+			ironWalls += e->alive && e->reinforced ? 1 : 0;
+		}
 		if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
 		{
 			type = Ammo::Boulder;
+		}
+		else if ( type == Ammo::Boulder && m_ammo[(int)Ammo::Boulder] <= ironWalls )
+		{
+			for ( int i = 0; i < (int)Ammo::Count; ++i )
+			{
+				if ( i != (int)Ammo::Boulder && m_ammo[i] > 0 )
+				{
+					type = (Ammo)i;
+					break;
+				}
+			}
 		}
 	}
 

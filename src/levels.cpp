@@ -722,22 +722,30 @@ Entity* Builder::MagicBarrier( Vector3 center, Vector3 half, float yaw )
 	so.category = CatBarrier;
 	so.hitEvents = false;
 	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Magic, so );
-	// a frame of dark stone around the lattice, so the edge of the barrier is plain to see
+	// a frame of dark stone round the edges of the lattice, so the barrier is plain to see. The panel may be a
+	// wall facing either way or a roof: the frame runs round its two long sides, whichever they are
 	const Color frame{ 70, 60, 90, 255 };
-	for ( int s = -1; s <= 1; s += 2 )
+	const float h[3] = { half.x, half.y, half.z };
+	int thin = h[0] <= h[1] && h[0] <= h[2] ? 0 : ( h[1] <= h[2] ? 1 : 2 );
+	for ( int k = 1; k <= 2; ++k )
 	{
-		Part post;
-		post.localPos = { s * ( half.x + 0.1f ), 0, 0 };
-		post.size = { 0.1f, half.y + 0.1f, half.z + 0.06f };
-		post.mat = Mat::Stone;
-		post.tint = frame;
-		scene.AddVisual( e, post );
-		Part beam;
-		beam.localPos = { 0, s * ( half.y + 0.05f ), 0 };
-		beam.size = { half.x + 0.2f, 0.05f, half.z + 0.06f };
-		beam.mat = Mat::Stone;
-		beam.tint = frame;
-		scene.AddVisual( e, beam );
+		int along = ( thin + k ) % 3;	// the bar runs along this axis...
+		int across = ( thin + 3 - k ) % 3; // ...and sits on both edges of this one
+		for ( int s = -1; s <= 1; s += 2 )
+		{
+			float pos[3] = { 0, 0, 0 };
+			float size[3] = { 0, 0, 0 };
+			pos[across] = s * ( h[across] + 0.08f );
+			size[across] = 0.08f;
+			size[along] = h[along] + 0.16f;
+			size[thin] = h[thin] + 0.06f;
+			Part bar;
+			bar.localPos = { pos[0], pos[1], pos[2] };
+			bar.size = { size[0], size[1], size[2] };
+			bar.mat = Mat::Stone;
+			bar.tint = frame;
+			scene.AddVisual( e, bar );
+		}
 	}
 	scene.FinalizeEntity( e );
 	return e;
@@ -1119,7 +1127,9 @@ static void Level07( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 33.5f }, 9.0f );
-	b.Pendulum( { 0, 8.0f, 30.5f }, 5.6f, 0.75f );
+	// already swinging from side to side in front of the towers: strike it at the right moment
+	Entity* ball = b.Pendulum( { 0, 8.0f, 30.5f }, 5.6f, 0.75f );
+	b3Body_SetLinearVelocity( ball->body, { 3.5f, 0, 0 } );
 	float t1 = b.Tower( { -1.9f, 0, 33.2f }, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
 	b.King( { -1.9f, t1, 33.2f }, kBlue );
 	float t2 = b.Tower( { 1.9f, 0, 33.2f }, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
@@ -1197,9 +1207,11 @@ static float QueenKeep( Builder& b, float x, float y0, float gate )
 	b.Ledge( { x, top + 0.15f, ( gate + back ) * 0.5f }, { 1.95f, 0.15f, ( back - gate ) * 0.5f + 0.25f }, Mat::Stone, { 0, 0, 0, 1 },
 			 masonry );
 	Entity* door = b.Reinforced( { x, ( y0 + top ) * 0.5f, gate }, { 1.35f, ( top - y0 ) * 0.5f, 0.25f } );
-	float t = b.Tower( { x, y0, gate + 1.7f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	// a single storey: the queen, crown and all, has to stand clear of the roof
+	float t = b.Tower( { x, y0, gate + 1.7f }, 1, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
 	Entity* queen = b.King( { x, t, gate + 1.7f }, kOrange ); // Regina Ottavia's own colour
-	b.AimHint( queen, door, { 0, -0.6f, 0 } );
+	// through the gate at the queen's own height: a hit on her stand only pins her against the back wall
+	b.AimHint( queen, door, { 0, t + 0.7f - door->pos.y, 0 } );
 	return top + 0.3f;
 }
 
@@ -1484,7 +1496,6 @@ static void LevelDueMulini( Builder& b )
 	b.Trees( { 0, 0, 35.5f }, 10.0f, 4, 8.0f );
 	b.Flag( { -7.0f, 0, 39.0f }, kOrange );
 	b.Fortress( { 0, 3.5f, 35.0f }, 12.0f );
-	b.ShiftingWind( 1.2f );
 }
 
 // Valle dei Mulini: billiards with a magic orb. The king sits in a lattice pavilion off to the left; a block of
@@ -1584,6 +1595,7 @@ static void LevelGranaio( Builder& b )
 	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.6f );
 	b.Flag( { 0.0f, 0, 38.5f }, kOrange );
 	b.Fortress( { 0, 2.0f, 35.0f }, 11.0f );
+	b.ShiftingWind( 1.2f );
 }
 
 // Valle dei Mulini: two kings in a pavilion of magic lattice. Cannonballs bounce off it, but the magic orbs
@@ -1806,7 +1818,7 @@ static const LevelDef s_levels[] = {
 	{ "Il Mulino", "Le mie pale girano da cent'anni. Non si fermeranno per te.",
 	  "Aspetta il momento giusto per passare fra le pale, oppure spezzale con il MACIGNO (5).",
 	  { 4, 2, 0, 0, 1 }, 3, { 0, 0, 0 }, Level06, "mulini_mulino" },
-	{ "Il Pendolo", "Tic, tac. Il pendolo decide chi resta in piedi.", "Colpisci il pendolo e lascia fare alla fisica. Occhio al vento!",
+	{ "Il Pendolo", "Tic, tac. Il pendolo decide chi resta in piedi.", "Il pendolo oscilla: colpiscilo quando passa davanti alle torri e lascia fare alla fisica. Occhio al vento!",
 	  { 3, 1, 0, 0, 0 }, 2, { -2.2f, 0, 0 }, Level07, "mulini_pendolo" },
 	{ "Polveriera", "La polvere da sparo è ben custodita: proprio sotto di noi.",
 	  "La casamatta non si scalfisce, ma la feritoia guarda dritta sul TNT. Centrala: le esplosioni si propagano...",
@@ -1851,11 +1863,11 @@ static const LevelDef s_levels[] = {
 	  "Le palle di cannone rimbalzano sulla barriera magica, le sfere magiche la attraversano: colpisci ogni sfera da dietro e mandala sul suo re.",
 	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelSfere, "mulini_sfere" },
 	{ "Il Granaio", "Il mio grano è al sicuro dietro il ferro. E io con lui.",
-	  "I muri di mattoni cedono alle palle; quello cerchiato di ferro solo al MACIGNO (5).",
+	  "I muri di mattoni cedono alle palle; quello cerchiato di ferro solo al MACIGNO (5). Il vento cambia a ogni colpo.",
 	  { 3, 0, 0, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, LevelGranaio, "mulini_granaio" },
 	{ "Due Mulini", "Due mulini, due venti, due volte il fastidio per te.",
-	  "Le pale girano in versi opposti e il vento cambia a ogni colpo. Il MACIGNO (5) spezza le pale di un mulino.",
-	  { 4, 0, 0, 0, 1, 0, 0 }, 3, { 0.6f, 0, 0 }, LevelDueMulini, "mulini_due" },
+	  "Le pale girano in versi opposti: passa nei varchi o scavalcale. Il MACIGNO (5) spezza le pale di un mulino.",
+	  { 4, 0, 0, 0, 1, 0, 0 }, 3, { 0, 0, 0 }, LevelDueMulini, "mulini_due" },
 	{ "Sponda Magica", "Il mio padiglione non si vede nemmeno da qui. Figurati colpirlo.",
 	  "La sfera magica attraversa la barriera: mandala sul pannello di gomma, rimbalzerà verso il re.",
 	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelSpondaMagica, "mulini_sponda" },

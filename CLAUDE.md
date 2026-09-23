@@ -23,7 +23,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
 - Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche. Prossima: sessione 6 (Dune Sospese).
   Poi versione mobile (10); multiplayer alla fine (11+).
-- Sessioni 6-8: Dune Sospese (deserto con cactus, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
+- Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
   Node.js (servirà per l'online a turni, più avanti).
@@ -66,6 +66,8 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
   (`b.MagicOrb`, letali) la attraversano perché la loro maschera la esclude. Lo shader la disegna a reticolo con buchi
   (`discard`), per vedere il re dietro. La sfera va sulla linea cannone-re e `AimHint` sulla sfera; più è vicina alla
   barriera, più il colpo è tollerante (Sfere Magiche ±0,2 m, Sponda Magica ±0,1 m).
+- Il vento variabile va nei livelli a tiro diretto, non in quelli a pallonetto (Due Mulini era troppo difficile).
+- Sotto un tetto il re vuole almeno 1,5 m liberi sopra i piedi (corona compresa), o resta incastrato.
 - Un regno in cui il giocatore ha già stelle resta aperto anche se il precedente cresce di livelli (e di stelle).
 - Il **macigno** è l'unico colpo che sfonda `b.Reinforced(...)` (muratura cerchiata di ferro, statica: ferma anche le
   esplosioni) e che spezza le pale dei mulini; attraversa e prosegue al 70% della velocità. L'IA sceglie da sola il
