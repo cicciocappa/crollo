@@ -15,7 +15,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 - **14 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
-  2. *Mura di Pietra*: muro a mattoni sfalsati; arriva la bomba.
+  2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
   4. *Palazzo di Ghiaccio*: blocchi di ghiaccio scivolosi che si **frantumano** in otto schegge.
   5. *Mongolfiere*: re in cesti appesi a palloni con gravità negativa, ancorati con corde; buca i palloni.

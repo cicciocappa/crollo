@@ -756,14 +756,19 @@ static void Level02( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 1.0f;
 	b.Island( { 0, 1, 34 }, 9.0f );
-	b.Wall( { -4.0f, 1.0f, 30.0f }, true, 8, 4, Mat::Stone );
-	float top = b.Tower( { -2.0f, 1.0f, 34.5f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { -2.0f, top, 34.5f }, kCrimson );
-	float c = b.Column( { 2.5f, 1.0f, 35.0f }, 2, 0.5f, Mat::Stone );
-	b.Box( { 2.5f, c + 0.12f, 35.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
-	b.King( { 2.5f, c + 0.24f, 35.0f }, kBlue );
-	b.Trees( { 0, 1, 34 }, 9.0f, 5, 6.5f );
-	b.Flag( { 5.0f, 1.0f, 37.0f }, kCrimson );
+	// 2.5 m of wall: tall enough to hide a king standing right behind it
+	b.Wall( { -4.0f, 1.0f, 30.0f }, true, 8, 5, Mat::Stone );
+	// the third king hides at ground level behind the wall; the player finds him in the
+	// opening fly-by or with TAB, and needs a lob (or a breach) to reach him
+	b.King( { 0.0f, 1.0f, 31.6f }, kGreen );
+	// the two visible kings stand well apart, so a single bomb cannot reach all three
+	float top = b.Tower( { -3.6f, 1.0f, 35.0f }, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { -3.6f, top, 35.0f }, kCrimson );
+	float c = b.Column( { 4.0f, 1.0f, 35.5f }, 2, 0.5f, Mat::Stone );
+	b.Box( { 4.0f, c + 0.12f, 35.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 4.0f, c + 0.24f, 35.5f }, kBlue );
+	b.Trees( { 0, 1, 34 }, 9.0f, 4, 7.2f );
+	b.Flag( { 1.5f, 1.0f, 38.5f }, kCrimson );
 	b.Fortress( { 0, 3, 34 }, 11.0f );
 }
 
@@ -1060,8 +1065,8 @@ static void Level14( Builder& b )
 static const LevelDef s_levels[] = {
 	{ "Primo Colpo", "Il re di legno", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01 },
-	{ "Mura di Pietra", "Due re dietro le mura", "La BOMBA (tasto 2) esplode all'impatto, oppure premi SPAZIO in volo.",
-	  { 3, 2, 0, 0, 0 }, 2, { 0, 0, 0 }, Level02 },
+	{ "Mura di Pietra", "Tre re, ma ne vedi due", "Conta le corone: un re si nasconde. Premi TAB per guardare dietro le mura. La BOMBA (2) esplode all'impatto.",
+	  { 5, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02 },
 	{ "Il Ponte", "Un re sospeso nel vuoto", "La PALLA INCATENATA (tasto 4) spazza tutto. Le corde si spezzano!",
 	  { 3, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03 },
 	{ "Palazzo di Ghiaccio", "Fragile e scivoloso", "Il ghiaccio si frantuma. Il GRAPPOLO (tasto 3) si divide con SPAZIO.",

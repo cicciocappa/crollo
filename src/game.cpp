@@ -68,6 +68,7 @@ static const int kSubSteps = 4;
 static const float kGravity = 10.0f;
 static const float kMinSpeed = 12.0f;
 static const float kMaxSpeed = 34.0f;
+static const float kIntroSeconds = 5.0f;
 
 static const AmmoInfo s_ammo[(int)Ammo::Count] = {
 	{ "Palla", "Palla di ferro: semplice e affidabile.", { 70, 72, 82, 255 } },
@@ -2551,15 +2552,19 @@ void Game::UpdateCamera( float dt )
 	{
 		case CamMode::Intro:
 		{
-			float t = Clamp01( m_introTime / 4.0f );
-			float ang = m_cannonBaseYaw + PI + 1.1f - t * 2.0f;
+			// A full lap of the fortress that passes behind it, so nothing it hides goes unseen,
+			// then a glide back to the cannon.
+			float t = Clamp01( m_introTime / kIntroSeconds );
+			float front = m_cannonBaseYaw + PI; // the side facing the cannon
+			float lap = SmoothStep( 0.0f, 0.72f, t );
+			float ang = front + 1.0f + lap * ( 2.0f * PI - 2.0f );
 			float R = m_fortressRadius * 1.5f + 6.0f;
 			Vector3 orbit = Vector3Add( m_fortressCenter, { sinf( ang ) * R, 4.0f + R * 0.25f, cosf( ang ) * R } );
-			float w = SmoothStep( 0.55f, 1.0f, t );
+			float w = SmoothStep( 0.62f, 1.0f, t );
 			desiredPos = Vector3Lerp( orbit, aimPos, w );
 			desiredTarget = Vector3Lerp( m_fortressCenter, aimTarget, w );
 			rate = 3.5f;
-			if ( m_introTime >= 4.0f )
+			if ( m_introTime >= kIntroSeconds )
 			{
 				m_camMode = CamMode::Aim;
 			}
@@ -3202,13 +3207,13 @@ void Game::DrawHUD()
 
 	if ( m_camMode == CamMode::Intro && m_screen == Screen::Playing )
 	{
-		float a = Clamp01( m_introTime * 2.0f ) * Clamp01( ( 4.0f - m_introTime ) * 2.0f );
-		DrawRectangle( 0, (int)( H * 0.33f ), W, (int)( 210 * S ), WithAlpha( BLACK, 0.35f * a ) );
-		ui::TextOutlined( m_challenge ? "Sfida infinita" : TextFormat( "Livello %d", m_levelIndex + 1 ), W * 0.5f, H * 0.33f + 14 * S, 40, WithAlpha( kCream, a ),
+		float a = Clamp01( m_introTime * 2.0f ) * Clamp01( ( kIntroSeconds - 1.0f - m_introTime ) * 2.0f );
+		DrawRectangle( 0, (int)( H * 0.04f ), W, (int)( 210 * S ), WithAlpha( BLACK, 0.35f * a ) );
+		ui::TextOutlined( m_challenge ? "Sfida infinita" : TextFormat( "Livello %d", m_levelIndex + 1 ), W * 0.5f, H * 0.04f + 14 * S, 40, WithAlpha( kCream, a ),
 						  WithAlpha( Color{ 60, 30, 10, 255 }, a ), 3 );
-		ui::TextOutlined( m_level->name, W * 0.5f, H * 0.33f + 58 * S, 92, WithAlpha( kGold, a ), WithAlpha( Color{ 90, 40, 10, 255 }, a ),
+		ui::TextOutlined( m_level->name, W * 0.5f, H * 0.04f + 58 * S, 92, WithAlpha( kGold, a ), WithAlpha( Color{ 90, 40, 10, 255 }, a ),
 						  5 );
-		ui::TextCentered( m_level->subtitle, W * 0.5f, H * 0.33f + 158 * S, 34, WithAlpha( WHITE, a ) );
+		ui::TextCentered( m_level->subtitle, W * 0.5f, H * 0.04f + 158 * S, 34, WithAlpha( WHITE, a ) );
 		ui::TextCentered( "click per iniziare", W * 0.5f, H - 90 * S, 28, WithAlpha( WHITE, 0.5f + 0.5f * sinf( m_time * 4.0f ) ) );
 		return;
 	}
