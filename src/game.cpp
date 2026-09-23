@@ -175,9 +175,9 @@ void Game::SetCannon( Vector3 pos, float yaw )
 	m_cannonBaseYaw = yaw;
 }
 
-void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset )
+void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob )
 {
-	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset } );
+	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob } );
 }
 
 void Game::SetFortressCenter( Vector3 c, float radius )
@@ -310,6 +310,15 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	m_level = def;
 	m_attract = attract;
 	m_wind = m_level->wind;
+	if ( m_headless )
+	{
+		// tests: a level plays out the same whether it runs alone or after the others
+		FxRng() = Rng( 0xC0FFEEu ^ seed );
+	}
+	m_windShift = 0.0f;
+	m_windPending = false;
+	m_windChanged = 0.0f;
+	m_windRng = Rng( seed ^ 0x77196e5du );
 
 	for ( int i = 0; i < (int)Ammo::Count; ++i )
 	{
@@ -1019,6 +1028,7 @@ void Game::Fire()
 
 void Game::FireProjectile( Ammo type, Vector3 muzzle, Vector3 dir, float speed )
 {
+	m_windPending = m_windShift > 0.0f;
 	m_recoil = 0.45f;
 	m_reload = 0.9f;
 	m_sinceShot = 0.0f;
@@ -1355,7 +1365,28 @@ void Game::Explode( Vector3 pos, float radius, float impulse, bool big )
 	def.falloff = big ? radius * 0.8f : radius * 0.5f;
 	def.impulsePerArea = impulse;
 	def.maskBits = CatBlock | CatKing | CatProjectile | CatDebris;
+
+	// Box3D pushes straight through walls: note which bodies a barrier shields, and give them back their
+	// velocities once the blast has been applied (it only changes velocities).
+	struct Shielded
+	{
+		Entity* e;
+		b3Vec3 v, w;
+	};
+	std::vector<Shielded> shielded;
+	for ( Entity* e : m_scene.entities )
+	{
+		if ( e->alive && e->isStatic == false && Vector3Distance( e->pos, pos ) < radius + def.falloff + 1.5f && BlastReaches( pos, e ) == false )
+		{
+			shielded.push_back( { e, b3Body_GetLinearVelocity( e->body ), b3Body_GetAngularVelocity( e->body ) } );
+		}
+	}
 	b3World_Explode( m_scene.World(), &def );
+	for ( const Shielded& sh : shielded )
+	{
+		b3Body_SetLinearVelocity( sh.e->body, sh.v );
+		b3Body_SetAngularVelocity( sh.e->body, sh.w );
+	}
 
 	AddReplayEvent( ReplayEvent::Explosion, pos, { 0, 0, 0 }, radius, big );
 	m_particles.Explosion( pos, radius );
@@ -1380,6 +1411,10 @@ void Game::Explode( Vector3 pos, float radius, float impulse, bool big )
 			continue;
 		}
 		float d = Vector3Distance( e->pos, pos );
+		if ( d > radius * 1.3f || BlastReaches( pos, e ) == false )
+		{
+			continue;
+		}
 		if ( e->mat == Mat::Tnt && e->kind == Kind::Block && d < radius * 1.3f && e->fuse < 0.0f )
 		{
 			e->fuse = 0.12f + FxRng().Range( 0.0f, 0.18f );
@@ -1418,6 +1453,29 @@ void Game::Explode( Vector3 pos, float radius, float impulse, bool big )
 			b3DestroyJoint( rope.joint, true );
 		}
 	}
+}
+
+bool Game::BlastReaches( Vector3 pos, const Entity* e ) const
+{
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.categoryBits = CatAll;
+	filter.maskBits = CatStatic | CatShield;
+	// a king is reached if its feet, middle or head is in the open; anything else, its centre
+	const float kingHeights[3] = { 0.25f, 0.6f, 1.08f };
+	const float centre[1] = { 0.0f };
+	bool king = e->kind == Kind::King;
+	const float* heights = king ? kingHeights : centre;
+	int count = king ? 3 : 1;
+	for ( int i = 0; i < count; ++i )
+	{
+		Vector3 p = Vector3Add( e->pos, Vector3RotateByQuaternion( { 0, heights[i], 0 }, e->rot ) );
+		b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( pos ), ToB3( Vector3Subtract( p, pos ) ), filter );
+		if ( hit.hit == false )
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 void Game::Shatter( Entity* e )
@@ -1468,6 +1526,80 @@ void Game::Shatter( Entity* e )
 		m_audio->PlayAt( Sfx::IceBreak, pos, 0.9f, r.Range( 0.9f, 1.15f ) );
 	}
 	AddScore( 250, pos, false );
+}
+
+void Game::Crumble( Entity* e )
+{
+	if ( e == nullptr || e->alive == false || e->parts.empty() )
+	{
+		return;
+	}
+	Vector3 pos = e->pos;
+	Quaternion rot = e->rot;
+	Vector3 half = e->parts[0].size;
+	Color tint = e->parts[0].tint;
+	Vector3 blow = ToRl( e->lastVel );
+	Kill( e );
+
+	// split into blocks of about half a metre, driven on by the blow
+	Rng& r = FxRng();
+	int nx = std::max( 1, (int)roundf( half.x * 2.0f / 0.6f ) );
+	int ny = std::max( 1, (int)roundf( half.y * 2.0f / 0.6f ) );
+	int nz = std::max( 1, (int)roundf( half.z * 2.0f / 0.6f ) );
+	Vector3 cell{ half.x / nx, half.y / ny, half.z / nz };
+	for ( int i = 0; i < nx; ++i )
+	{
+		for ( int j = 0; j < ny; ++j )
+		{
+			for ( int k = 0; k < nz; ++k )
+			{
+				Vector3 local{ -half.x + cell.x * ( 2 * i + 1 ), -half.y + cell.y * ( 2 * j + 1 ), -half.z + cell.z * ( 2 * k + 1 ) };
+				BodyOptions bo;
+				bo.velocity = Vector3Add( Vector3Scale( r.OnSphere(), r.Range( 0.5f, 2.0f ) ), Vector3Scale( blow, r.Range( 0.3f, 0.6f ) ) );
+				bo.angularVelocity = Vector3Scale( r.OnSphere(), r.Range( 1.0f, 4.0f ) );
+				Entity* c = m_scene.CreateEntity( Kind::Block, Mat::Stone, Vector3Add( pos, Vector3RotateByQuaternion( local, rot ) ), ToB3( rot ), bo );
+				ShapeOptions so;
+				so.category = CatBlock;
+				m_scene.AddBox( c, { 0, 0, 0 }, b3Quat_identity, Vector3Scale( cell, 0.9f ), Mat::Stone, so );
+				c->parts.back().tint = ColorBrightness( tint, r.Range( -0.15f, 0.05f ) );
+				c->homeY = -1000.0f;
+				m_scene.FinalizeEntity( c );
+			}
+		}
+	}
+
+	AddReplayEvent( ReplayEvent::Shatter, pos );
+	m_particles.Debris( pos, Color{ 150, 140, 130, 255 }, 24, 7.0f, 0.14f );
+	if ( m_audio )
+	{
+		m_audio->PlayAt( Sfx::StoneHit, pos, 1.0f, r.Range( 0.6f, 0.75f ) );
+		m_audio->PlayAt( Sfx::MetalHit, pos, 0.8f, r.Range( 0.7f, 0.85f ) );
+	}
+	AddScore( 500, pos, false );
+}
+
+void Game::BreakBlades( Entity* blades )
+{
+	for ( Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Windmill || m.entity != blades )
+		{
+			continue;
+		}
+		if ( b3Joint_IsValid( m.joint ) )
+		{
+			b3DestroyJoint( m.joint, true );
+		}
+		m.joint = b3_nullJointId;
+		m.entity = nullptr;
+		m_particles.Debris( blades->pos, Color{ 186, 128, 74, 255 }, 20, 6.0f, 0.12f );
+		if ( m_audio )
+		{
+			m_audio->PlayAt( Sfx::WoodHit, blades->pos, 1.0f, 0.6f );
+			m_audio->PlayAt( Sfx::RopeSnap, blades->pos, 0.9f, 0.7f );
+		}
+		AddScore( 500, blades->pos, false );
+	}
 }
 
 void Game::DefeatKing( Entity* king, const char* reason )
@@ -1569,6 +1701,20 @@ void Game::FixedStep()
 		}
 	}
 
+	if ( m_windPending && AnyProjectileFlying() == false )
+	{
+		// the shot has landed: the wind turns for the next one
+		m_windPending = false;
+		float a = m_windRng.Range( 0.0f, 2.0f * PI );
+		float strength = m_windShift * m_windRng.Range( 0.4f, 1.0f );
+		m_wind = { cosf( a ) * strength, 0.0f, sinf( a ) * strength };
+		m_windChanged = 2.5f;
+		if ( m_audio )
+		{
+			m_audio->SetWindStrength( 0.25f + strength * 0.25f );
+		}
+	}
+
 	for ( Mechanism& m : m_scene.mechanisms )
 	{
 		if ( m.type == MechType::Slider && b3Joint_IsValid( m.joint ) )
@@ -1578,6 +1724,13 @@ void Game::FixedStep()
 	}
 	UpdateShields();
 
+	for ( Entity* e : m_scene.entities )
+	{
+		if ( e->alive && e->kind == Kind::Projectile )
+		{
+			e->lastVel = b3Body_GetLinearVelocity( e->body );
+		}
+	}
 	m_scene.Step( dt, kSubSteps );
 	HandleEvents();
 
@@ -1785,6 +1938,37 @@ void Game::HandleEvents()
 				{
 					StickTo( x, other );
 				}
+				// sand swallows the blow: the shot sinks in and the bag keeps only a little of the push.
+				// The boulder is heavy enough to plough on.
+				if ( other->kind == Kind::Block && other->mat == Mat::Sand && x->ammo != (int)Ammo::Sticky )
+				{
+					float keep = x->ammo == (int)Ammo::Boulder ? 0.5f : 0.15f;
+					b3Body_SetLinearVelocity( x->body, b3MulSV( keep, b3Body_GetLinearVelocity( x->body ) ) );
+					b3Body_SetAngularVelocity( x->body, b3MulSV( keep, b3Body_GetAngularVelocity( x->body ) ) );
+					b3Body_SetLinearVelocity( other->body, b3MulSV( 0.25f, b3Body_GetLinearVelocity( other->body ) ) );
+					b3Body_SetAngularVelocity( other->body, b3MulSV( 0.25f, b3Body_GetAngularVelocity( other->body ) ) );
+				}
+			}
+
+			// only the boulder smashes reinforced masonry and snaps windmill blades; it ploughs on through
+			bool boulder = other->kind == Kind::Projectile && other->ammo == (int)Ammo::Boulder && h.speed > 6.0f;
+			bool blades = false;
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				blades = blades || ( m.type == MechType::Windmill && m.entity == x );
+			}
+			if ( boulder && ( ( x->reinforced && x->breakQueued == false ) || blades ) )
+			{
+				b3Body_SetLinearVelocity( other->body, b3MulSV( 0.7f, other->lastVel ) );
+				if ( x->reinforced )
+				{
+					x->breakQueued = true;
+					x->lastVel = other->lastVel; // the rubble is driven on the way the boulder was going
+				}
+				else
+				{
+					BreakBlades( x );
+				}
 			}
 
 			if ( x->kind == Kind::Block && x->mat == Mat::Tnt && h.speed > 4.5f && x->fuse < 0.0f )
@@ -1870,7 +2054,14 @@ void Game::HandleEvents()
 		Entity* e = m_scene.entities[i];
 		if ( e->alive && e->breakQueued )
 		{
-			Shatter( e );
+			if ( e->reinforced )
+			{
+				Crumble( e );
+			}
+			else
+			{
+				Shatter( e );
+			}
 		}
 	}
 }
@@ -2561,6 +2752,7 @@ bool Game::AutoFireAtKing()
 	}
 	// some kings are brought down indirectly: go for the stone, gate or pillar while it is still in place
 	const Entity* goal = target;
+	float lob = 0.0f;
 	for ( const AimHintRecord& h : m_aimHints )
 	{
 		if ( h.king != target->serial )
@@ -2573,6 +2765,7 @@ bool Game::AutoFireAtKing()
 			{
 				aimPoint = Vector3Add( e->pos, h.offset );
 				goal = e;
+				lob = h.lob;
 				break;
 			}
 		}
@@ -2608,12 +2801,17 @@ bool Game::AutoFireAtKing()
 		{
 			return false;
 		}
+		// nothing else gets through reinforced masonry
+		if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
+		{
+			type = Ammo::Boulder;
+		}
 	}
 
-	return FireAt( aimPoint, type, goal );
+	return FireAt( aimPoint, type, goal, lob );
 }
 
-bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
+bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob )
 {
 	Rng& r = FxRng();
 
@@ -2643,12 +2841,45 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
 	// March a ray along the arc; the path is clear if the first thing it meets is the target.
 	b3QueryFilter filter = b3DefaultQueryFilter();
 	filter.maskBits = CatStatic | CatBlock | CatKing;
+	bool sliderBlocked = false;
+	float edgeReach = type == Ammo::Boulder ? 0.5f : 0.0f;
+	std::vector<Vector3> edges{ { 0, 0, 0 } };
+	if ( edgeReach > 0.0f )
+	{
+		edges.push_back( { 0, edgeReach, 0 } );
+		edges.push_back( { 0, -edgeReach, 0 } );
+		edges.push_back( { edgeReach, 0, 0 } );
+		edges.push_back( { -edgeReach, 0, 0 } );
+	}
 	auto pathClear = [&]( Vector3 v, float flight ) {
 		Vector3 p0 = Muzzle();
 		Vector3 prev = p0;
 		for ( float t = 0.05f; t < flight + 0.2f; t += 0.05f )
 		{
 			Vector3 p = Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( accel, 0.5f * t * t ) ) );
+			// sliding walls: where will the wall be when the shot crosses its rail?
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				if ( m.type != MechType::Slider || m.entity == nullptr || m.entity->alive == false )
+				{
+					continue;
+				}
+				float wz = m.entity->pos.z;
+				if ( ( prev.z - wz ) * ( p.z - wz ) <= 0.0f && fabsf( p.z - prev.z ) > 1e-5f )
+				{
+					float f = ( wz - prev.z ) / ( p.z - prev.z );
+					Vector3 c = Vector3Lerp( prev, p, f );
+					float when = m_scene.time + t - 0.05f * ( 1.0f - f );
+					float shift = m.amplitude * ( sinf( m.speed * when + m.phase ) - sinf( m.speed * m_scene.time + m.phase ) );
+					Vector3 wall = Vector3Add( m.entity->pos, Vector3Scale( m.axis, shift ) );
+					Vector3 half = m.entity->parts[0].size;
+					if ( fabsf( c.x - wall.x ) < half.x + 0.4f + edgeReach && fabsf( c.y - wall.y ) < half.y + 0.4f + edgeReach )
+					{
+						sliderBlocked = true;
+						return false;
+					}
+				}
+			}
 			// the blades keep turning while the shot flies: treat their whole disk as closed
 			for ( const Mechanism& m : m_scene.mechanisms )
 			{
@@ -2666,10 +2897,21 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
 					}
 				}
 			}
-			b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( prev ), ToB3( Vector3Subtract( p, prev ) ), filter );
-			if ( hit.hit )
+			// the boulder is big: check its top, bottom and sides too, not just its centre
+			for ( const Vector3& o : edges )
 			{
-				return EntityFromShape( hit.shapeId ) == target || Vector3Distance( ToRl( hit.point ), aimPoint ) < 1.2f;
+				Vector3 from = Vector3Add( prev, o );
+				b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( from ), ToB3( Vector3Subtract( p, prev ) ), filter );
+				Entity* struck = hit.hit ? EntityFromShape( hit.shapeId ) : nullptr;
+				bool sliding = false;
+				for ( const Mechanism& m : m_scene.mechanisms )
+				{
+					sliding = sliding || ( m.type == MechType::Slider && m.entity == struck && struck != nullptr );
+				}
+				if ( hit.hit && sliding == false )
+				{
+					return struck == target || Vector3Distance( ToRl( hit.point ), aimPoint ) < 1.2f + edgeReach;
+				}
 			}
 			prev = p;
 		}
@@ -2683,10 +2925,15 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
 	bool found = false;
 	bool fallback = false;
 	bool waitForShield = false;
+	bool waitForSlider = false;
 	for ( int k = start; k < count; ++k )
 	{
 		Vector3 v;
 		float flight;
+		if ( lob > 0.0f && speeds[k] > lob )
+		{
+			continue;
+		}
 		if ( solve( speeds[k] * ( m_attract ? r.Range( 0.9f, 1.1f ) : 1.0f ), v, flight ) == false )
 		{
 			continue;
@@ -2696,7 +2943,10 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
 			best = v;
 			fallback = true;
 		}
-		if ( pathClear( v, flight ) )
+		sliderBlocked = false;
+		bool clear = pathClear( v, flight );
+		waitForSlider = waitForSlider || sliderBlocked;
+		if ( clear )
 		{
 			// clear of blocks, but would a crystal shield be up when the shot passes through it?
 			if ( PathShieldBlock( Muzzle(), v, accel, flight + 0.2f, m_scene.time ) >= 0.0f )
@@ -2709,7 +2959,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
 			break;
 		}
 	}
-	if ( found == false && waitForShield )
+	if ( found == false && ( waitForShield || waitForSlider ) )
 	{
 		return false; // a window will open: try again on a later frame
 	}
@@ -3061,6 +3311,7 @@ void Game::UpdateCamera( float dt )
 
 	m_shake = ExpDecay( m_shake, 0.0f, 4.0f, dt );
 	m_screenFlash = std::max( 0.0f, m_screenFlash - dt * 2.5f );
+	m_windChanged = std::max( 0.0f, m_windChanged - dt );
 	Vector3 shake{};
 	if ( m_shake > 0.001f )
 	{
@@ -3351,6 +3602,144 @@ void Game::TestMaterialsAndAmmo()
 		}
 		printf( "Adesiva: attaccata a %.2f s, esplosa a %.2f s (miccia %.2f s) -> %s\n", stuckAt, goneAt, goneAt - stuckAt,
 				stuckAt >= 0.0f && fabsf( goneAt - stuckAt - 3.0f ) < 0.1f ? "ok" : "PROBLEMA" );
+	}
+
+	// 5. blasts and barriers: a bomb going off against the rubber wall of level 14 must not reach the king behind it
+	{
+		auto kingNear = [&]( Vector3 p ) {
+			Entity* best = nullptr;
+			for ( Entity* e : m_scene.entities )
+			{
+				if ( e->alive && e->kind == Kind::King && ( best == nullptr || Vector3Distance( e->pos, p ) < Vector3Distance( best->pos, p ) ) )
+				{
+					best = e;
+				}
+			}
+			return best;
+		};
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		Entity* king = kingNear( { 7.0f, 3.0f, 38.5f } );
+		Explode( { 7.0f, 2.6f, 35.8f }, 2.6f, 1300.0f, false );
+		settle( 180 );
+		printf( "Barriera: bomba contro la gomma, il re dietro %s -> %s\n", king->defeated ? "cade" : "resta in piedi",
+				king->defeated ? "FALLITO" : "ok" );
+
+		// and without the wall the same bomb knocks him down
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		king = kingNear( { 7.0f, 3.0f, 38.5f } );
+		Vector3 behind = Vector3Add( king->pos, { 0.0f, 0.6f, 1.5f } );
+		Explode( behind, 2.6f, 1300.0f, false );
+		settle( 180 );
+		printf( "Barriera: la stessa bomba alle spalle del re, senza muro, %s -> %s\n", king->defeated ? "lo abbatte" : "non lo abbatte",
+				king->defeated ? "ok" : "FALLITO" );
+	}
+
+	// 6. sandbags soak up cannonballs: a ball fired into the sandbag wall of level 14 barely moves it
+	{
+		LoadLevel( 13, false );
+		SkipIntro();
+		settle( 60 );
+		Vector3 aim{ 0.0f, 2.0f, 33.6f };
+		std::vector<std::pair<Entity*, Vector3>> bags;
+		for ( Entity* e : m_scene.entities )
+		{
+			if ( e->alive && e->kind == Kind::Block && e->mat == Mat::Sand && Vector3Distance( e->pos, aim ) < 2.5f )
+			{
+				bags.push_back( { e, e->pos } );
+			}
+		}
+		FireAt( aim, Ammo::Ball, nullptr );
+		settle( 240 );
+		float sum = 0.0f;
+		int moved = 0;
+		for ( auto& p : bags )
+		{
+			float d = Vector3Distance( p.first->pos, p.second );
+			sum += d;
+			moved += d > 0.3f ? 1 : 0;
+		}
+		printf( "Sabbia: una palla contro i sacchi, spostamento medio %.2f m, %d sacchi su %d spostati di oltre 30 cm -> %s\n",
+				bags.empty() ? 0.0f : sum / bags.size(), moved, (int)bags.size(), moved <= 1 ? "assorbono" : "NON assorbono" );
+	}
+
+	// 7. reinforced masonry: a ball bounces off the gate of level 9, the boulder smashes it and the queen falls
+	{
+		auto shootGate = [&]( Ammo type ) {
+			LoadLevel( 8, false );
+			SkipIntro();
+			settle( 60 );
+			Entity* gate = nullptr;
+			Entity* queen = nullptr;
+			for ( Entity* e : m_scene.entities )
+			{
+				gate = e->reinforced ? e : gate;
+				queen = e->kind == Kind::King && fabsf( e->pos.x ) < 0.5f ? e : queen;
+			}
+			Vector3 from = Vector3Add( gate->pos, { 0, 0, -4.0f } );
+			FireProjectile( type, from, { 0, 0, 1 }, type == Ammo::Boulder ? 18.0f / 0.82f : 18.0f );
+			settle( 240 );
+			// dead entities are freed a frame later: look the gate up again rather than trusting the pointer
+			bool standing = false;
+			for ( Entity* e : m_scene.entities )
+			{
+				standing = standing || ( e->alive && e->reinforced );
+			}
+			return std::make_pair( standing, queen->defeated );
+		};
+		auto ball = shootGate( Ammo::Ball );
+		auto boulder = shootGate( Ammo::Boulder );
+		printf( "Portone rinforzato: palla -> %s, macigno -> %s e la regina %s -> %s\n", ball.first ? "regge" : "crolla",
+				boulder.first ? "regge" : "crolla", boulder.second ? "cade" : "resta in piedi",
+				ball.first && boulder.first == false && boulder.second ? "ok" : "FALLITO" );
+	}
+
+	// 8. windmill blades: a ball bounces off, the boulder snaps them off the axle
+	{
+		auto shootBlades = [&]( Ammo type ) {
+			LoadLevel( 5, false );
+			SkipIntro();
+			settle( 60 );
+			const Mechanism* mill = nullptr;
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				mill = m.type == MechType::Windmill ? &m : mill;
+			}
+			Vector3 hub = mill->entity->pos;
+			// straight at a blade halfway along, wherever it is right now
+			Vector3 target = Vector3Add( hub, Vector3RotateByQuaternion( { 0, 1.8f, 0 }, mill->entity->rot ) );
+			FireProjectile( type, Vector3Add( target, { 0, 0, -4.0f } ), { 0, 0, 1 }, type == Ammo::Boulder ? 18.0f / 0.82f : 18.0f );
+			settle( 120 );
+			return b3Joint_IsValid( mill->joint );
+		};
+		bool afterBall = shootBlades( Ammo::Ball );
+		bool afterBoulder = shootBlades( Ammo::Boulder );
+		printf( "Pale del mulino: palla -> %s, macigno -> %s -> %s\n", afterBall ? "girano" : "spezzate", afterBoulder ? "girano" : "spezzate",
+				afterBall && afterBoulder == false ? "ok" : "FALLITO" );
+	}
+
+	// 9. the same shot at the ice dam: real snowballs bring down all three kings, the powder puffs of the trap none
+	{
+		auto breakDam = [&]( const char* id ) {
+			LoadLevel( FindLevelById( id ), false );
+			SkipIntro();
+			settle( 60 );
+			Entity* dam = nullptr;
+			for ( Entity* e : m_scene.entities )
+			{
+				dam = e->kind == Kind::Block && e->mat == Mat::Ice ? e : dam;
+			}
+			FireAt( Vector3Add( dam->pos, { 0, 0.3f, 0 } ), Ammo::Ball, dam );
+			settle( 600 );
+			return KingsTotal() - KingsRemaining();
+		};
+		int avalanche = breakDam( "gelo_valanga" );
+		int powder = breakDam( "gelo_neve_fresca" );
+		printf( "Valanga: re abbattuti dalla neve vera %d, dalla neve fresca %d -> %s\n", avalanche, powder,
+				avalanche == 3 && powder == 0 ? "ok" : "FALLITO" );
 	}
 }
 
@@ -3680,11 +4069,13 @@ void Game::DrawHUD()
 		Vector2 d{ Vector3DotProduct( m_wind, right ), -Vector3DotProduct( m_wind, fwd ) };
 		d = Vector2Normalize( d );
 		Vector2 c{ W * 0.5f, 70 * S };
-		ui::Panel( { c.x - 120 * S, 20 * S, 240 * S, 100 * S }, Color{ 40, 30, 25, 150 }, Color{ 255, 220, 150, 100 } );
+		// a shifting wind flashes its panel for a moment after it turns
+		bool turned = m_windChanged > 0.0f && fmodf( m_windChanged, 0.5f ) > 0.2f;
+		ui::Panel( { c.x - 120 * S, 20 * S, 240 * S, 100 * S }, Color{ 40, 30, 25, 150 }, turned ? kGold : Color{ 255, 220, 150, 100 } );
 		float len = ( 20 + windStrength * 12 ) * S;
 		ui::Arrow( { c.x - d.x * len * 0.5f - 50 * S, c.y + 8 * S - d.y * len * 0.5f },
 				   { c.x + d.x * len * 0.5f - 50 * S, c.y + 8 * S + d.y * len * 0.5f }, 5 * S, Color{ 180, 220, 255, 255 } );
-		ui::TextShadow( "VENTO", { c.x - 5 * S, 30 * S }, 26, Color{ 200, 230, 255, 255 } );
+		ui::TextShadow( m_windChanged > 0.0f ? "CAMBIA!" : "VENTO", { c.x - 5 * S, 30 * S }, 26, Color{ 200, 230, 255, 255 } );
 		ui::TextShadow( TextFormat( "%.1f", windStrength ), { c.x - 5 * S, 60 * S }, 40, WHITE );
 	}
 
@@ -4177,7 +4568,10 @@ void Game::DrawLevelSelect()
 		int i = cc.levels[j];
 		int row = j / cols;
 		int col = j % cols;
-		Rectangle rc{ x0 + col * ( cw + gap ), y0 + row * ( ch + gap ), cw, ch };
+		// a short last row sits in the middle
+		int inRow = std::min( cols, count - row * cols );
+		float shift = ( cols - inRow ) * ( cw + gap ) * 0.5f;
+		Rectangle rc{ x0 + shift + col * ( cw + gap ), y0 + row * ( ch + gap ), cw, ch };
 		bool unlocked = LevelUnlocked( i );
 		bool finale = j == count - 1;
 		bool hover = unlocked && ui::Hovered( rc );

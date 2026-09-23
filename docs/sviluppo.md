@@ -270,17 +270,17 @@ L'ordine consigliato parte dalle cose piccole che rendono il gioco più vario, p
 | 2 | Fatto (commit 6a36993): gomma, sacchi di sabbia, Vortice (implosione), bomba adesiva; livelli 13 e 14 | quattro novità da una sessione, tutte con API Box3D già pronte |
 | 3 | Fatto (commit 23ad3fe): `Campaign` e `Biome` (sei biomi come uniform, con meteo e musica propri), mappa dei regni, prologhi ed epiloghi, salvataggi per id con migrazione; livelli esistenti divisi in Prati Alti (8), Valle dei Mulini (3), Picchi Gelati (3) | sblocca tutto il lavoro sui contenuti che segue |
 | 4 | Fatto (commit 2cd384d): Picchi Gelati a 8 livelli con Crepacci, Curling, Stalattiti, Valanga e il finale La Reggia di Ghiacciolo; nuovi pezzi del Builder (pietre da curling, palle di neve, diga di ghiaccio, tetti di neve) e suggerimenti di mira per l'IA | la prima campagna nuova mette alla prova la struttura |
-| 4b | In corso: modifiche dal riscontro dei tester. Fatto: modalità trucchi (F9 o `--cheat`: colpi infiniti, vittorie non salvate) | prima di aggiungere, sistemare ciò che i tester hanno notato |
+| 4b | Fatto: modifiche dal riscontro dei tester. Modalità trucchi (F9 o `--cheat`: colpi infiniti, vittorie non salvate); pale del mulino di nuovo in moto; esplosioni fermate dai corpi statici; sacchi di sabbia che assorbono i colpi; vento che cambia a ogni colpo; Polveriera a casamatta con feritoia, Sponde di Gomma con tettoia e gomma inclinata, Cittadella senza TNT e con vento variabile; il macigno spezza le pale dei mulini e sfonda la muratura rinforzata (portone della regina in Scudi Mobili, che ha anche il vento variabile); Curling con un solo re nella casa e due pietre in fila; nuovo livello Doppio Curling (i due re di prima, con sponde di legno che riportano la pietra verso il re), e Curling dei Campioni (due re, senza sponde): munizioni ridotte in Cristalli Guardiani e Stalattiti (3 palle) e Valanga (2 palle); nuovo livello trabocchetto Neve Fresca (una finta valanga di neve farinosa); i Picchi Gelati salgono a 11 livelli | prima di aggiungere, sistemare ciò che i tester hanno notato |
 | 5 | Duello 1vs1 sullo stesso PC, solo scontro con fortezze pronte, con coop come variante | multiplayer al costo più basso |
-| 6 | Dune Sospese: piattaforme e nastri cinematici, vetro infrangibile, IA che anticipa i bersagli mobili; 8 livelli con boss finale | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
-| 7 | Arcipelago delle Tempeste: gomma che scorre e ruota, ventole e correnti, isole che fluttuano; 8 livelli di sponda con boss finale | riusa i corpi cinematici della sessione 6 |
-| 8 | Fucina del Vulcano: bersagli-interruttore, parti di catena, soluzione scritta nei livelli, scudi orbitanti, arpione; 8 livelli con boss finale | la più complessa: usa tutti i pezzi precedenti |
+| 6 | Dune Sospese: piattaforme e nastri cinematici, vetro infrangibile, IA che anticipa i bersagli mobili; almeno 8 livelli con boss finale | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
+| 7 | Arcipelago delle Tempeste: gomma che scorre e ruota, ventole e correnti, isole che fluttuano; almeno 8 livelli di sponda con boss finale | riusa i corpi cinematici della sessione 6 |
+| 8 | Fucina del Vulcano: bersagli-interruttore, parti di catena, soluzione scritta nei livelli, scudi orbitanti, arpione; almeno 8 livelli con boss finale | la più complessa: usa tutti i pezzi precedenti |
 | dopo | Fase di costruzione del Duello; test di determinismo desktop contro web; poi online a turni con relay Node.js sul tuo server | solo se il Duello locale piace |
 
 ### Decisioni prese
 
 - **Nomi e tono**: restano Mastra Bombarda e la Corona dei Venti.
-- **Dimensione**: 6 campagne da 8 livelli, 48 in tutto.
+- **Dimensione**: 6 campagne da **almeno 8 livelli**; più livelli ci sono, meglio è. Più avanti nuove meccaniche per portarle tutte a 10 (i Picchi Gelati ne hanno già 11). Idea da riprendere: livelli bonus sbloccati con le stelle.
 - **Duello**: prima solo scontro, con fortezze già pronte. La fase di costruzione delle difese arriva in una sessione successiva.
 - **Meccaniche per campagna**: Dune Sospese = bersagli mobili, Arcipelago delle Tempeste = tiri di sponda, Fucina del Vulcano = meccanismi a catena.
 - **Boss**: l'ultimo livello di ogni campagna può essere molto difficile; si prova con la modalità trucchi.

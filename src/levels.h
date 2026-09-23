@@ -102,6 +102,8 @@ public:
 	// Heavy, sluggish bags that soak up hits and shrug off blasts (a quarter of the explosion push).
 	Entity* Sandbag( Vector3 center, float yaw = 0.0f );
 	float SandbagWall( Vector3 start, bool alongX, int bags, int rows );
+	// Iron-banded masonry: fixed like a ledge (blasts stop at it too), but the boulder smashes it to rubble.
+	Entity* Reinforced( Vector3 center, Vector3 half, float yaw = 0.0f );
 	// A fixed rubber wall: shots bounce off it, so it can be used for bank shots.
 	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f );
 
@@ -117,6 +119,8 @@ public:
 	Entity* CurlingStone( Vector3 base );
 	// A heavy ball of packed snow; crushes kings it runs into.
 	Entity* Snowball( Vector3 center, float radius );
+	// Looks like a snowball, weighs next to nothing: a ball of powder snow that harms no one.
+	Entity* Puffball( Vector3 center, float radius );
 	// A slab of ice welded between two fixed wooden posts: holds back whatever leans on it until it shatters.
 	Entity* Gate( Vector3 center, Vector3 half );
 	// A heavy roof of packed snow fringed with icicles, resting on three ice pillars (one in the middle of
@@ -124,7 +128,10 @@ public:
 	// Returns the front pillar.
 	Entity* SnowShelter( Vector3 base, float halfX, float halfZ, float height );
 	// Tells the autotest AI (and the demo) to go for `via` instead of `king` while `via` has not moved.
-	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 } );
+	// `lob` > 0 keeps it to high arcs: horizontal speeds up to `lob` m/s.
+	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 }, float lob = 0.0f );
+	// The wind turns and changes strength after every shot, up to `strength` (the level's wind is the first one).
+	void ShiftingWind( float strength );
 
 	// decoration
 	void Trees( Vector3 center, float radius, int count, float minR );

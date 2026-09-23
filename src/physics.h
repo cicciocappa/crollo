@@ -94,6 +94,7 @@ struct Entity
 	float fuse = -1.0f;		  // tnt / bomb countdown
 	bool breakQueued = false; // ice shatter
 	bool lethal = false;	  // heavy stones, snowballs, collapsing roofs: knock down any king they strike
+	bool reinforced = false;  // iron-banded masonry: fixed, and only the boulder breaks it
 	float flash = 0.0f;		  // hit flash for rendering
 
 	// king
@@ -109,6 +110,7 @@ struct Entity
 	bool hasHit = false;
 	float restTimer = 0.0f;
 	Entity* partner = nullptr; // chain shot partner
+	b3Vec3 lastVel{};		   // velocity before the last step, so a shot that smashes through can carry on
 };
 
 // A visual rope between two bodies (usually backed by a distance joint).
@@ -141,6 +143,7 @@ struct Mechanism
 	float amplitude = 0.0f;
 	float speed = 0.0f;
 	float phase = 0.0f;
+	Vector3 axis{ 1, 0, 0 }; // Slider: direction of travel
 
 	// Blinker: on for `onTime` seconds out of every `period`, shifted by `phase`
 	Entity* entity = nullptr;

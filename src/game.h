@@ -141,7 +141,7 @@ public:
 	void StepSimulation( float dt );
 	bool AutoFireAtKing(); // false when no shot was fired (nothing to hit, or waiting for a shield)
 	// Aims the cannon at a point (planning around obstacles and shields) and fires; false if it had to wait.
-	bool FireAt( Vector3 aimPoint, Ammo type, const Entity* target );
+	bool FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob = 0.0f );
 	void ScanForEasyShots( int levelIndex );
 
 	int KingsRemaining() const;
@@ -186,7 +186,12 @@ public:
 	void AddFlag( Vector3 base, Color color, float scale );
 	void SetCannon( Vector3 pos, float yaw );
 	void SetFortressCenter( Vector3 c, float radius );
-	void AddAimHint( Entity* king, Entity* via, Vector3 offset );
+	void AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob = 0.0f );
+	// The wind turns and changes strength (up to `strength`) once each shot has landed.
+	void SetShiftingWind( float strength )
+	{
+		m_windShift = strength;
+	}
 	int GetLevelCount() const;
 
 	// Campaign progress (also used by the tests)
@@ -227,9 +232,15 @@ private:
 	void Special( Entity* projectile );
 	void Detonate( Entity* e );
 	void Explode( Vector3 pos, float radius, float impulse, bool big );
+	// Whether a blast at `pos` reaches the entity, or a solid barrier (rock, rubber, a lit shield) is in the way.
+	bool BlastReaches( Vector3 pos, const Entity* e ) const;
 	void Implode( Vector3 pos, float radius, float impulse );
 	void StickTo( Entity* bomb, Entity* other );
 	void Shatter( Entity* e );
+	// Reinforced masonry smashed by the boulder: a heap of rubble.
+	void Crumble( Entity* e );
+	// The boulder snaps windmill blades off their axle.
+	void BreakBlades( Entity* blades );
 	void DefeatKing( Entity* king, const char* reason );
 	void PopBalloon( Entity* balloon );
 	void Kill( Entity* e );
@@ -320,6 +331,7 @@ private:
 		int via;
 		Vector3 home;
 		Vector3 offset;
+		float lob; // highest horizontal speed worth trying (a high lob), 0 = any arc
 	};
 	std::vector<AimHintRecord> m_aimHints;
 
@@ -381,6 +393,10 @@ private:
 	float m_camFov = 50.0f;
 	float m_shake = 0.0f;
 	float m_screenFlash = 0.0f;
+	float m_windShift = 0.0f;	   // shifting wind: the strongest it can blow, 0 = steady
+	bool m_windPending = false;	   // a shot is in the air: the wind turns once it lands
+	float m_windChanged = 0.0f;	   // seconds left of the "the wind has turned" notice
+	Rng m_windRng;
 	float m_introTime = 0.0f;
 	float m_orbitYaw = 0.0f;
 	float m_orbitPitch = 0.4f;
