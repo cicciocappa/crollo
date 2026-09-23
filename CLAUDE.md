@@ -14,23 +14,23 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - La versione web pubblicata come Artifact (https://claude.ai/artifact/HNRpbEuELhrBG6CQuAioQ5) si aggiorna solo
   quando l'utente lo chiede: pagina `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm`.
 
-## Stato (fine sessione 4b, settembre 2026)
+## Stato (fine sessione 5, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 22 livelli. Campagne: Prati Alti 8, Valle dei Mulini 3, Picchi Gelati 11; Dune Sospese, Arcipelago delle Tempeste e
+- 27 livelli. Campagne: Prati Alti 8, Valle dei Mulini 8, Picchi Gelati 11; Dune Sospese, Arcipelago delle Tempeste e
   Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
-  Prossima: sessione 5 (Duello 1vs1 sullo stesso PC, "prima solo scontro"). La Valle dei Mulini ha solo 3 livelli:
-  sotto il minimo di 8, da completare.
-- Sessioni 6-8: una campagna ciascuna con la sua meccanica (Dune = bersagli mobili, Arcipelago = sponde di gomma
-  mobili, Fucina = meccanismi a catena), ultimo livello "boss" molto difficile. Dettagli in `docs/sviluppo.md`.
+- Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche. Prossima: sessione 6 (Dune Sospese).
+  Poi versione mobile (10); multiplayer alla fine (11+).
+- Sessioni 6-8: Dune Sospese (deserto con cactus, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
+  Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
   Node.js (servirà per l'online a turni, più avanti).
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 22/22); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 27/27); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18)
 ./build/crollo --autotest-challenge     # 30/30
 ./build/crollo --test-shields           # 16/16
@@ -62,6 +62,11 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - `b.ShiftingWind( forza )`: il vento cambia direzione e forza dopo ogni colpo (Cittadella; servirà per le Dune).
 - **Neve Fresca** è un trabocchetto voluto: stessa scena della Valanga, ma le "palle di neve" sono `Puffball` innocue
   e un argine ferma la palla che torna giù dalla diga; il test delle munizioni controlla 3 re contro 0.
+- **Barriera magica** (`b.MagicBarrier`, categoria `CatBarrier`): ferma palle, blocchi ed esplosioni; le **sfere magiche**
+  (`b.MagicOrb`, letali) la attraversano perché la loro maschera la esclude. Lo shader la disegna a reticolo con buchi
+  (`discard`), per vedere il re dietro. La sfera va sulla linea cannone-re e `AimHint` sulla sfera; più è vicina alla
+  barriera, più il colpo è tollerante (Sfere Magiche ±0,2 m, Sponda Magica ±0,1 m).
+- Un regno in cui il giocatore ha già stelle resta aperto anche se il precedente cresce di livelli (e di stelle).
 - Il **macigno** è l'unico colpo che sfonda `b.Reinforced(...)` (muratura cerchiata di ferro, statica: ferma anche le
   esplosioni) e che spezza le pale dei mulini; attraversa e prosegue al 70% della velocità. L'IA sceglie da sola il
   macigno contro il ferro e prevede dove saranno gli scudi mobili (`Slider`) quando passa il colpo.

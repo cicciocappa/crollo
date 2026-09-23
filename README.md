@@ -13,34 +13,42 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **19 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **27 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
   4. *Palazzo di Ghiaccio*: blocchi di ghiaccio scivolosi che si **frantumano** in otto schegge.
   5. *Mongolfiere*: re in cesti appesi a palloni con gravità negativa, ancorati con corde; buca i palloni.
-  6. *Il Mulino*: pale mosse da un **giunto rotoidale motorizzato** che deviano i colpi.
+  6. *Il Mulino*: pale mosse da un **giunto rotoidale motorizzato** che deviano i colpi; il **macigno** le spezza.
   7. *Il Pendolo*: una palla d'acciaio appesa a un **giunto di distanza**, con il vento contro.
-  8. *Polveriera*: casse di TNT che esplodono a catena.
-  9. *Scudi Mobili*: lastre di pietra su **giunti prismatici** con molla che scorrono avanti e indietro.
-  10. *La Cittadella*: tre isole, sei re, tutto l'arsenale.
+  8. *Polveriera*: casse di TNT in una **casamatta indistruttibile** (corpi statici): si entra solo dalla feritoia.
+  9. *Scudi Mobili*: lastre di pietra su **giunti prismatici** con molla che scorrono avanti e indietro, davanti al portone **rinforzato** che solo il macigno sfonda; il vento cambia a ogni colpo.
+  10. *La Cittadella*: tre isole, sei re, tutto l'arsenale e un **vento che cambia a ogni colpo**.
   11. *Cristalli Guardiani*: **scudi di cristallo** che si spengono e si riaccendono a orario fisso; conta il momento dello sparo.
   12. *Doppia Guardia*: due scudi in fila con ritmi diversi, una cupola sopra una torre, un re raggiungibile solo di pallonetto.
-  13. *Sponde di Gomma*: un muro di **gomma** che rimanda indietro i colpi e **sacchi di sabbia** che assorbono urti ed esplosioni.
-  14. *Il Bunker*: una torre chiusa fra i sacchi di sabbia, da abbattere con il **Vortice** o la **bomba adesiva**.
+  13. *Sponde di Gomma*: un re sotto una tettoia, raggiungibile solo di rimbalzo su un muro di **gomma** inclinato; **sacchi di sabbia** che inghiottono i colpi.
+  14. *Il Bunker*: una torre chiusa fra i sacchi di sabbia, da abbattere con il **Vortice** o la **bomba adesiva**; le esplosioni non passano la gomma.
   15. *Crepacci*: re su **ponti di ghiaccio** sospesi fra guglie di roccia, riparati da un muretto: si colpisce il ponte.
-  16. *Curling*: due re chiusi in una casa di pietra **fissa** (corpi statici); le **pietre da curling** scivolano sul ghiaccio e passano sotto il muro.
+  16. *Curling*: un re chiuso in una casa di pietra **fissa** (corpi statici); due **pietre da curling** in fila: la spinta passa dall'una all'altra, che scivola sotto il muro.
   17. *Stalattiti*: pesanti **tetti di neve** su tre colonne di ghiaccio; spezzata la colonna davanti, il tetto crolla sui re.
   18. *Valanga*: tre palle di neve trattenute su una rampa da una **diga di ghiaccio** saldata a due pali (**giunti di saldatura**).
   19. *La Reggia di Ghiacciolo*: il finale dei Picchi Gelati, con scudo di cristallo, tetto di neve e pista da curling.
+  20. *Doppio Curling*: due re nella casa, con **sponde di legno** che riportano la pietra verso il suo re.
+  21. *Curling dei Campioni*: due re e nessuna sponda.
+  22. *Neve Fresca*: un **trabocchetto**: la stessa scena della Valanga, ma le palle di neve sono farinose e non abbattono nessuno.
+  23. *Sfere Magiche*: una **barriera magica** respinge le palle di cannone e lascia passare le **sfere magiche** (filtro delle collisioni di Box3D).
+  24. *Il Granaio*: muri di mattoni e un muro **cerchiato di ferro** che solo il macigno sfonda.
+  25. *Due Mulini*: due mulini che girano in versi opposti, vento variabile.
+  26. *Sponda Magica*: una sfera magica da mandare sul re di sponda, su un pannello di gomma.
+  27. *Il Palazzo di Ottavia*: il finale della Valle dei Mulini, con tutto quello che la valle ha insegnato.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
-  una campagna quando nella precedente hai raccolto almeno metà delle stelle; dentro una campagna i livelli si sbloccano
+  una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
   in ordine. Un prologo accoglie la prima visita, un epilogo chiude l'ultimo livello, e i sottotitoli dei livelli sono le
   provocazioni del re di turno.
   - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 5, 8, 13, 14 e 10 come finale.
-  - *Valle dei Mulini* (Regina Ottavia): 6, 7, 9 — tramonto, foglie al vento.
-  - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 12 e 19 come finale — neve e abeti.
+  - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 23, 25, 9, 26 e 27 come finale — tramonto, foglie al vento.
+  - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
   - *Dune Sospese*, *Arcipelago delle Tempeste*, *Fucina del Vulcano*: in arrivo. I biomi sono già pronti e si vedono
     nella sfida infinita.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
@@ -116,10 +124,9 @@ scena lo riaggancia.
 ```
 
 Lo scanner `--scan-shots` spara un colpo singolo con ogni munizione su una griglia di 15 punti sopra la fortezza e
-segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7, 8 e 18 è voluto: pendolo, reazione a
-catena e valanga). Con `CROLLO_DEBUG=1` stampa anche l'esito di ogni singolo tiro.
+segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7 e 18 è voluto: pendolo e valanga). Con `CROLLO_DEBUG=1` stampa anche l'esito di ogni singolo tiro.
 
-Nei livelli in cui i re si abbattono indirettamente (pietre da curling, colonne, diga) il livello indica all'IA dove
+Nei livelli in cui i re si abbattono indirettamente (pietre da curling, sfere magiche, colonne, diga, portoni) il livello indica all'IA dove
 mirare con `Builder::AimHint`, così il test automatico e la demo del menu giocano come un giocatore che ha capito il
 livello.
 

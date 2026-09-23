@@ -535,6 +535,11 @@ bool Game::CampaignUnlocked( int campaign ) const
 	{
 		return true;
 	}
+	// a realm where stars were already won stays open, even if the one before has grown new levels since
+	if ( CampaignStars( campaign ) > 0 )
+	{
+		return true;
+	}
 	return CampaignUnlocked( campaign - 1 ) && CampaignStars( campaign - 1 ) >= StarsToUnlock( campaign );
 }
 
@@ -846,6 +851,9 @@ void Game::TestCampaigns()
 	m_progress.stars[c0.levels[5]] = 2; // 12 stars
 	check( CampaignUnlocked( 1 ) && StarsToUnlock( 1 ) == 12, "12 stelle su 24 aprono la Valle dei Mulini" );
 	check( CampaignUnlocked( 3 ) == false, "le campagne senza livelli restano chiuse" );
+	check( CampaignUnlocked( 2 ) == false, "i Picchi Gelati chiusi senza stelle nella Valle dei Mulini" );
+	m_progress.stars[GetCampaign( 2 ).levels[0]] = 1;
+	check( CampaignUnlocked( 2 ), "un regno dove hai già stelle resta aperto anche se il precedente è cresciuto" );
 	m_debug = true;
 	check( CampaignUnlocked( 2 ) && LevelUnlocked( GetCampaign( 2 ).levels.back() ), "--debug apre tutto" );
 	m_debug = debug;
@@ -1459,7 +1467,7 @@ bool Game::BlastReaches( Vector3 pos, const Entity* e ) const
 {
 	b3QueryFilter filter = b3DefaultQueryFilter();
 	filter.categoryBits = CatAll;
-	filter.maskBits = CatStatic | CatShield;
+	filter.maskBits = CatStatic | CatShield | CatBarrier;
 	// a king is reached if its feet, middle or head is in the open; anything else, its centre
 	const float kingHeights[3] = { 0.25f, 0.6f, 1.08f };
 	const float centre[1] = { 0.0f };
@@ -1897,7 +1905,7 @@ void Game::HandleEvents()
 			Mat m = struck->isStatic ? other->mat : struck->mat;
 			if ( struck->isStatic && other->kind == Kind::Projectile )
 			{
-				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand;
+				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand || struck->mat == Mat::Magic;
 				m = keeps ? struck->mat : Mat::Rock;
 			}
 			HitEffects( h.point, h.speed, m, std::max( a->mass, b->mass ), true );
@@ -2402,6 +2410,8 @@ void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool 
 				sfx = Sfx::IceHit;
 				break;
 			case Mat::Shield:
+			case Mat::Magic:
+			case Mat::Orb:
 				sfx = Sfx::IceHit;
 				heavyMass = -1.0f; // bright crystal ping, see below
 				break;
@@ -2840,7 +2850,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 
 	// March a ray along the arc; the path is clear if the first thing it meets is the target.
 	b3QueryFilter filter = b3DefaultQueryFilter();
-	filter.maskBits = CatStatic | CatBlock | CatKing;
+	filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
 	bool sliderBlocked = false;
 	float edgeReach = type == Ammo::Boulder ? 0.5f : 0.0f;
 	std::vector<Vector3> edges{ { 0, 0, 0 } };
@@ -3741,6 +3751,40 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Valanga: re abbattuti dalla neve vera %d, dalla neve fresca %d -> %s\n", avalanche, powder,
 				avalanche == 3 && powder == 0 ? "ok" : "FALLITO" );
 	}
+
+	// 10. the magic barrier: a cannonball fired point-blank at a king behind it bounces off, his orb goes through
+	{
+		auto shootAt = [&]( bool orb ) {
+			LoadLevel( FindLevelById( "mulini_sfere" ), false );
+			SkipIntro();
+			settle( 60 );
+			Entity* king = nullptr;
+			Entity* ball = nullptr;
+			for ( Entity* e : m_scene.entities )
+			{
+				king = e->kind == Kind::King && e->pos.x < -1.0f && e->pos.x > -2.0f ? e : king;
+			}
+			for ( Entity* e : m_scene.entities )
+			{
+				ball = e->mat == Mat::Orb && e->pos.x < 0.0f ? e : ball;
+			}
+			Vector3 dir = Vector3Normalize( Vector3Subtract( Vector3Add( king->pos, { 0, 0.5f, 0 } ), ball->pos ) );
+			if ( orb )
+			{
+				b3Body_SetLinearVelocity( ball->body, ToB3( Vector3Scale( dir, 8.0f ) ) );
+			}
+			else
+			{
+				FireProjectile( Ammo::Ball, Vector3Add( ball->pos, { 0, 1.0f, 0 } ), dir, 16.0f );
+			}
+			settle( 240 );
+			return king->defeated;
+		};
+		bool byBall = shootAt( false );
+		bool byOrb = shootAt( true );
+		printf( "Barriera magica: palla di cannone -> %s, sfera magica -> %s -> %s\n", byBall ? "passa" : "respinta",
+				byOrb ? "passa" : "respinta", byBall == false && byOrb ? "ok" : "FALLITO" );
+	}
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
@@ -3937,7 +3981,7 @@ void Game::DrawTrajectory()
 	// with aim assist, show where a crystal shield would be up when the ball gets there
 	float shieldT = m_progress.aimAssist ? PathShieldBlock( p0, v, g, maxT, m_scene.time ) : -1.0f;
 	b3QueryFilter filter = b3DefaultQueryFilter();
-	filter.maskBits = CatStatic | CatBlock | CatKing;
+	filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
 	int i = 0;
 	for ( float t = dt; t <= maxT; t += dt, ++i )
 	{

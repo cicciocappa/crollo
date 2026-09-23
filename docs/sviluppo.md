@@ -158,19 +158,21 @@ Costo: S per lo scudo a scomparsa, M per le altre due varianti con le relative i
 
 ### Livelli a meccanismo (idee di settembre 2026)
 
-Tre famiglie di livelli in cui conta il *quando* e il *come*, non solo il *dove*. Ognuna diventa la meccanica di una delle campagne che mancano. L'ultimo livello di ogni campagna è un **boss**: può essere difficile fino a essere quasi frustrante, purché resti leggibile e vincibile.
+Quattro famiglie di livelli in cui conta il *quando* e il *come*, non solo il *dove*. Ogni famiglia debutta in una campagna, ma poi è una **cassetta degli attrezzi comune**: si usa in qualunque campagna serva, così è più facile dare a tutte lo stesso numero di livelli. L'ultimo livello di ogni campagna è un **boss**: può essere difficile fino a essere quasi frustrante, purché resti leggibile e vincibile.
 
-| Famiglia | Esempi | Come si fa in Box3D | Campagna |
+| Famiglia | Esempi | Come si fa in Box3D | Debutta in |
 | --- | --- | --- | --- |
 | Bersagli mobili | re su una piattaforma che scorre in orizzontale o sale e scende; re su un nastro che passa dietro barriere; doppia finestra con uno scudo a tempo | corpo cinematico mosso da `FixedStep` con `m_scene.time` (il re sta sopra per attrito); accelerazioni basse, o il re cade da solo | Dune Sospese |
 | Tiri di sponda | re protetto da vetro, raggiungibile solo di rimbalzo; pannelli di gomma che scorrono o ruotano e danno l'angolo giusto solo per un attimo | `Bumper` su corpo cinematico, con velocità lineare o angolare costante; il pannello in moto aggiunge velocità alla palla | Arcipelago delle Tempeste |
 | Meccanismi a catena | piattaforma girevole con una flangia esposta che porta il re sotto una pila di scatole; guida tenuta su da un perno che, abbattuto, fa scendere una sfera sulla dinamite; tronco appeso che si sgancia colpendo un bersaglio e oscilla sul nastro del re | giunti rotoidali e prismatici con **fine corsa** e attrito; `b3DestroyJoint` per sganciare; guide e imbuti fatti di assi (Box3D ha solo forme convesse) | Fucina del Vulcano |
+| Colpi per interposta sfera | come il curling, ma fuori dal ghiaccio: il re sta dietro una **barriera magica** che respinge le palle di cannone e lascia passare le **sfere magiche** già sull'isola. Si colpisce la sfera e la si manda sul re o sul suo piedistallo | nessuna magia: è il filtro delle collisioni di Box3D. La barriera ha una categoria sua (`CatBarrier`), la maschera delle sfere magiche la esclude e quella dei proiettili no. Statica, ferma anche le esplosioni | Dune Sospese |
 
 Pezzi nuovi da aggiungere al Builder:
 
 - **Vetro infrangibile** (`Mat::Glass`): statico e trasparente, lascia vedere il re ma ferma i colpi. Deve sembrare diverso dal cristallo a tempo (cornice di metallo, riflessi), altrimenti il giocatore aspetta che si spenga.
 - **Piattaforma e nastro**: corpo cinematico con un percorso (andata e ritorno, con pause alle estremità).
 - **Gomma mobile**: `Bumper` che scorre o ruota.
+- **Barriera magica e sfere magiche** (fatte nella sessione 5): una parete trasparente e scintillante che ferma i colpi di cannone, e sfere luminose che ci passano attraverso. Le sfere pesano abbastanza da abbattere un re (`lethal`), come le pietre da curling.
 - **Bersaglio-interruttore**: un piccolo bersaglio che, colpito, esegue un'azione: sgancia un giunto, accende un motore, fa partire una piattaforma, spegne uno scudo. È il pezzo che permette di comporre le catene.
 - **Parti di catena**: piattaforma girevole con fine corsa, guida incernierata su un perno, imbuto di pannelli.
 
@@ -213,7 +215,7 @@ Come si racconta, senza appesantire:
 | 1. Prati Alti | l'aspetto di oggi: erba, legno, cielo azzurro | le basi: palla, bomba, ponti, TNT | Re Bernardo il Tondo, viola |
 | 2. Valle dei Mulini | colline dorate al tramonto, mulini ovunque | mulini, pendoli, scudi su guide, vento | Regina Ottavia, arancio |
 | 3. Picchi Gelati | neve e ghiaccio, cielo bianco, nevischio | ghiaccio che si frantuma, isole scivolose, **scudi a scomparsa** | Re Ghiacciolo III, azzurro |
-| 4. Dune Sospese | arenaria e sabbia, cielo ocra | **bersagli mobili**: re su piattaforme e nastri, re che passano dietro il vetro infrangibile; vento che cambia a ogni turno | Sultana Zaira, oro |
+| 4. Dune Sospese | deserto: arenaria e sabbia, cielo ocra, **cactus** al posto degli alberi | **bersagli mobili**: re su piattaforme e nastri, re che passano dietro il vetro infrangibile; vento che cambia a ogni turno | Sultana Zaira, oro |
 | 5. Arcipelago delle Tempeste | cielo grigio, pioggia, isole che fluttuano | **tiri di sponda**: gomma fissa, che scorre o che ruota, re raggiungibili solo di rimbalzo; isole in movimento, correnti d'aria | Re Fulmine, blu scuro |
 | 6. Fucina del Vulcano | ferro e basalto, lava al posto delle nuvole | **meccanismi a catena**: piattaforme girevoli, guide e perni, bersagli-interruttore, pesi da sganciare; scudi orbitanti, arpione | l'Imperatore di Ferro, rosso |
 
@@ -271,17 +273,21 @@ L'ordine consigliato parte dalle cose piccole che rendono il gioco più vario, p
 | 3 | Fatto (commit 23ad3fe): `Campaign` e `Biome` (sei biomi come uniform, con meteo e musica propri), mappa dei regni, prologhi ed epiloghi, salvataggi per id con migrazione; livelli esistenti divisi in Prati Alti (8), Valle dei Mulini (3), Picchi Gelati (3) | sblocca tutto il lavoro sui contenuti che segue |
 | 4 | Fatto (commit 2cd384d): Picchi Gelati a 8 livelli con Crepacci, Curling, Stalattiti, Valanga e il finale La Reggia di Ghiacciolo; nuovi pezzi del Builder (pietre da curling, palle di neve, diga di ghiaccio, tetti di neve) e suggerimenti di mira per l'IA | la prima campagna nuova mette alla prova la struttura |
 | 4b | Fatto (commit 90ac500): modifiche dal riscontro dei tester. Modalità trucchi (F9 o `--cheat`: colpi infiniti, vittorie non salvate); pale del mulino di nuovo in moto; esplosioni fermate dai corpi statici; sacchi di sabbia che assorbono i colpi; vento che cambia a ogni colpo; Polveriera a casamatta con feritoia, Sponde di Gomma con tettoia e gomma inclinata, Cittadella senza TNT e con vento variabile; il macigno spezza le pale dei mulini e sfonda la muratura rinforzata (portone della regina in Scudi Mobili, che ha anche il vento variabile); Curling con un solo re nella casa e due pietre in fila; nuovo livello Doppio Curling (i due re di prima, con sponde di legno che riportano la pietra verso il re), e Curling dei Campioni (due re, senza sponde): munizioni ridotte in Cristalli Guardiani e Stalattiti (3 palle) e Valanga (2 palle); nuovo livello trabocchetto Neve Fresca (una finta valanga di neve farinosa); i Picchi Gelati salgono a 11 livelli | prima di aggiungere, sistemare ciò che i tester hanno notato |
-| 5 | Duello 1vs1 sullo stesso PC, solo scontro con fortezze pronte, con coop come variante | multiplayer al costo più basso |
-| 6 | Dune Sospese: piattaforme e nastri cinematici, vetro infrangibile, IA che anticipa i bersagli mobili; almeno 8 livelli con boss finale | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
+| 5 | Fatto: Valle dei Mulini ad almeno 8 livelli, con i pezzi che ci sono già: pale che si spezzano, portoni rinforzati, vento variabile, pendoli, scudi mobili; in più barriera magica e sfere magiche (`MagicBarrier`, `MagicOrb`, `CatBarrier`). Nuovi livelli: Il Granaio, Sfere Magiche, Due Mulini, Sponda Magica, Il Palazzo di Ottavia | la seconda campagna era ferma a 3 livelli e sta proprio all'inizio del gioco |
+| 6 | Dune Sospese: cactus; piattaforme e nastri cinematici, vetro infrangibile, IA che anticipa i bersagli mobili; vetro e bersagli mobili insieme alle sfere magiche; almeno 8 livelli con boss finale | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
 | 7 | Arcipelago delle Tempeste: gomma che scorre e ruota, ventole e correnti, isole che fluttuano; almeno 8 livelli di sponda con boss finale | riusa i corpi cinematici della sessione 6 |
 | 8 | Fucina del Vulcano: bersagli-interruttore, parti di catena, soluzione scritta nei livelli, scudi orbitanti, arpione; almeno 8 livelli con boss finale | la più complessa: usa tutti i pezzi precedenti |
-| dopo | Fase di costruzione del Duello; test di determinismo desktop contro web; poi online a turni con relay Node.js sul tuo server | solo se il Duello locale piace |
+| 9 | Tutte le campagne a 10 livelli, riusando le meccaniche ovunque; livelli bonus sbloccati con le stelle | più livelli, gioco più interessante |
+| 10 | Versione mobile: comandi touch (trascina per mirare, cursore per la potenza, tocco per sparare, pulsanti per munizioni e panoramica), interfaccia a misura di dito, grafica alleggerita per i telefoni; prima nel browser del telefono, poi come app | la build web gira già nei browser: manca soprattutto il modo di giocarla con le dita |
+| 11+ | Multiplayer: Duello 1vs1 sullo stesso PC (prima solo scontro, coop come variante), poi fase di costruzione, test di determinismo desktop contro web, online a turni con relay Node.js sul tuo server | prima un single player divertente e completo |
 
 ### Decisioni prese
 
 - **Nomi e tono**: restano Mastra Bombarda e la Corona dei Venti.
 - **Dimensione**: 6 campagne da **almeno 8 livelli**; più livelli ci sono, meglio è. Più avanti nuove meccaniche per portarle tutte a 10 (i Picchi Gelati ne hanno già 11). Idea da riprendere: livelli bonus sbloccati con le stelle.
 - **Duello**: prima solo scontro, con fortezze già pronte. La fase di costruzione delle difese arriva in una sessione successiva.
-- **Meccaniche per campagna**: Dune Sospese = bersagli mobili, Arcipelago delle Tempeste = tiri di sponda, Fucina del Vulcano = meccanismi a catena.
+- **Meccaniche**: ogni campagna ne fa debuttare una (Dune Sospese = bersagli mobili e sfere magiche, Arcipelago delle Tempeste = tiri di sponda, Fucina del Vulcano = meccanismi a catena), ma tutte si possono usare in qualunque campagna.
+- **Multiplayer alla fine**: prima un single player divertente e interessante.
+- **Versione mobile**: in roadmap dopo le campagne e prima del multiplayer.
 - **Boss**: l'ultimo livello di ogni campagna può essere molto difficile; si prova con la modalità trucchi.
 - **Online**: il server disponibile può eseguire Node.js, quindi il relay WebSocket per l'online a turni può girare lì, accanto alla versione web del gioco.

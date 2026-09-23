@@ -24,6 +24,8 @@ enum class Mat : uint8_t
 	Shield,
 	Rubber,
 	Sand,
+	Magic, // the magic barrier: a glowing lattice you can see through
+	Orb,   // the magic orbs that pass through it
 	Count
 };
 
@@ -200,6 +202,7 @@ enum Category : uint64_t
 	CatDebris = 1u << 3,
 	CatKing = 1u << 4,
 	CatShield = 1u << 5,
+	CatBarrier = 1u << 6, // magic barriers: stop everything but the magic orbs
 	CatAll = UINT64_MAX,
 };
 

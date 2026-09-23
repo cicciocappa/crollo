@@ -27,6 +27,8 @@ static const MatProps s_matProps[(int)Mat::Count] = {
 	{ 1000.0f, 0.3f, 0.3f, { 110, 215, 255, 255 }, "cristallo" },
 	{ 1100.0f, 0.9f, 0.9f, { 225, 85, 60, 255 }, "gomma" },
 	{ 2600.0f, 1.0f, 0.0f, { 196, 170, 122, 255 }, "sabbia" },
+	{ 1000.0f, 0.3f, 0.2f, { 170, 110, 255, 255 }, "magia" },
+	{ 1500.0f, 0.2f, 0.1f, { 190, 140, 255, 255 }, "sfera magica" },
 };
 
 const MatProps& GetMatProps( Mat m )

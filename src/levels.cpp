@@ -692,23 +692,68 @@ Entity* Builder::Reinforced( Vector3 center, Vector3 half, float yaw )
 	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Stone, so );
 	e->parts.back().tint = Color{ 150, 140, 130, 255 };
 	// iron bands across the face and down the edges, standing a little proud of the stone
-	const Color iron{ 70, 72, 80, 255 };
+	const Color iron{ 48, 50, 58, 255 };
 	for ( int k = -1; k <= 1; k += 2 )
 	{
 		Part band;
 		band.localPos = { 0, k * half.y * 0.55f, 0 };
-		band.size = { half.x + 0.03f, 0.07f, half.z + 0.03f };
+		band.size = { half.x + 0.04f, 0.11f, half.z + 0.04f };
 		band.mat = Mat::Metal;
 		band.tint = iron;
 		scene.AddVisual( e, band );
 		Part post;
 		post.localPos = { k * ( half.x - 0.08f ), 0, 0 };
-		post.size = { 0.08f, half.y + 0.02f, half.z + 0.03f };
+		post.size = { 0.11f, half.y + 0.02f, half.z + 0.04f };
 		post.mat = Mat::Metal;
 		post.tint = iron;
 		scene.AddVisual( e, post );
 	}
 	e->reinforced = true;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::MagicBarrier( Vector3 center, Vector3 half, float yaw )
+{
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Static, Mat::Magic, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatBarrier;
+	so.hitEvents = false;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Magic, so );
+	// a frame of dark stone around the lattice, so the edge of the barrier is plain to see
+	const Color frame{ 70, 60, 90, 255 };
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Part post;
+		post.localPos = { s * ( half.x + 0.1f ), 0, 0 };
+		post.size = { 0.1f, half.y + 0.1f, half.z + 0.06f };
+		post.mat = Mat::Stone;
+		post.tint = frame;
+		scene.AddVisual( e, post );
+		Part beam;
+		beam.localPos = { 0, s * ( half.y + 0.05f ), 0 };
+		beam.size = { half.x + 0.2f, 0.05f, half.z + 0.06f };
+		beam.mat = Mat::Stone;
+		beam.tint = frame;
+		scene.AddVisual( e, beam );
+	}
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::MagicOrb( Vector3 center, float radius )
+{
+	BodyOptions bo;
+	bo.angularDamping = 0.3f;
+	Entity* e = scene.CreateEntity( Kind::Block, Mat::Orb, center, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.mask = CatAll & ~CatBarrier & ~CatDebris;
+	so.rollingResistance = 0.01f; // rolls a long way, like a stone on ice
+	scene.AddSphere( e, { 0, 0, 0 }, radius, Mat::Orb, so );
+	e->lethal = true;
+	e->homeY = homeY;
 	scene.FinalizeEntity( e );
 	return e;
 }
@@ -1137,6 +1182,27 @@ static void Level08( Builder& b )
 	b.Fortress( { 0, 2, 34 }, 11.0f );
 }
 
+// Regina Ottavia's keep: solid masonry with an iron-banded gate that only the boulder breaks, and the
+// queen on a wooden stand inside. Returns the top of the roof.
+static float QueenKeep( Builder& b, float x, float y0, float gate )
+{
+	const Color masonry{ 128, 124, 132, 255 };
+	const float top = y0 + 3.8f, back = gate + 3.3f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { x + 1.65f * s, ( y0 + top ) * 0.5f, ( gate + back ) * 0.5f }, { 0.3f, ( top - y0 ) * 0.5f, ( back - gate ) * 0.5f + 0.25f },
+				 Mat::Stone, { 0, 0, 0, 1 }, masonry );
+	}
+	b.Ledge( { x, ( y0 + top ) * 0.5f, back }, { 1.35f, ( top - y0 ) * 0.5f, 0.25f }, Mat::Stone, { 0, 0, 0, 1 }, masonry );
+	b.Ledge( { x, top + 0.15f, ( gate + back ) * 0.5f }, { 1.95f, 0.15f, ( back - gate ) * 0.5f + 0.25f }, Mat::Stone, { 0, 0, 0, 1 },
+			 masonry );
+	Entity* door = b.Reinforced( { x, ( y0 + top ) * 0.5f, gate }, { 1.35f, ( top - y0 ) * 0.5f, 0.25f } );
+	float t = b.Tower( { x, y0, gate + 1.7f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	Entity* queen = b.King( { x, t, gate + 1.7f }, kOrange ); // Regina Ottavia's own colour
+	b.AimHint( queen, door, { 0, -0.6f, 0 } );
+	return top + 0.3f;
+}
+
 static void Level09( Builder& b )
 {
 	b.PlayerIsland();
@@ -1147,23 +1213,9 @@ static void Level09( Builder& b )
 	float t1 = b.Tower( { -3.0f, 2, 37.5f }, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
 	b.King( { -3.0f, t1, 37.5f }, kBlue );
 	float t2 = b.Tower( { 3.0f, 2, 37.5f }, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 3.0f, t2, 37.5f }, kOrange );
-	// centre: the queen's keep, solid masonry with an iron-banded gate. Only the boulder breaks the gate,
-	// and it still has to find the gap between the sliding walls
-	const Color masonry{ 128, 124, 132, 255 };
-	const float y0 = 2.0f, top = y0 + 3.8f, gate = 38.9f, back = 42.2f;
-	for ( int s = -1; s <= 1; s += 2 )
-	{
-		b.Ledge( { 1.65f * s, ( y0 + top ) * 0.5f, ( gate + back ) * 0.5f }, { 0.3f, ( top - y0 ) * 0.5f, ( back - gate ) * 0.5f + 0.25f },
-				 Mat::Stone, { 0, 0, 0, 1 }, masonry );
-	}
-	b.Ledge( { 0, ( y0 + top ) * 0.5f, back }, { 1.35f, ( top - y0 ) * 0.5f, 0.25f }, Mat::Stone, { 0, 0, 0, 1 }, masonry );
-	b.Ledge( { 0, top + 0.15f, ( gate + back ) * 0.5f }, { 1.95f, 0.15f, ( back - gate ) * 0.5f + 0.25f }, Mat::Stone, { 0, 0, 0, 1 },
-			 masonry );
-	Entity* door = b.Reinforced( { 0, ( y0 + top ) * 0.5f, gate }, { 1.35f, ( top - y0 ) * 0.5f, 0.25f } );
-	float t3 = b.Tower( { 0, y0, 40.6f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-	Entity* queen = b.King( { 0, t3, 40.6f }, kPurple );
-	b.AimHint( queen, door, { 0, -0.6f, 0 } );
+	b.King( { 3.0f, t2, 37.5f }, kGreen );
+	// centre: the queen's keep; the boulder still has to find the gap between the sliding walls
+	QueenKeep( b, 0.0f, 2.0f, 38.9f );
 	b.Trees( { 0, 2, 37 }, 9.0f, 4, 6.5f );
 	b.Flag( { -6.0f, 2, 40.0f }, kPurple );
 	b.Fortress( { 0, 5, 37 }, 12.0f );
@@ -1411,6 +1463,161 @@ static void LevelCurling( Builder& b )
 	b.Fortress( { 1.5f, 1.5f, 35.0f }, 11.0f );
 }
 
+// Valle dei Mulini: two windmills turning opposite ways, a king behind each and one on a tower in the gap
+// between the sails. The boulder can snap one set of sails off.
+static void LevelDueMulini( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35.5f }, 10.0f );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Windmill( { 3.8f * s, 0, 31.0f }, 5.5f, 3.0f, 0.8f * s );
+		// off to the side of the mill's tower, but still behind its sails
+		float c = b.Column( { 5.4f * s, 0, 37.0f }, 2, 0.5f, Mat::Stone );
+		b.Box( { 5.4f * s, c + 0.12f, 37.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+		b.King( { 5.4f * s, c + 0.24f, 37.0f }, s < 0 ? kOrange : kTeal );
+	}
+	float t = b.Tower( { 0, 0, 38.5f }, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 0, t, 38.5f }, kPurple );
+
+	b.Trees( { 0, 0, 35.5f }, 10.0f, 4, 8.0f );
+	b.Flag( { -7.0f, 0, 39.0f }, kOrange );
+	b.Fortress( { 0, 3.5f, 35.0f }, 12.0f );
+	b.ShiftingWind( 1.2f );
+}
+
+// Valle dei Mulini: billiards with a magic orb. The king sits in a lattice pavilion off to the left; a block of
+// masonry hides the straight line to him, so the orb has to go on, off the rubber panel ahead, and round.
+static void LevelSpondaMagica( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34 }, 9.5f );
+
+	const Vector3 feet{ -3.4f, 0, 35.3f };
+	const float h = 2.6f;
+	// the pavilion: front, the side facing the panel, and a roof
+	b.MagicBarrier( { feet.x, h * 0.5f, feet.z - 1.3f }, { 1.3f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { feet.x + 1.3f, h * 0.5f, feet.z }, { 0.08f, h * 0.5f, 1.3f } );
+	b.MagicBarrier( { feet.x, h + 0.08f, feet.z }, { 1.4f, 0.08f, 1.4f } );
+	Entity* king = b.King( feet, kCrimson );
+
+	Entity* orb = b.MagicOrb( { 0, 0.5f, 31.0f } );
+	b.AimHint( king, orb, { 0, 0.1f, -0.25f } );
+	// the panel, turned 45 degrees to send the orb off to the left. The orb meets it before its centre line,
+	// so it stands a little further back than the king: the orb then runs straight at him
+	b.Bumper( { 0, 1.0f, feet.z + 1.2f }, { 1.2f, 1.0f, 0.15f }, PI * 0.25f );
+	// masonry on the diagonal between the orb and the king
+	b.Ledge( { -2.0f, 0.6f, 32.9f }, { 0.8f, 0.6f, 0.8f }, Mat::Stone, { 0, 0, 0, 1 }, Color{ 128, 124, 132, 255 } );
+
+	// right: a king on a stone column behind sandbags that swallow flat shots
+	b.SandbagWall( { 3.2f, 0, 33.2f }, true, 3, 4 );
+	float c = b.Column( { 4.2f, 0, 35.2f }, 2, 0.5f, Mat::Stone );
+	b.Box( { 4.2f, c + 0.12f, 35.2f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 4.2f, c + 0.24f, 35.2f }, kTeal );
+
+	b.Trees( { 0, 0, 34 }, 9.5f, 3, 7.8f );
+	b.Flag( { 6.5f, 0, 38.0f }, kOrange );
+	b.Fortress( { 0, 1.5f, 34.5f }, 11.0f );
+}
+
+// Valle dei Mulini, the finale: Regina Ottavia's palace. Everything the valley has taught at once: the gate
+// behind a sliding wall for the boulder, a king in a lattice pavilion with his orb, a king behind turning
+// sails, a guard on the roof of the keep, and a wind that never blows the same way twice.
+static void LevelPalazzoOttavia( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 12.0f );
+
+	// centre: the keep, and in front of it a stone wall sliding back and forth across the gate
+	float roof = QueenKeep( b, 0.0f, 0.0f, 38.0f );
+	b.Slider( { 0, 1.7f, 33.0f }, { 1.6f, 1.6f, 0.2f }, { 1, 0, 0 }, 3.2f, 0.7f, 0.0f, Mat::Stone );
+	b.King( { 0.9f, roof, 40.4f }, kPurple );
+
+	// left: the lattice pavilion with its orb
+	const Vector3 feet{ -6.2f, 0, 38.0f };
+	const float h = 2.8f;
+	b.MagicBarrier( { feet.x, h * 0.5f, feet.z - 1.4f }, { 1.5f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { feet.x, h + 0.08f, feet.z }, { 1.6f, 0.08f, 1.5f } );
+	Entity* seer = b.King( feet, kCrimson );
+	float oz = 34.4f;
+	Entity* orb = b.MagicOrb( { feet.x * oz / feet.z, 0.5f, oz } );
+	b.AimHint( seer, orb, { 0, 0.1f, -0.25f } );
+
+	// right: a king behind the sails of a mill
+	b.Windmill( { 6.0f, 0, 31.5f }, 5.5f, 3.0f, -0.9f );
+	float c = b.Column( { 7.6f, 0, 37.5f }, 2, 0.5f, Mat::Stone );
+	b.Box( { 7.6f, c + 0.12f, 37.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 7.6f, c + 0.24f, 37.5f }, kTeal );
+
+	b.Trees( { 0, 0, 36 }, 12.0f, 4, 10.0f );
+	b.Flag( { -3.0f, roof, 41.0f }, kPurple );
+	b.Flag( { 3.0f, roof, 41.0f }, kPurple );
+	b.Fortress( { 0, 3.5f, 37.0f }, 14.0f );
+	b.ShiftingWind( 1.2f );
+}
+
+// Valle dei Mulini: the granary. Brick walls on the flanks give way to cannonballs; the iron-banded wall in the
+// middle only to the boulder, and the king stands too close behind it for a lob.
+static void LevelGranaio( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.5f );
+
+	Entity* wall = b.Reinforced( { 0, 2.25f, 34.0f }, { 1.6f, 2.25f, 0.3f } );
+	float t = b.Tower( { 0, 0, 35.6f }, 1, 0.9f, 1.3f, Mat::Wood, Mat::Wood );
+	Entity* miller = b.King( { 0, t, 35.6f }, kOrange );
+	b.AimHint( miller, wall, { 0, -0.8f, 0 } );
+	// a roof over the king, from the top of the wall back
+	b.Ledge( { 0, 4.62f, 35.4f }, { 1.9f, 0.12f, 1.6f }, Mat::Wood, { 0, 0, 0, 1 }, Color{ 150, 100, 55, 255 } );
+
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Wall( { 4.4f * s - 1.5f, 0, 33.4f }, true, 3, 3, Mat::Stone );
+		float tt = b.Tower( { 4.4f * s, 0, 35.8f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+		b.King( { 4.4f * s, tt, 35.8f }, s < 0 ? kPurple : kGreen );
+	}
+
+	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.6f );
+	b.Flag( { 0.0f, 0, 38.5f }, kOrange );
+	b.Fortress( { 0, 2.0f, 35.0f }, 11.0f );
+}
+
+// Valle dei Mulini: two kings in a pavilion of magic lattice. Cannonballs bounce off it, but the magic orbs
+// lying in front roll straight through: strike an orb from behind and send it into its king.
+static void LevelSfere( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34.5f }, 9.5f );
+
+	const float front = 34.8f, back = 38.0f, h = 3.2f;
+	b.MagicBarrier( { 0, h * 0.5f, front }, { 3.0f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { 0, h + 0.08f, ( front + back ) * 0.5f }, { 3.0f, 0.08f, ( back - front ) * 0.5f } );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 feet{ s * 1.5f, 0, 36.4f };
+		Entity* king = b.King( feet, s < 0 ? kOrange : kCrimson );
+		// each orb lies on the line from the cannon to its king, close to the barrier: a first taste, so a shot
+		// a little off line still gets there
+		float z = 33.3f;
+		Entity* orb = b.MagicOrb( { feet.x * z / feet.z, 0.5f, z } );
+		b.AimHint( king, orb, { 0, 0.1f, -0.25f } );
+	}
+
+	// outside: a wooden tower behind a wall of sandbags
+	b.SandbagWall( { 4.8f, 0, 33.0f }, true, 3, 2 );
+	float t = b.Tower( { 6.0f, 0, 35.5f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 6.0f, t, 35.5f }, kPurple );
+
+	b.Trees( { 0, 0, 34.5f }, 9.5f, 4, 7.6f );
+	b.Flag( { -5.5f, 0, 37.5f }, kOrange );
+	b.Fortress( { 1.0f, 2.0f, 35.0f }, 11.0f );
+}
+
 // The two-king versions of Curling. With rails, each stone has its own lane and a stone knocked off
 // line is turned back towards its king; without, both stones have to be struck just right.
 static void CurlingForTwo( Builder& b, bool rails )
@@ -1640,6 +1847,21 @@ static const LevelDef s_levels[] = {
 	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCurlingCampioni, "gelo_curling_campioni" },
 	{ "Neve Fresca", "Anche questa neve è ferma da secoli. Più o meno.", "Prima di svegliare la neve, guardala bene.",
 	  { 3, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelNeveFresca, "gelo_neve_fresca" },
+	{ "Sfere Magiche", "Il mio padiglione è stregato: le tue palle di ferro non passano.",
+	  "Le palle di cannone rimbalzano sulla barriera magica, le sfere magiche la attraversano: colpisci ogni sfera da dietro e mandala sul suo re.",
+	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelSfere, "mulini_sfere" },
+	{ "Il Granaio", "Il mio grano è al sicuro dietro il ferro. E io con lui.",
+	  "I muri di mattoni cedono alle palle; quello cerchiato di ferro solo al MACIGNO (5).",
+	  { 3, 0, 0, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, LevelGranaio, "mulini_granaio" },
+	{ "Due Mulini", "Due mulini, due venti, due volte il fastidio per te.",
+	  "Le pale girano in versi opposti e il vento cambia a ogni colpo. Il MACIGNO (5) spezza le pale di un mulino.",
+	  { 4, 0, 0, 0, 1, 0, 0 }, 3, { 0.6f, 0, 0 }, LevelDueMulini, "mulini_due" },
+	{ "Sponda Magica", "Il mio padiglione non si vede nemmeno da qui. Figurati colpirlo.",
+	  "La sfera magica attraversa la barriera: mandala sul pannello di gomma, rimbalzerà verso il re.",
+	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelSpondaMagica, "mulini_sponda" },
+	{ "Il Palazzo di Ottavia", "Mulini, magie, ferro e vento: il mio palazzo ha tutto. Tranne una porta per te.",
+	  "La regina è dietro il portone di ferro: serve il MACIGNO (5), nel varco del muro che scorre. Il vento cambia a ogni colpo.",
+	  { 4, 0, 0, 0, 2, 0, 0 }, 5, { 0.8f, 0, 0 }, LevelPalazzoOttavia, "mulini_palazzo" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1660,10 +1882,12 @@ static std::vector<Campaign> BuildCampaigns()
 					 idx( "prati_polveriera" ), idx( "prati_gomma" ), idx( "prati_bunker" ), idx( "prati_cittadella" ) } } );
 	c.push_back( { "Valle dei Mulini", "Regina Ottavia", kOrange, 1,
 				   "Nella Valle dei Mulini il tramonto non finisce mai. La Regina Ottavia ha costruito difese che si muovono: "
-				   "pale, pendoli, scudi su binari. Qui non basta mirare bene: bisogna scegliere il momento.",
+				   "pale, pendoli, scudi su binari, e perfino barriere incantate. Qui non basta mirare bene: bisogna scegliere "
+				   "il momento.",
 				   "Le pale si fermano e il secondo frammento torna al suo posto. Pi\u00f9 in alto, dove l'aria si fa gelida, "
 				   "qualcuno ha costruito un palazzo di ghiaccio.",
-				   { idx( "mulini_mulino" ), idx( "mulini_pendolo" ), idx( "mulini_scudi" ) } } );
+				   { idx( "mulini_mulino" ), idx( "mulini_pendolo" ), idx( "mulini_granaio" ), idx( "mulini_sfere" ),
+					 idx( "mulini_due" ), idx( "mulini_scudi" ), idx( "mulini_sponda" ), idx( "mulini_palazzo" ) } } );
 	c.push_back( { "Picchi Gelati", "Re Ghiacciolo III", kTeal, 2,
 				   "Sui Picchi Gelati regna Re Ghiacciolo III, che non si fida di nessuno, e meno che mai dei muri normali: "
 				   "i suoi sono di cristallo, e si accendono e si spengono quando vuole lui.",

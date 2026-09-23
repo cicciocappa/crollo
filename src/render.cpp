@@ -292,6 +292,31 @@ void main()
 		albedo *= 0.8 + 0.3 * stain;
 		specK = 0.02;
 	}
+	else if (matType == 16) // magic barrier: a lattice of glowing runes, see-through between the strands
+	{
+		vec2 q = vec2(p.x + p.z, p.y) * 2.2;
+		vec2 d = abs(fract(vec2(q.x + q.y, q.x - q.y) * 0.5) - 0.5); // diamond cells
+		float strand = 1.0 - smoothstep(0.03, 0.08, min(d.x, d.y));
+		float shimmer = 0.5 + 0.5 * sin(time * 2.5 + (q.x + q.y) * 1.3);
+		float veil = fbm(vec3(q * 0.8, time * 0.3));
+		if (strand < 0.5 && veil < 0.62)
+		{
+			discard;
+		}
+		albedo = mix(vec3(0.30, 0.14, 0.55), vec3(0.62, 0.40, 0.95), strand);
+		emissive = vec3(0.50, 0.22, 0.95) * (0.30 + 0.7 * strand + 0.35 * shimmer);
+		specK = 0.6;
+		shininess = 60.0;
+	}
+	else if (matType == 17) // magic orb: swirling violet glow
+	{
+		float swirl = fbm(p * 3.0 + vec3(0.0, time * 0.6, 0.0));
+		albedo = mix(vec3(0.40, 0.22, 0.70), vec3(0.95, 0.80, 1.0), swirl);
+		emissive = vec3(0.45, 0.22, 0.85) * (0.4 + 0.6 * swirl);
+		shininess = 80.0;
+		specK = 0.8;
+		fresnelK = 0.4;
+	}
 	else if (matType == 0)
 	{
 		albedo *= 0.9 + 0.2 * fbm(vWorldPos * 2.0);
@@ -856,7 +881,7 @@ void Renderer::AddParts( const std::vector<Part>& parts, Vector3 pos, Quaternion
 		item.mat = part.mat;
 		item.tint = part.tint;
 		item.flash = flash;
-		item.castShadow = true;
+		item.castShadow = part.mat != Mat::Magic; // the lattice is mostly holes: no solid shadow
 
 		switch ( part.geo )
 		{

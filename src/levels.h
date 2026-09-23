@@ -104,6 +104,10 @@ public:
 	float SandbagWall( Vector3 start, bool alongX, int bags, int rows );
 	// Iron-banded masonry: fixed like a ledge (blasts stop at it too), but the boulder smashes it to rubble.
 	Entity* Reinforced( Vector3 center, Vector3 half, float yaw = 0.0f );
+	// A magic barrier: fixed, stops cannonballs, blasts and blocks, but lets magic orbs through.
+	Entity* MagicBarrier( Vector3 center, Vector3 half, float yaw = 0.0f );
+	// A heavy glowing orb that passes through magic barriers and knocks down any king it strikes.
+	Entity* MagicOrb( Vector3 center, float radius = 0.5f );
 	// A fixed rubber wall: shots bounce off it, so it can be used for bank shots.
 	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f );
 
