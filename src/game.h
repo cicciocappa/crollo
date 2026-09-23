@@ -181,6 +181,7 @@ public:
 	void AddFlag( Vector3 base, Color color, float scale );
 	void SetCannon( Vector3 pos, float yaw );
 	void SetFortressCenter( Vector3 c, float radius );
+	void AddAimHint( Entity* king, Entity* via, Vector3 offset );
 	int GetLevelCount() const;
 
 	// Campaign progress (also used by the tests)
@@ -300,6 +301,16 @@ private:
 	LevelDef* m_challengeDef = nullptr;
 	ChallengePlan* m_plan = nullptr;
 	char m_challengeName[64] = {};
+
+	// where the AI should shoot to bring down a king indirectly (a curling stone, a gate, a pillar)
+	struct AimHintRecord
+	{
+		int king;
+		int via;
+		Vector3 home;
+		Vector3 offset;
+	};
+	std::vector<AimHintRecord> m_aimHints;
 
 	// campaigns
 	int m_biome = 0;

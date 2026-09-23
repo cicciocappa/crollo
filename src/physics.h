@@ -93,6 +93,7 @@ struct Entity
 	float age = 0.0f;
 	float fuse = -1.0f;		  // tnt / bomb countdown
 	bool breakQueued = false; // ice shatter
+	bool lethal = false;	  // heavy stones, snowballs, collapsing roofs: knock down any king they strike
 	float flash = 0.0f;		  // hit flash for rendering
 
 	// king

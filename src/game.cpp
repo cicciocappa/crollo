@@ -175,6 +175,11 @@ void Game::SetCannon( Vector3 pos, float yaw )
 	m_cannonBaseYaw = yaw;
 }
 
+void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset )
+{
+	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset } );
+}
+
 void Game::SetFortressCenter( Vector3 c, float radius )
 {
 	m_fortressCenter = c;
@@ -299,6 +304,7 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	m_decorations.clear();
 	m_flags.clear();
 	m_kings.clear();
+	m_aimHints.clear();
 	m_focus = nullptr;
 
 	m_level = def;
@@ -1783,7 +1789,9 @@ void Game::HandleEvents()
 				x->fuse = 0.06f;
 			}
 
-			if ( x->kind == Kind::Block && x->mat == Mat::Ice && h.speed > 3.4f )
+			// ice breaks under real blows, not under its own chips: a shard flying across the island must not
+			// set off a chain of shattering pillars
+			if ( x->kind == Kind::Block && x->mat == Mat::Ice && h.speed > 3.4f && other->kind != Kind::Shard )
 			{
 				x->breakQueued = true;
 			}
@@ -1791,7 +1799,8 @@ void Game::HandleEvents()
 			if ( x->kind == Kind::King && x->defeated == false )
 			{
 				bool struckByShot = other->kind == Kind::Projectile && h.speed > 3.0f;
-				if ( struckByShot || h.speed > 8.0f )
+				bool crushed = other->lethal && h.speed > 3.0f;
+				if ( struckByShot || crushed || h.speed > 8.0f )
 				{
 					if ( getenv( "CROLLO_DEBUG" ) )
 						fprintf( stderr, "  re colpito da kind=%d mat=%d a %.1f m/s\n", (int)other->kind, (int)other->mat, h.speed );
@@ -2543,6 +2552,28 @@ bool Game::AutoFireAtKing()
 	{
 		aimPoint = Vector3Add( aimPoint, Vector3Scale( r.InSphere(), 0.6f ) );
 	}
+	// some kings are brought down indirectly: go for the stone, gate or pillar while it is still in place
+	const Entity* goal = target;
+	for ( const AimHintRecord& h : m_aimHints )
+	{
+		if ( h.king != target->serial )
+		{
+			continue;
+		}
+		for ( Entity* e : m_scene.entities )
+		{
+			if ( e->serial == h.via && e->alive && Vector3Distance( e->pos, h.home ) < 0.6f )
+			{
+				aimPoint = Vector3Add( e->pos, h.offset );
+				goal = e;
+				break;
+			}
+		}
+		if ( goal != target )
+		{
+			break;
+		}
+	}
 
 	// pick ammunition
 	Ammo type = Ammo::Ball;
@@ -2572,7 +2603,7 @@ bool Game::AutoFireAtKing()
 		}
 	}
 
-	return FireAt( aimPoint, type, target );
+	return FireAt( aimPoint, type, goal );
 }
 
 bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
@@ -3172,6 +3203,10 @@ void Game::ScanForEasyShots( int levelIndex )
 					Special( m_focus );
 				}
 				StepSimulation( kFixedDt );
+			}
+			if ( getenv( "CROLLO_DEBUG" ) )
+			{
+				fprintf( stderr, "  scan %s mira %.1f %.1f %.1f -> re abbattuti %d\n", GetAmmoInfo( (Ammo)a ).name, p.x, p.y, p.z, m_kingsDown );
 			}
 			if ( m_kingsDown > best )
 			{

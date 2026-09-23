@@ -108,6 +108,24 @@ public:
 	// A crystal wall that is solid for `onTime` seconds out of every `period`, shifted by `phase`.
 	Entity* Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase );
 
+	// Picchi Gelati
+	// Fixed scenery (ledges, walls, ramps, ice sheets): never moves and never breaks.
+	Entity* Ledge( Vector3 center, Vector3 half, Mat mat, Quaternion rot = { 0, 0, 0, 1 }, Color tint = { 0, 0, 0, 0 } );
+	// A ramp whose lower edge (top surface) runs along x through `lowEdge`, rising towards +z.
+	Entity* Ramp( Vector3 lowEdge, float length, float halfWidth, float angle, Mat mat, Color tint );
+	// A granite stone that slides a long way on ice; crushes kings it runs into.
+	Entity* CurlingStone( Vector3 base );
+	// A heavy ball of packed snow; crushes kings it runs into.
+	Entity* Snowball( Vector3 center, float radius );
+	// A slab of ice welded between two fixed wooden posts: holds back whatever leans on it until it shatters.
+	Entity* Gate( Vector3 center, Vector3 half );
+	// A heavy roof of packed snow fringed with icicles, resting on three ice pillars (one in the middle of
+	// the front, two behind): shatter the front one and the roof tips forward onto whoever is underneath.
+	// Returns the front pillar.
+	Entity* SnowShelter( Vector3 base, float halfX, float halfZ, float height );
+	// Tells the autotest AI (and the demo) to go for `via` instead of `king` while `via` has not moved.
+	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 } );
+
 	// decoration
 	void Trees( Vector3 center, float radius, int count, float minR );
 	void Flag( Vector3 base, Color color, float scale = 1.0f );

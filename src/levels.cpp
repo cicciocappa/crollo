@@ -726,6 +726,154 @@ Entity* Builder::Shield( Vector3 center, Vector3 half, float yaw, float period, 
 	return e;
 }
 
+Entity* Builder::Ledge( Vector3 center, Vector3 half, Mat mat, Quaternion rot, Color tint )
+{
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Static, mat, center, ToB3( rot ), bo );
+	ShapeOptions so;
+	so.category = CatStatic;
+	so.hitEvents = false;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, mat, so );
+	if ( tint.a > 0 )
+	{
+		e->parts.back().tint = tint;
+	}
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Ramp( Vector3 lowEdge, float length, float halfWidth, float angle, Mat mat, Color tint )
+{
+	const float thick = 0.3f;
+	Quaternion q = QuaternionFromAxisAngle( { 1, 0, 0 }, -angle ); // +z end goes up
+	// the centre sits half a length up the slope and half a thickness below the surface
+	Vector3 along = Vector3RotateByQuaternion( { 0, 0, 1 }, q );
+	Vector3 normal = Vector3RotateByQuaternion( { 0, 1, 0 }, q );
+	Vector3 c = Vector3Add( lowEdge, Vector3Subtract( Vector3Scale( along, length * 0.5f ), Vector3Scale( normal, thick ) ) );
+	return Ledge( c, { halfWidth, thick, length * 0.5f }, mat, q, tint );
+}
+
+Entity* Builder::CurlingStone( Vector3 base )
+{
+	BodyOptions bo;
+	bo.angularDamping = 0.3f;
+	Entity* e = scene.CreateEntity( Kind::Block, Mat::Stone, base, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.friction = 0.15f; // polished granite on ice: it glides
+	scene.AddHull( e, { 0, 0, 0 }, b3Quat_identity, scene.Cylinder( 0.34f, 0.45f, 0.0f, 20 ), Mat::Stone, so );
+	e->parts.back().tint = Color{ 125, 125, 135, 255 };
+
+	Part band;
+	band.geo = Geo::Hull;
+	band.hull = scene.Cylinder( 0.08f, 0.458f, 0.0f, 20 );
+	band.localPos = { 0, 0.17f, 0 };
+	band.mat = Mat::Plain;
+	band.tint = Color{ 200, 40, 50, 255 };
+	scene.AddVisual( e, band );
+	Part handle;
+	handle.geo = Geo::Box;
+	handle.localPos = { 0, 0.37f, -0.05f };
+	handle.size = { 0.05f, 0.03f, 0.2f };
+	handle.mat = Mat::Plain;
+	handle.tint = Color{ 200, 40, 50, 255 };
+	scene.AddVisual( e, handle );
+
+	e->lethal = true;
+	e->homeY = homeY;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Snowball( Vector3 center, float radius )
+{
+	BodyOptions bo;
+	bo.angularDamping = 0.02f;
+	Entity* e = scene.CreateEntity( Kind::Block, Mat::Plain, center, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.densityScale = 0.9f;
+	so.mask = CatAll & ~CatDebris; // rolls straight over the shards of the dam it was leaning on
+	scene.AddSphere( e, { 0, 0, 0 }, radius, Mat::Plain, so );
+	e->parts.back().tint = Color{ 240, 245, 252, 255 };
+	e->lethal = true;
+	e->homeY = homeY;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Gate( Vector3 center, Vector3 half )
+{
+	// the posts stand just outside the plank's ends, in the plank's own plane
+	const float post = 0.14f;
+	Entity* posts[2];
+	for ( int s = 0; s < 2; ++s )
+	{
+		float x = center.x + ( s == 0 ? -1.0f : 1.0f ) * ( half.x + post );
+		posts[s] = Ledge( { x, center.y + 0.2f, center.z }, { post, half.y + 0.5f, post + 0.02f }, Mat::Wood, { 0, 0, 0, 1 },
+						  Color{ 120, 84, 52, 255 } );
+	}
+	// a slab of ice: a hit from the front only presses it against the snow behind, so it has to shatter
+	// rather than tear loose
+	Entity* plank = Box( center, half, Mat::Ice );
+	for ( int s = 0; s < 2; ++s )
+	{
+		b3WeldJointDef jd = b3DefaultWeldJointDef();
+		jd.base.bodyIdA = posts[s]->body;
+		jd.base.bodyIdB = plank->body;
+		Vector3 end{ ( s == 0 ? -1.0f : 1.0f ) * half.x, 0, 0 };
+		jd.base.localFrameA.p = b3Body_GetLocalPoint( posts[s]->body, ToB3( Vector3Add( center, end ) ) );
+		jd.base.localFrameA.q = b3Quat_identity;
+		jd.base.localFrameB.p = ToB3( end );
+		jd.base.localFrameB.q = b3Quat_identity;
+		b3CreateWeldJoint( scene.World(), &jd );
+	}
+	return plank;
+}
+
+Entity* Builder::SnowShelter( Vector3 base, float halfX, float halfZ, float height )
+{
+	const float p = 0.16f;
+	float ph = height * 0.5f;
+	Entity* front = Box( { base.x, base.y + ph, base.z - halfZ + p }, { p, ph, p }, Mat::Ice );
+	Box( { base.x - halfX + p, base.y + ph, base.z + halfZ - p }, { p, ph, p }, Mat::Ice );
+	Box( { base.x + halfX - p, base.y + ph, base.z + halfZ - p }, { p, ph, p }, Mat::Ice );
+
+	const float t = 0.22f;
+	BodyOptions bo;
+	Vector3 c{ base.x, base.y + height + t, base.z };
+	Entity* roof = scene.CreateEntity( Kind::Block, Mat::Plain, c, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.densityScale = 1.8f; // packed snow and ice: heavy
+	scene.AddBox( roof, { 0, 0, 0 }, b3Quat_identity, { halfX + 0.25f, t, halfZ + 0.25f }, Mat::Plain, so );
+	roof->parts.back().tint = Color{ 232, 240, 250, 255 };
+	// icicles along the front and back eaves
+	for ( int side = -1; side <= 1; side += 2 )
+	{
+		int n = (int)( ( halfX + 0.25f ) * 2.0f / 0.45f );
+		for ( int i = 0; i < n; ++i )
+		{
+			float x = -( halfX + 0.25f ) + 0.25f + i * 0.45f;
+			float len = 0.35f + 0.3f * rng.Float();
+			Part ic;
+			ic.geo = Geo::Hull;
+			ic.hull = scene.Cone( len, 0.015f, 0.09f, 8 );
+			ic.localPos = { x, -t - len, side * ( halfZ + 0.12f ) };
+			ic.mat = Mat::Ice;
+			ic.tint = GetMatProps( Mat::Ice ).color;
+			scene.AddVisual( roof, ic );
+		}
+	}
+	roof->lethal = true;
+	roof->homeY = homeY;
+	scene.FinalizeEntity( roof );
+	return front;
+}
+
+void Builder::AimHint( Entity* king, Entity* via, Vector3 offset )
+{
+	game.AddAimHint( king, via, offset );
+}
+
 void Builder::Trees( Vector3 center, float radius, int count, float minR )
 {
 	for ( int i = 0; i < count; ++i )
@@ -1084,6 +1232,171 @@ static void Level14( Builder& b )
 	b.Fortress( { 0, 4.0f, 37.0f }, 13.0f );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Picchi Gelati
+// ---------------------------------------------------------------------------------------------
+
+static const Color kSnow{ 226, 234, 246, 255 };
+
+// A fixed stone house whose front wall stops short of the ice: a curling stone slides under it,
+// a cannonball does not fit. Kings inside cannot be seen or shot directly.
+static void StoneHouse( Builder& b, float cx, float floorY, float fz, float halfX )
+{
+	const float gap = 0.45f, top = floorY + 2.4f, w = 0.15f, depth = 3.0f;
+	float frontBottom = floorY + gap;
+	b.Ledge( { cx, ( frontBottom + top ) * 0.5f, fz }, { halfX, ( top - frontBottom ) * 0.5f, w }, Mat::Stone );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { cx + s * ( halfX - w ), ( floorY + top ) * 0.5f, fz + depth * 0.5f }, { w, ( top - floorY ) * 0.5f, depth * 0.5f }, Mat::Stone );
+	}
+	b.Ledge( { cx, ( floorY + top ) * 0.5f, fz + depth - w }, { halfX, ( top - floorY ) * 0.5f, w }, Mat::Stone );
+	b.Ledge( { cx, top + w, fz + depth * 0.5f - w * 0.5f }, { halfX + 0.2f, w, depth * 0.5f + 0.2f }, Mat::Stone );
+}
+
+// Kings on ice bridges between rock spires: the bridges shatter.
+static void LevelCrepacci( Builder& b )
+{
+	b.PlayerIsland();
+	auto bridge = [&]( float x0, float x1, float y, float z, Color robe, Mat wall ) {
+		b.homeY = y;
+		b.Island( { x0, y, z }, 1.1f, 3.5f );
+		b.Island( { x1, y, z }, 1.1f, 3.5f );
+		float cx = ( x0 + x1 ) * 0.5f;
+		float half = ( x1 - x0 ) * 0.5f - 1.1f + 0.75f;
+		b.Box( { cx, y + 0.15f, z }, { half, 0.15f, 0.8f }, Mat::Ice );
+		b.Wall( { cx - 1.0f, y + 0.3f, z - 0.5f }, true, 2, 3, wall );
+		b.King( { cx, y + 0.3f, z + 0.3f }, robe );
+	};
+	bridge( -7.4f, -2.8f, 0.0f, 32.5f, kTeal, Mat::Stone );
+	bridge( -2.3f, 2.3f, 2.5f, 38.5f, kBlue, Mat::Ice );
+	bridge( 2.8f, 7.4f, 0.0f, 32.5f, kPurple, Mat::Stone );
+	b.Flag( { 7.4f, 0.0f, 32.8f }, kTeal );
+	b.Fortress( { 0, 1.5f, 35.0f }, 10.0f );
+}
+
+// Curling: push the stones along the ice, under the wall of the house where two kings hide.
+static void LevelCurling( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34 }, 9.5f );
+	b.Ledge( { 0, 0.05f, 33.5f }, { 2.6f, 0.05f, 6.5f }, Mat::Ice );
+	const float fz = 36.6f;
+	StoneHouse( b, 0.0f, 0.1f, fz, 2.5f );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Entity* king = b.King( { s * 1.0f, 0.1f, fz + 1.2f }, s < 0 ? kTeal : kBlue );
+		// each stone sits on the line from the cannon to its king
+		Entity* stone = b.CurlingStone( { s * 0.8f, 0.1f, 30.5f } );
+		b.AimHint( king, stone, { 0, 0.2f, -0.3f } );
+	}
+
+	// outside: a king on a stone column behind a low wall of ice bricks
+	float c = b.Column( { 6.2f, 0, 35.5f }, 2, 0.5f, Mat::Stone );
+	b.Box( { 6.2f, c + 0.12f, 35.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 6.2f, c + 0.24f, 35.5f }, kPurple );
+	b.Wall( { 4.7f, 0, 33.6f }, true, 3, 3, Mat::Ice );
+
+	b.Trees( { 0, 0, 34 }, 9.5f, 3, 7.5f );
+	b.Flag( { -4.5f, 0, 38.0f }, kTeal );
+	b.Fortress( { 1.5f, 1.5f, 35.0f }, 11.0f );
+}
+
+// Two roofs of packed snow on ice pillars, two kings under each.
+static void LevelStalattiti( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34 }, 9.5f );
+	const Color robes[4] = { kTeal, kBlue, kPurple, kCrimson };
+	for ( int s = 0; s < 2; ++s )
+	{
+		float cx = s == 0 ? -4.3f : 4.3f;
+		Entity* front = b.SnowShelter( { cx, 0, 35.0f }, 1.3f, 1.1f, 2.2f );
+		for ( int k = 0; k < 2; ++k )
+		{
+			Entity* king = b.King( { cx + ( k == 0 ? -0.55f : 0.55f ), 0, 34.75f }, robes[s * 2 + k] );
+			b.AimHint( king, front, { 0, 0.2f, 0 } );
+		}
+	}
+	b.Pyramid( { 0, 0, 37.5f }, 3, 0.35f, Mat::Ice );
+	b.Trees( { 0, 0, 34 }, 9.5f, 4, 7.0f );
+	b.Flag( { 0, 0, 39.5f }, kTeal );
+	b.Fortress( { 0, 1.5f, 35.0f }, 10.0f );
+}
+
+// Avalanche: a gate holds three snowballs on a ramp above the kings' towers.
+static void LevelValanga( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.5f );
+
+	const float angle = 26.0f * DEG2RAD;
+	const Vector3 low{ 0, 0, 37.5f };
+	b.Ramp( low, 8.0f, 2.4f, angle, Mat::Rock, kSnow );
+	Vector3 along{ 0, sinf( angle ), cosf( angle ) };
+	Vector3 foot = Vector3Add( low, Vector3Scale( along, 5.2f ) ); // where the gate meets the slope
+	const Vector3 half{ 2.3f, 0.75f, 0.12f };
+	Entity* gate = b.Gate( { 0, foot.y + half.y + 0.1f, foot.z }, half );
+
+	// three snowballs side by side, each resting on the slope and against the gate
+	const float r = 0.7f;
+	for ( int i = -1; i <= 1; ++i )
+	{
+		float z = foot.z + half.z + r + 0.01f;
+		float y = low.y + ( r + sinf( angle ) * ( z - low.z ) ) / cosf( angle ) + 0.01f;
+		b.Snowball( { i * 1.6f, y, z }, r );
+	}
+
+	// stacks of solid crates in a row at the foot of the ramp, one in the path of each snowball: a snowball
+	// cannot slip between their legs the way it would through a tower, and none can topple the others
+	const Vector3 towers[3] = { { -2.0f, 0, 35.6f }, { 0.0f, 0, 35.6f }, { 2.0f, 0, 35.6f } };
+	const Color robes[3] = { kTeal, kBlue, kPurple };
+	for ( int i = 0; i < 3; ++i )
+	{
+		float t = b.Column( towers[i], i == 2 ? 3 : 4, 0.4f, Mat::Wood );
+		Entity* king = b.King( { towers[i].x, t, towers[i].z }, robes[i] );
+		b.AimHint( king, gate, { 0, 0.3f, 0 } );
+	}
+	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.0f );
+	b.Flag( { 4.0f, 0, 38.5f }, kTeal );
+	b.Fortress( { 0, 1.5f, 36.0f }, 11.0f );
+}
+
+// The finale: the ice palace behind a crystal shield, a snow shelter and a curling lane.
+static void LevelReggia( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 1.0f;
+	b.Island( { 0, 1, 40 }, 12.5f );
+
+	// centre: Re Ghiacciolo on his ice tower, behind a crystal wall
+	float t = b.Tower( { 0, 1, 43.0f }, 3, 1.1f, 1.2f, Mat::Ice, Mat::Ice );
+	b.King( { 0, t, 43.0f }, kTeal );
+	b.Shield( { 0, 1.0f + 2.9f, 40.6f }, { 1.9f, 2.9f, 0.12f }, 0.0f, 4.5f, 2.6f, 0.0f );
+
+	// left: two kings under a roof of snow
+	Entity* front = b.SnowShelter( { -6.5f, 1, 39.0f }, 1.3f, 1.1f, 2.2f );
+	for ( int k = 0; k < 2; ++k )
+	{
+		Entity* king = b.King( { -6.5f + ( k == 0 ? -0.55f : 0.55f ), 1, 38.75f }, k == 0 ? kBlue : kPurple );
+		b.AimHint( king, front, { 0, 0.2f, 0 } );
+	}
+
+	// right: a curling lane into a stone house
+	b.Ledge( { 6.2f, 1.05f, 38.0f }, { 2.0f, 0.05f, 6.0f }, Mat::Ice );
+	StoneHouse( b, 6.2f, 1.1f, 41.6f, 1.8f );
+	Entity* king = b.King( { 6.2f, 1.1f, 42.8f }, kCrimson );
+	Entity* stone = b.CurlingStone( { 6.2f * ( 35.5f - 1.0f ) / ( 42.8f - 1.0f ), 1.1f, 35.5f } );
+	b.AimHint( king, stone, { 0, 0.2f, -0.3f } );
+
+	b.Trees( { 0, 1, 40 }, 12.5f, 4, 10.0f );
+	b.Flag( { -3.0f, 1, 46.0f }, kTeal );
+	b.Flag( { 3.0f, 1, 46.0f }, kTeal );
+	b.Fortress( { 0, 4.0f, 40.5f }, 14.0f );
+}
+
 static const LevelDef s_levels[] = {
 	{ "Primo Colpo", "Una torre di legno basta e avanza. Chi mai sparerebbe a un re?", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01, "prati_primo_colpo" },
@@ -1115,6 +1428,19 @@ static const LevelDef s_levels[] = {
 	  { 5, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13, "prati_gomma" },
 	{ "Il Bunker", "Sacchi di sabbia. Tanti, tanti sacchi di sabbia.", "Novità: il VORTICE (6) risucchia i blocchi, la bomba ADESIVA (7) si attacca ed esplode dopo 3 s.",
 	  { 3, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14, "prati_bunker" },
+	{ "Crepacci", "Il ghiaccio regge. Quasi sempre.", "I ponti di ghiaccio si frantumano: colpiscili e i re cadranno tra le nuvole.",
+	  { 4, 0, 1, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCrepacci, "gelo_crepacci" },
+	{ "Curling", "Le mie pietre scivolano. I miei re, no.",
+	  "Due re si nascondono nella casa di pietra. Colpisci le pietre da curling da dietro: passano sotto il muro.",
+	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCurling, "gelo_curling" },
+	{ "Stalattiti", "Sotto il mio tetto nessuno ci tocca. Nemmeno il cielo.",
+	  "I tetti di neve poggiano su colonne di ghiaccio: spezza una colonna davanti e il tetto crolla.",
+	  { 4, 1, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelStalattiti, "gelo_stalattiti" },
+	{ "Valanga", "La neve lassù è ferma da secoli. Non svegliarla.", "Colpisci la diga di ghiaccio sulla rampa: le palle di neve faranno il resto.",
+	  { 3, 0, 0, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, LevelValanga, "gelo_valanga" },
+	{ "La Reggia di Ghiacciolo", "Benvenuto nella mia reggia. Resterai congelato all'ingresso.",
+	  "Cristallo, neve e pietre da curling: tutto quello che hai imparato sul ghiaccio ti servirà.",
+	  { 5, 2, 1, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelReggia, "gelo_reggia" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1143,7 +1469,8 @@ static std::vector<Campaign> BuildCampaigns()
 				   "Sui Picchi Gelati regna Re Ghiacciolo III, che non si fida di nessuno, e meno che mai dei muri normali: "
 				   "i suoi sono di cristallo, e si accendono e si spengono quando vuole lui.",
 				   "Il cristallo si spegne per sempre. Tre frammenti su sei: la Corona dei Venti ricomincia a soffiare.",
-				   { idx( "gelo_palazzo" ), idx( "gelo_cristalli" ), idx( "gelo_doppia" ) } } );
+				   { idx( "gelo_palazzo" ), idx( "gelo_crepacci" ), idx( "gelo_curling" ), idx( "gelo_cristalli" ),
+					 idx( "gelo_stalattiti" ), idx( "gelo_valanga" ), idx( "gelo_doppia" ), idx( "gelo_reggia" ) } } );
 	c.push_back( { "Dune Sospese", "Sultana Zaira", { 225, 170, 40, 255 }, 3,
 				   "Sulle Dune Sospese la sabbia vola pi\u00f9 in alto delle isole. La Sultana Zaira si nasconde dietro montagne "
 				   "di sacchi, e il vento cambia a ogni colpo.",

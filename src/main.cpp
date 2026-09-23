@@ -3,7 +3,8 @@
 // Usage:
 //   crollo                       play
 //   crollo --debug               play with every level unlocked (progress is not changed)
-//   crollo --autotest [shots]    headless: check every level is stable and winnable
+//   crollo --autotest [shots] [level]
+//                                headless: check every level (or just one, 1-based) is stable and winnable
 //   crollo --scan-shots [level]  headless: the most kings a single shot can knock down, per ammunition
 //   crollo --shot <mode> <level> <frames> <out.png>
 //                                render a screenshot (modes: aim, fire, title, select, won)
@@ -23,20 +24,26 @@
 #include <cstdlib>
 #include <cstring>
 
-[[maybe_unused]] static int RunAutoTest( int maxShots )
+// only: 1-based level number to test alone, 0 for all of them
+[[maybe_unused]] static int RunAutoTest( int maxShots, int only )
 {
 	Game game( true );
 	game.Init( nullptr, nullptr );
-	int passed = 0;
+	int passed = 0, tested = 0;
 	for ( int i = 0; i < LevelCount(); ++i )
 	{
+		if ( only != 0 && only != i + 1 )
+		{
+			continue;
+		}
+		++tested;
 		if ( game.RunAutoTest( i, maxShots, true ) )
 		{
 			++passed;
 		}
 	}
-	printf( "Superati %d/%d livelli\n", passed, LevelCount() );
-	return passed == LevelCount() ? 0 : 1;
+	printf( "Superati %d/%d livelli\n", passed, tested );
+	return passed == tested ? 0 : 1;
 }
 
 #if defined( __EMSCRIPTEN__ )
@@ -139,7 +146,8 @@ int main( int argc, char** argv )
 	{
 		SetTraceLogLevel( LOG_WARNING );
 		int shots = argc >= 3 ? atoi( argv[2] ) : 12;
-		return RunAutoTest( shots );
+		int only = argc >= 4 ? atoi( argv[3] ) : 0;
+		return RunAutoTest( shots, only );
 	}
 
 	if ( argc >= 3 && strcmp( argv[1], "--export-audio" ) == 0 )
