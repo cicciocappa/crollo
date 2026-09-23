@@ -76,6 +76,8 @@ public:
 	Entity* Windmill( Vector3 base, float towerHeight, float bladeLength, float speed );
 	Entity* Slider( Vector3 center, Vector3 half, Vector3 axis, float amplitude, float speed, float phase, Mat mat );
 	Entity* BalloonBasket( Vector3 basketCenter, Color balloonColor, Color robe );
+	// A crystal wall that is solid for `onTime` seconds out of every `period`, shifted by `phase`.
+	Entity* Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase );
 
 	// decoration
 	void Trees( Vector3 center, float radius, int count, float minR );

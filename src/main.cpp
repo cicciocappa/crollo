@@ -92,6 +92,15 @@ int main( int argc, char** argv )
 		return 0;
 	}
 
+	if ( argc >= 2 && strcmp( argv[1], "--test-shields" ) == 0 )
+	{
+		SetTraceLogLevel( LOG_WARNING );
+		Game game( true );
+		game.Init( nullptr, nullptr );
+		game.TestShields();
+		return 0;
+	}
+
 	if ( argc >= 2 && strcmp( argv[1], "--autotest" ) == 0 )
 	{
 		SetTraceLogLevel( LOG_WARNING );
@@ -188,6 +197,13 @@ int main( int argc, char** argv )
 		if ( shotMode && strcmp( shotMode, "fire" ) == 0 && frame == 30 )
 		{
 			game.AutoFireAtKing();
+		}
+		// "fireall": keep shooting every few seconds until the level is won (exercises the replay)
+		static int nextShot = 30;
+		if ( shotMode && strcmp( shotMode, "fireall" ) == 0 && frame >= nextShot && game.LevelWon() == false &&
+			 game.CurrentScreen() == Screen::Playing )
+		{
+			nextShot = game.AutoFireAtKing() ? frame + 300 : frame + 1;
 		}
 		game.Update( dt );
 

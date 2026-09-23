@@ -125,8 +125,9 @@ public:
 	bool RunAutoTest( int levelIndex, int maxShots, bool verbose );
 	bool RunChallengeTest( int round, uint32_t seed, int maxShots, bool verbose );
 	bool PlayOutAutomatically( int maxShots, int& downAtStart, int& shots );
+	void TestShields();
 	void StepSimulation( float dt );
-	void AutoFireAtKing();
+	bool AutoFireAtKing(); // false when no shot was fired (nothing to hit, or waiting for a shield)
 
 	int KingsRemaining() const;
 	int KingsTotal() const
@@ -195,6 +196,12 @@ private:
 	bool AnyProjectileFlying() const;
 	void SelectAmmo( int index );
 	int ComputeStars() const;
+	// Time along an arc at which it would meet a crystal shield that is up at that moment, or -1.
+	float PathShieldBlock( Vector3 p0, Vector3 v, Vector3 accel, float maxTime, float startTime ) const;
+	bool ShieldAreaClear( const Mechanism& m ) const;
+	void UpdateShields();
+	void DrawShieldGhosts();
+	void DrawShieldTimers();
 
 	// drawing
 	void DrawWorld();

@@ -37,6 +37,7 @@ struct Decoration
 		Grass,
 		Flag,
 		Banner,
+		Pylon,
 	};
 	Type type;
 	Vector3 pos;

@@ -24,6 +24,7 @@ static const MatProps s_matProps[(int)Mat::Count] = {
 	{ 1500.0f, 0.5f, 0.1f, { 255, 200, 40, 255 }, "oro" },
 	{ 1.0f, 0.4f, 0.4f, { 230, 60, 80, 255 }, "pallone" },
 	{ 1000.0f, 0.6f, 0.0f, { 40, 36, 40, 255 }, "scuro" },
+	{ 1000.0f, 0.3f, 0.3f, { 110, 215, 255, 255 }, "cristallo" },
 };
 
 const MatProps& GetMatProps( Mat m )

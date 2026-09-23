@@ -613,6 +613,42 @@ Entity* Builder::BalloonBasket( Vector3 c, Color balloonColor, Color robe )
 	return balloon;
 }
 
+Entity* Builder::Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase )
+{
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Shield, Mat::Shield, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatShield;
+	so.hitEvents = false;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Shield, so );
+	scene.FinalizeEntity( e );
+
+	Mechanism m;
+	m.type = MechType::Blinker;
+	m.entity = e;
+	m.period = period;
+	m.onTime = onTime;
+	m.phase = phase;
+	m.on = true;
+	scene.mechanisms.push_back( m );
+
+	// small crystal pylons at the lower corners anchor the wall visually
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 local{ s * ( half.x + 0.12f ), -half.y + 0.35f, 0.0f };
+		Vector3 w = Vector3Add( center, Vector3RotateByQuaternion( local, ToRl( QuatYaw( yaw ) ) ) );
+		Decoration d;
+		d.type = Decoration::Pylon;
+		d.pos = { w.x, center.y - half.y, w.z };
+		d.scale = 1.0f;
+		d.rot = yaw;
+		d.color = GetMatProps( Mat::Shield ).color;
+		game.AddDecoration( d );
+	}
+	return e;
+}
+
 void Builder::Trees( Vector3 center, float radius, int count, float minR )
 {
 	for ( int i = 0; i < count; ++i )
@@ -848,6 +884,55 @@ static void Level10( Builder& b )
 	b.Fortress( { 0, 4, 37 }, 18.0f );
 }
 
+static void Level11( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 33.5f }, 9.0f );
+
+	// two kings, each behind its own crystal wall; the walls take turns
+	float t1 = b.Tower( { -2.6f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { -2.6f, t1, 35.0f }, kTeal );
+	float t2 = b.Tower( { 2.6f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { 2.6f, t2, 35.0f }, kPurple );
+	b.Shield( { -2.6f, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, 0.0f );
+	b.Shield( { 2.6f, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, 2.0f );
+
+	b.Box( { 0, 0.4f, 36.5f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, 0.3f );
+	b.Box( { 0, 1.2f, 36.5f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, -0.2f );
+	b.Trees( { 0, 0, 33.5f }, 9.0f, 4, 6.8f );
+	b.Flag( { 5.5f, 0, 37.0f }, kTeal );
+	b.Fortress( { 0, 2.5f, 34.0f }, 10.0f );
+}
+
+static void Level12( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 1.0f;
+	b.Island( { 0, 1, 36 }, 10.0f );
+
+	// left: two walls with different rhythms, the way through opens only when both are down
+	float c = b.Column( { -3.2f, 1.0f, 36.0f }, 2, 0.5f, Mat::Stone );
+	b.Box( { -3.2f, c + 0.12f, 36.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
+	b.King( { -3.2f, c + 0.24f, 36.0f }, kCrimson );
+	b.Shield( { -3.2f, 3.4f, 34.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 3.0f, 1.6f, 0.0f );
+	b.Shield( { -3.2f, 3.4f, 33.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 5.0f, 2.2f, 1.0f );
+
+	// right: a tall tower under a crystal canopy, with a stone wall in front forcing a lob
+	float t = b.Tower( { 3.4f, 1.0f, 37.0f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 3.4f, t, 37.0f }, kOrange );
+	b.Shield( { 3.4f, t + 2.2f, 37.0f }, { 1.4f, 0.12f, 1.4f }, 0.0f, 3.5f, 2.0f, 0.5f );
+	b.Wall( { 1.4f, 1.0f, 33.8f }, true, 4, 5, Mat::Stone );
+
+	// back: an unguarded king on a hut roof, only reachable with a high shot
+	float h = b.Hut( { 0, 1.0f, 40.5f }, 1.1f, 1.6f, Mat::Wood, Mat::Wood );
+	b.King( { 0, h, 40.5f }, kGreen );
+
+	b.Trees( { 0, 1, 36 }, 10.0f, 4, 7.8f );
+	b.Flag( { -6.0f, 1.0f, 39.0f }, kCrimson );
+	b.Fortress( { 0, 4.0f, 37.0f }, 12.0f );
+}
+
 static const LevelDef s_levels[] = {
 	{ "Primo Colpo", "Il re di legno", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01 },
@@ -869,6 +954,11 @@ static const LevelDef s_levels[] = {
 	  { 4, 0, 0, 1, 2 }, 4, { 1.4f, 0, 0.4f }, Level09 },
 	{ "La Cittadella", "L'ultimo assedio", "Sei re, tre isole. Usa tutto l'arsenale.", { 4, 3, 2, 2, 2 }, 6, { -1.0f, 0, 0 },
 	  Level10 },
+	{ "Cristalli Guardiani", "Il muro che respira",
+	  "Gli scudi di cristallo si spengono a intervalli: guarda l'anello sopra ogni scudo e spara al momento giusto.",
+	  { 4, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11 },
+	{ "Doppia Guardia", "Tempismo perfetto", "Due scudi in fila: si passa solo quando sono spenti entrambi. Tieni conto del volo.",
+	  { 4, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12 },
 };
 
 const LevelDef& GetLevel( int index )

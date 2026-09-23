@@ -145,6 +145,7 @@ void main()
 	float specK = 0.08;
 	float edge = 1.0;
 	float fresnelK = 0.0;
+	vec3 emissive = vec3(0.0);
 	vec3 p = vLocalPos;
 
 	if (matType == 1) // wood
@@ -247,6 +248,23 @@ void main()
 		shininess = 50.0;
 		specK = 0.6;
 	}
+	else if (matType == 13) // crystal shield: glowing hexagonal lattice with scan lines
+	{
+		vec2 q = vec2(p.x + p.z, p.y) * 2.4;
+		const vec2 r = vec2(1.0, 1.7320508);
+		vec2 a = mod(q, r) - r * 0.5;
+		vec2 b = mod(q - r * 0.5, r) - r * 0.5;
+		vec2 g = dot(a, a) < dot(b, b) ? a : b;
+		vec2 ag = abs(g);
+		float hexd = max(dot(ag, normalize(r)), ag.x); // 0 at a cell centre, 0.5 on its edge
+		float line = smoothstep(0.43, 0.49, hexd);
+		float scan = pow(sin(vWorldPos.y * 4.0 - time * 3.0) * 0.5 + 0.5, 8.0);
+		albedo = mix(vec3(0.08, 0.30, 0.55), vec3(0.85, 1.0, 1.0), line);
+		emissive = vec3(0.12, 0.50, 0.85) * (0.30 + 1.3 * line + 0.7 * scan) + vec3(0.05, 0.15, 0.25) * (1.0 - hexd * 2.0);
+		shininess = 90.0;
+		specK = 1.0;
+		fresnelK = 0.8;
+	}
 	else if (matType == 0)
 	{
 		albedo *= 0.9 + 0.2 * fbm(vWorldPos * 2.0);
@@ -266,6 +284,7 @@ void main()
 	float fres = pow(1.0 - max(dot(N, V), 0.0), 3.0) * fresnelK;
 
 	vec3 col = albedo * (hemi * 0.62 + sunCol * ndl * sh) + sunCol * spec * sh + vec3(fres);
+	col += emissive;
 	col += flash * vec3(1.0, 0.85, 0.5);
 
 	float dist = length(viewPos - vWorldPos);
@@ -887,6 +906,13 @@ void Renderer::AddDecoration( const Decoration& d )
 				Quaternion tilt = QuaternionMultiply( qi, QuaternionFromAxisAngle( { 1, 0, 0 }, 0.25f ) );
 				AddBox( Vector3Add( d.pos, { 0, 0.15f * s, 0 } ), tilt, { 0.02f * s, 0.16f * s, 0.06f * s }, Mat::Plain, d.color, false );
 			}
+			break;
+		}
+		case Decoration::Pylon:
+		{
+			AddBox( Vector3Add( d.pos, { 0, 0.35f * s, 0 } ), q, { 0.12f * s, 0.35f * s, 0.12f * s }, Mat::Stone, { 120, 118, 130, 255 } );
+			Quaternion tilt = QuaternionMultiply( q, QuaternionFromAxisAngle( { 0, 1, 0 }, 0.785f ) );
+			AddBox( Vector3Add( d.pos, { 0, 0.85f * s, 0 } ), tilt, { 0.09f * s, 0.16f * s, 0.09f * s }, Mat::Shield, d.color );
 			break;
 		}
 		case Decoration::Flag:

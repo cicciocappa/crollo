@@ -21,6 +21,7 @@ enum class Mat : uint8_t
 	Gold,
 	Balloon,
 	Dark,
+	Shield,
 	Count
 };
 
@@ -34,6 +35,7 @@ enum class Kind : uint8_t
 	Crown,
 	Mechanism,
 	Balloon,
+	Shield,
 };
 
 enum class Geo : uint8_t
@@ -125,6 +127,7 @@ enum class MechType : uint8_t
 {
 	Windmill,
 	Slider,
+	Blinker, // a crystal shield that switches on and off on a fixed schedule
 };
 
 struct Mechanism
@@ -134,7 +137,25 @@ struct Mechanism
 	float amplitude = 0.0f;
 	float speed = 0.0f;
 	float phase = 0.0f;
+
+	// Blinker: on for `onTime` seconds out of every `period`, shifted by `phase`
+	Entity* entity = nullptr;
+	float period = 0.0f;
+	float onTime = 0.0f;
+	bool on = true;
+	float untilToggle = 0.0f; // seconds to the next scheduled switch, for warnings and the HUD
 };
+
+// Where a blinking shield is in its cycle at simulation time t (ignores any delayed switch-on).
+inline bool BlinkerOnAt( const Mechanism& m, float t )
+{
+	float c = fmodf( t + m.phase, m.period );
+	if ( c < 0.0f )
+	{
+		c += m.period;
+	}
+	return c < m.onTime;
+}
 
 // What an entity looked like, kept after it dies so replays can still draw it.
 struct VisualRecord
@@ -168,6 +189,7 @@ enum Category : uint64_t
 	CatProjectile = 1u << 2,
 	CatDebris = 1u << 3,
 	CatKing = 1u << 4,
+	CatShield = 1u << 5,
 	CatAll = UINT64_MAX,
 };
 

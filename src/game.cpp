@@ -1133,6 +1133,7 @@ void Game::FixedStep()
 			b3PrismaticJoint_SetTargetTranslation( m.joint, m.amplitude * sinf( m.speed * m_scene.time + m.phase ) );
 		}
 	}
+	UpdateShields();
 
 	m_scene.Step( dt, kSubSteps );
 	HandleEvents();
@@ -1284,7 +1285,7 @@ void Game::HandleEvents()
 			Mat m = struck->isStatic ? other->mat : struck->mat;
 			if ( struck->isStatic && other->kind == Kind::Projectile )
 			{
-				m = Mat::Rock;
+				m = struck->mat == Mat::Shield ? Mat::Shield : Mat::Rock;
 			}
 			HitEffects( h.point, h.speed, m, std::max( a->mass, b->mass ), true );
 		}
@@ -1396,6 +1397,198 @@ void Game::HandleEvents()
 	}
 }
 
+// ---------------------------------------------------------------------------------------------
+// Crystal shields
+// ---------------------------------------------------------------------------------------------
+
+static bool OverlapFound( b3ShapeId shapeId, void* context )
+{
+	(void)shapeId;
+	*(bool*)context = true;
+	return false;
+}
+
+bool Game::ShieldAreaClear( const Mechanism& m ) const
+{
+	const Entity* e = m.entity;
+	if ( e == nullptr || e->parts.empty() )
+	{
+		return true;
+	}
+	Vector3 h = e->parts[0].size;
+	b3Vec3 corners[8];
+	int n = 0;
+	for ( int x = -1; x <= 1; x += 2 )
+	{
+		for ( int y = -1; y <= 1; y += 2 )
+		{
+			for ( int z = -1; z <= 1; z += 2 )
+			{
+				corners[n++] = ToB3( Vector3RotateByQuaternion( { x * h.x, y * h.y, z * h.z }, e->rot ) );
+			}
+		}
+	}
+	b3ShapeProxy proxy{ corners, 8, 0.0f };
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.categoryBits = CatShield;
+	filter.maskBits = CatBlock | CatKing | CatProjectile | CatDebris;
+	bool found = false;
+	b3World_OverlapShape( m_scene.World(), ToB3( e->pos ), &proxy, filter, OverlapFound, &found );
+	return found == false;
+}
+
+void Game::UpdateShields()
+{
+	for ( Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Blinker || m.entity == nullptr || m.entity->alive == false )
+		{
+			continue;
+		}
+		float c = fmodf( m_scene.time + m.phase, m.period );
+		bool want = c < m.onTime;
+		m.untilToggle = want ? m.onTime - c : m.period - c;
+
+		if ( want != m.on )
+		{
+			// never switch a wall on inside a block, a king or a flying ball: wait until it is clear
+			if ( want == false || ShieldAreaClear( m ) )
+			{
+				m.on = want;
+				if ( want )
+				{
+					b3Body_Enable( m.entity->body );
+				}
+				else
+				{
+					b3Body_Disable( m.entity->body );
+				}
+				if ( m_audio && m_attract == false )
+				{
+					m_audio->PlayAt( Sfx::Whoosh, m.entity->pos, 0.35f, want ? 1.4f : 0.9f );
+				}
+			}
+		}
+
+		// flicker for the last 0.6 s before the wall goes away
+		m.entity->flash = ( m.on && m.untilToggle < 0.6f && fmodf( m.untilToggle, 0.16f ) < 0.08f ) ? 0.5f : 0.0f;
+	}
+}
+
+float Game::PathShieldBlock( Vector3 p0, Vector3 v, Vector3 accel, float maxTime, float startTime ) const
+{
+	const float radius = 0.35f; // a little more than a cannonball
+	const float dt = 0.02f;
+	Vector3 prev = p0;
+	for ( float t = dt; t <= maxTime; t += dt )
+	{
+		Vector3 p = Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( accel, 0.5f * t * t ) ) );
+		for ( const Mechanism& m : m_scene.mechanisms )
+		{
+			if ( m.type != MechType::Blinker || m.entity == nullptr || m.entity->parts.empty() )
+			{
+				continue;
+			}
+			const Entity* e = m.entity;
+			Vector3 h = Vector3AddValue( e->parts[0].size, radius );
+			Quaternion inv = QuaternionInvert( e->rot );
+			Vector3 a = Vector3RotateByQuaternion( Vector3Subtract( prev, e->pos ), inv );
+			Vector3 b = Vector3RotateByQuaternion( Vector3Subtract( p, e->pos ), inv );
+
+			// slab test of the segment a-b against the inflated box
+			float t0 = 0.0f, t1 = 1.0f;
+			bool hit = true;
+			float av[3] = { a.x, a.y, a.z }, bv[3] = { b.x, b.y, b.z }, hv[3] = { h.x, h.y, h.z };
+			for ( int k = 0; k < 3 && hit; ++k )
+			{
+				float d = bv[k] - av[k];
+				if ( fabsf( d ) < 1e-6f )
+				{
+					hit = fabsf( av[k] ) <= hv[k];
+					continue;
+				}
+				float u0 = ( -hv[k] - av[k] ) / d;
+				float u1 = ( hv[k] - av[k] ) / d;
+				if ( u0 > u1 )
+				{
+					std::swap( u0, u1 );
+				}
+				t0 = std::max( t0, u0 );
+				t1 = std::min( t1, u1 );
+				hit = t0 <= t1;
+			}
+			if ( hit && BlinkerOnAt( m, startTime + t - dt * ( 1.0f - t0 ) ) )
+			{
+				return t;
+			}
+		}
+		prev = p;
+	}
+	return -1.0f;
+}
+
+void Game::DrawShieldGhosts()
+{
+	// switched-off walls: a faint outline so the player knows where they will come back
+	rlDisableDepthMask();
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Blinker || m.on || m.entity == nullptr || m.entity->parts.empty() )
+		{
+			continue;
+		}
+		const Entity* e = m.entity;
+		Vector3 h = e->parts[0].size;
+		bool soon = m.untilToggle < 0.6f;
+		float pulse = soon ? ( fmodf( m.untilToggle, 0.16f ) < 0.08f ? 1.0f : 0.4f ) : 0.25f;
+		Color fill = WithAlpha( Color{ 110, 215, 255, 255 }, 0.12f * pulse );
+		Color wire = WithAlpha( Color{ 170, 235, 255, 255 }, 0.8f * pulse );
+		Matrix mtx = ComposeTRS( e->pos, e->rot, { 1, 1, 1 } );
+		rlPushMatrix();
+		rlMultMatrixf( MatrixToFloat( mtx ) );
+		DrawCube( { 0, 0, 0 }, 2.0f * h.x, 2.0f * h.y, 2.0f * h.z, fill );
+		DrawCubeWires( { 0, 0, 0 }, 2.0f * h.x, 2.0f * h.y, 2.0f * h.z, wire );
+		rlPopMatrix();
+	}
+	rlDrawRenderBatchActive();
+	rlEnableDepthMask();
+}
+
+void Game::DrawShieldTimers()
+{
+	float S = ui::S();
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Blinker || m.entity == nullptr || m.entity->parts.empty() )
+		{
+			continue;
+		}
+		const Entity* e = m.entity;
+		Vector3 top = Vector3Add( e->pos, { 0, e->parts[0].size.y + 0.6f, 0 } );
+		Vector3 toTop = Vector3Subtract( top, m_camera.position );
+		if ( Vector3DotProduct( toTop, Vector3Subtract( m_camera.target, m_camera.position ) ) <= 0.0f )
+		{
+			continue;
+		}
+		Vector2 c = GetWorldToScreen( top, m_camera );
+		float span = m.on ? m.onTime : m.period - m.onTime;
+		float frac = Clamp01( m.untilToggle / std::max( span, 0.01f ) );
+		// cyan ring = wall up, green ring = open; the arc shows the time left in that state
+		Color col = m.on ? Color{ 110, 215, 255, 255 } : Color{ 120, 230, 110, 255 };
+		float r = 17.0f * S;
+		DrawCircleV( c, r + 3 * S, Color{ 20, 25, 35, 170 } );
+		DrawRing( c, r - 5 * S, r, -90.0f, -90.0f + 360.0f * frac, 32, col );
+		if ( m.on )
+		{
+			DrawRectangleV( { c.x - 4 * S, c.y - 6 * S }, { 8 * S, 12 * S }, col );
+		}
+		else
+		{
+			DrawRing( c, 3 * S, 6 * S, 0, 360, 16, col );
+		}
+	}
+}
+
 void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool dust )
 {
 	if ( speed > 1.8f && m_hitSoundsThisFrame < 7 && m_audio )
@@ -1411,6 +1604,10 @@ void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool 
 			case Mat::Ice:
 				sfx = Sfx::IceHit;
 				break;
+			case Mat::Shield:
+				sfx = Sfx::IceHit;
+				heavyMass = -1.0f; // bright crystal ping, see below
+				break;
 			case Mat::Metal:
 			case Mat::Dark:
 			case Mat::Gold:
@@ -1421,7 +1618,7 @@ void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool 
 				break;
 		}
 		float vol = Clamp01( ( speed - 1.5f ) / 9.0f ) * 0.9f + 0.1f;
-		float pitch = FxRng().Range( 0.88f, 1.12f ) * ( heavyMass > 1500.0f ? 0.8f : 1.0f );
+		float pitch = FxRng().Range( 0.88f, 1.12f ) * ( heavyMass > 1500.0f ? 0.8f : 1.0f ) * ( heavyMass < 0.0f ? 1.6f : 1.0f );
 		if ( m_screen == Screen::Replay )
 		{
 			pitch *= 0.8f;
@@ -1669,9 +1866,15 @@ void Game::UpdateAttract( float dt )
 	int remaining = KingsRemaining();
 	if ( remaining > 0 && m_attractTimer <= 0.0f && m_attractShots < 14 )
 	{
-		AutoFireAtKing();
-		m_attractShots += 1;
-		m_attractTimer = FxRng().Range( 2.8f, 4.2f );
+		if ( AutoFireAtKing() )
+		{
+			m_attractShots += 1;
+			m_attractTimer = FxRng().Range( 2.8f, 4.2f );
+		}
+		else
+		{
+			m_attractTimer = 0.1f; // waiting for a shield to drop
+		}
 	}
 	if ( ( remaining == 0 || m_attractShots >= 14 ) && m_attractTimer < -3.5f )
 	{
@@ -1680,7 +1883,7 @@ void Game::UpdateAttract( float dt )
 	}
 }
 
-void Game::AutoFireAtKing()
+bool Game::AutoFireAtKing()
 {
 	std::vector<Entity*> targets;
 	for ( Entity* k : m_kings )
@@ -1692,7 +1895,7 @@ void Game::AutoFireAtKing()
 	}
 	if ( targets.empty() )
 	{
-		return;
+		return false;
 	}
 	Rng& r = FxRng();
 	Entity* target = targets[r.Int( 0, (int)targets.size() - 1 )];
@@ -1726,10 +1929,8 @@ void Game::AutoFireAtKing()
 		}
 		if ( m_ammo[(int)type] <= 0 )
 		{
-			return;
+			return false;
 		}
-		m_ammo[(int)type] -= 1;
-		m_shots += 1;
 	}
 
 	// Exact solution under constant acceleration (gravity + wind): choose a flight time,
@@ -1780,6 +1981,7 @@ void Game::AutoFireAtKing()
 	Vector3 best{};
 	bool found = false;
 	bool fallback = false;
+	bool waitForShield = false;
 	for ( int k = start; k < count; ++k )
 	{
 		Vector3 v;
@@ -1795,14 +1997,24 @@ void Game::AutoFireAtKing()
 		}
 		if ( pathClear( v, flight ) )
 		{
+			// clear of blocks, but would a crystal shield be up when the shot passes through it?
+			if ( PathShieldBlock( Muzzle(), v, accel, flight + 0.2f, m_scene.time ) >= 0.0f )
+			{
+				waitForShield = true;
+				continue;
+			}
 			best = v;
 			found = true;
 			break;
 		}
 	}
+	if ( found == false && waitForShield )
+	{
+		return false; // a window will open: try again on a later frame
+	}
 	if ( found == false && fallback == false )
 	{
-		return;
+		return false;
 	}
 
 	Vector3 dir = Vector3Normalize( best );
@@ -1810,6 +2022,11 @@ void Game::AutoFireAtKing()
 	m_yaw = atan2f( dir.x, dir.z );
 	m_pitch = asinf( Clamp( dir.y, -1.0f, 1.0f ) );
 	m_power = Clamp01( ( speed - kMinSpeed ) / ( kMaxSpeed - kMinSpeed ) );
+	if ( m_attract == false )
+	{
+		m_ammo[(int)type] -= 1;
+		m_shots += 1;
+	}
 	RestartRecording();
 	FireProjectile( type, Muzzle(), dir, speed );
 	if ( m_attract == false )
@@ -1822,6 +2039,7 @@ void Game::AutoFireAtKing()
 		m_shotDir = dir;
 		AddReplayEvent( ReplayEvent::CannonFire, Muzzle(), dir );
 	}
+	return true;
 }
 
 void Game::UpdatePlaying( float dt )
@@ -2160,7 +2378,16 @@ bool Game::PlayOutAutomatically( int maxShots, int& downAtStart, int& shots )
 	shots = 0;
 	while ( m_won == false && shots < maxShots && AmmoLeft() > 0 )
 	{
-		AutoFireAtKing();
+		int waited = 0;
+		while ( AutoFireAtKing() == false && waited < 60 * 12 )
+		{
+			StepSimulation( kFixedDt );
+			++waited;
+		}
+		if ( getenv( "CROLLO_DEBUG" ) && waited > 0 )
+		{
+			fprintf( stderr, "  colpo %d: attesa di %.2f s per uno scudo\n", shots + 1, waited * kFixedDt );
+		}
 		++shots;
 		for ( int i = 0; i < 60 * 8; ++i )
 		{
@@ -2177,6 +2404,49 @@ bool Game::PlayOutAutomatically( int maxShots, int& downAtStart, int& shots )
 		}
 	}
 	return m_won && downAtStart == 0;
+}
+
+// Fires flat shots at the first king of level 11 at many moments and checks that the outcome
+// matches the shield prediction: blocked when the wall is predicted up, a hit otherwise.
+void Game::TestShields()
+{
+	int agree = 0, total = 0;
+	for ( int trial = 0; trial < 16; ++trial )
+	{
+		LoadLevel( 10, false );
+		SkipIntro();
+		for ( int i = 0; i < 20 + trial * 15; ++i )
+		{
+			StepSimulation( kFixedDt );
+		}
+		Entity* king = m_kings[0];
+		Vector3 aim = Vector3Add( king->pos, { 0, 0.7f, 0 } );
+		Vector3 accel{ 0, -kGravity, 0 };
+		Vector3 v{};
+		float flight = 0.0f;
+		for ( int iter = 0; iter < 4; ++iter )
+		{
+			Vector3 d = Vector3Subtract( aim, Muzzle() );
+			flight = sqrtf( d.x * d.x + d.z * d.z ) / 24.0f;
+			v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
+			Vector3 dir = Vector3Normalize( v );
+			m_yaw = atan2f( dir.x, dir.z );
+			m_pitch = asinf( dir.y );
+		}
+		bool predictedBlocked = PathShieldBlock( Muzzle(), v, accel, flight + 0.2f, m_scene.time ) >= 0.0f;
+		FireProjectile( Ammo::Ball, Muzzle(), Vector3Normalize( v ), Vector3Length( v ) );
+		for ( int i = 0; i < 180; ++i )
+		{
+			StepSimulation( kFixedDt );
+		}
+		bool kingDown = king->defeated;
+		bool ok = predictedBlocked != kingDown;
+		agree += ok ? 1 : 0;
+		total += 1;
+		printf( "t=%5.2f  previsto %-9s  re %s  %s\n", 20 * kFixedDt + trial * 15 * kFixedDt, predictedBlocked ? "bloccato" : "libero",
+				kingDown ? "abbattuto" : "in piedi", ok ? "ok" : "DIVERSO" );
+	}
+	printf( "Previsioni corrette: %d/%d\n", agree, total );
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
@@ -2267,7 +2537,7 @@ void Game::DrawWorld()
 
 	for ( const Entity* e : m_scene.entities )
 	{
-		if ( e->alive )
+		if ( e->alive && ( e->kind != Kind::Shield || b3Body_IsEnabled( e->body ) ) )
 		{
 			r.AddEntity( e, m_alpha );
 		}
@@ -2334,6 +2604,7 @@ void Game::DrawWorld()
 		DrawTrajectory();
 	}
 
+	DrawShieldGhosts();
 	m_particles.Draw( r, m_camera );
 	EndMode3D();
 	r.EndScene();
@@ -2363,12 +2634,23 @@ void Game::DrawTrajectory()
 	float maxT = m_progress.aimAssist ? 6.0f : 0.8f;
 	const float dt = 0.04f;
 	Vector3 prev = p0;
+	// with aim assist, show where a crystal shield would be up when the ball gets there
+	float shieldT = m_progress.aimAssist ? PathShieldBlock( p0, v, g, maxT, m_scene.time ) : -1.0f;
 	b3QueryFilter filter = b3DefaultQueryFilter();
 	filter.maskBits = CatStatic | CatBlock | CatKing;
 	int i = 0;
 	for ( float t = dt; t <= maxT; t += dt, ++i )
 	{
 		Vector3 p = Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( g, 0.5f * t * t ) ) );
+		if ( shieldT >= 0.0f && t >= shieldT )
+		{
+			Vector3 sp = Vector3Add( p0, Vector3Add( Vector3Scale( v, shieldT ), Vector3Scale( g, 0.5f * shieldT * shieldT ) ) );
+			Color c{ 110, 215, 255, 255 };
+			DrawSphereEx( sp, 0.2f, 8, 8, c );
+			DrawLine3D( Vector3Add( sp, { -0.5f, -0.5f, 0 } ), Vector3Add( sp, { 0.5f, 0.5f, 0 } ), c );
+			DrawLine3D( Vector3Add( sp, { -0.5f, 0.5f, 0 } ), Vector3Add( sp, { 0.5f, -0.5f, 0 } ), c );
+			break;
+		}
 		if ( m_progress.aimAssist )
 		{
 			b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( prev ), ToB3( Vector3Subtract( p, prev ) ), filter );
@@ -2431,6 +2713,8 @@ void Game::DrawHUD()
 		ui::TextCentered( "click per iniziare", W * 0.5f, H - 90 * S, 28, WithAlpha( WHITE, 0.5f + 0.5f * sinf( m_time * 4.0f ) ) );
 		return;
 	}
+
+	DrawShieldTimers();
 
 	// top left: level + kings
 	int total = KingsTotal() + ( m_kingsDown - ( KingsTotal() - KingsRemaining() ) );
@@ -2684,9 +2968,13 @@ void Game::DrawLevelSelect()
 	ui::TextShadow( TextFormat( "%d / %d", totalStars, LevelCount() * 3 ), { W * 0.5f - 40 * S, 176 * S }, 40, WHITE );
 
 	int cols = 5;
+	int rows = ( LevelCount() + cols - 1 ) / cols;
 	float cw = 250 * S;
-	float ch = 220 * S;
 	float gap = 30 * S;
+	// cards shrink to fit when there are more than two rows of levels
+	float avail = H - 150 * S - 270 * S;
+	float ch = std::min( 220 * S, ( avail - ( rows - 1 ) * gap ) / rows );
+	float k = ch / ( 220 * S ); // vertical scale for the card contents
 	float gridW = cols * cw + ( cols - 1 ) * gap;
 	float x0 = W * 0.5f - gridW * 0.5f;
 	float y0 = 270 * S;
@@ -2705,13 +2993,13 @@ void Game::DrawLevelSelect()
 		}
 		ui::Panel( rc, fill, Color{ 120, 70, 20, 255 } );
 		Color ink{ 90, 45, 15, 255 };
-		ui::TextCentered( TextFormat( "%d", i + 1 ), rc.x + cw * 0.5f, rc.y + 10 * S, 80, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
+		ui::TextCentered( TextFormat( "%d", i + 1 ), rc.x + cw * 0.5f, rc.y + 10 * S * k, 80 * k, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
 		const LevelDef& L = GetLevel( i );
-		ui::TextCentered( L.name, rc.x + cw * 0.5f, rc.y + 100 * S, 30, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
+		ui::TextCentered( L.name, rc.x + cw * 0.5f, rc.y + 100 * S * k, 30, unlocked ? ink : Color{ 50, 50, 55, 255 }, false );
 		for ( int s = 0; s < 3; ++s )
 		{
 			bool got = s < m_progress.stars[i];
-			ui::Star( { rc.x + cw * 0.5f + ( s - 1 ) * 46 * S, rc.y + 172 * S }, 19 * S, got ? kGold : Color{ 200, 190, 170, 255 },
+			ui::Star( { rc.x + cw * 0.5f + ( s - 1 ) * 46 * S, rc.y + 172 * S * k }, 19 * S * k, got ? kGold : Color{ 200, 190, 170, 255 },
 					  got ? Color{ 150, 80, 10, 255 } : Color{ 160, 150, 130, 255 } );
 		}
 		if ( unlocked == false )

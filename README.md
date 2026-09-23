@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **10 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **12 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: muro a mattoni sfalsati; arriva la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -24,6 +24,8 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   8. *Polveriera*: casse di TNT che esplodono a catena.
   9. *Scudi Mobili*: lastre di pietra su **giunti prismatici** con molla che scorrono avanti e indietro.
   10. *La Cittadella*: tre isole, sei re, tutto l'arsenale.
+  11. *Cristalli Guardiani*: **scudi di cristallo** che si spengono e si riaccendono a orario fisso; conta il momento dello sparo.
+  12. *Doppia Guardia*: due scudi in fila con ritmi diversi, una cupola sopra una torre, un re raggiungibile solo di pallonetto.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
 - **5 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano), macigno (convex hull irregolare, enorme e pesante).
 - **Replay del colpo decisivo**: dopo ogni vittoria il colpo viene *ri-simulato* dalla registrazione deterministica di Box3D e mostrato al rallentatore con una telecamera cinematografica (vedi sotto).
@@ -83,7 +85,8 @@ scena lo riaggancia.
 ```bash
 ./build/crollo --autotest [colpi]             # headless: ogni livello è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
-./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, intro, title, select, pause, howto, challenge)
+./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
+./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, select, pause, howto, challenge)
 ./build/crollo --export-audio <cartella>      # esporta in WAV tutti i suoni sintetizzati e 30 s di musica
 ```
 
@@ -109,6 +112,7 @@ la parabola facendo *ray cast* lungo la traiettoria per evitare gli ostacoli. La
 | Giunto di distanza rigido e "a corda" (molla a 0 Hz + limite) | pendolo, palla incatenata, funi delle mongolfiere, ormeggi |
 | `gravityScale` negativa, damping, forze | mongolfiere e vento sui proiettili |
 | Ray cast (`b3World_CastRayClosest`) | mira assistita e pianificazione della traiettoria dell'IA |
+| `b3Body_Disable` / `b3Body_Enable`, `b3World_OverlapShape` | scudi di cristallo a tempo; uno scudo non si riaccende finché dentro c'è qualcosa |
 | Sleep delle isole, multithreading (`workerCount`) | scene con centinaia di corpi a costo basso |
 | **Recording & replay** (`b3World_StartRecording`, `b3CreatePlayer`, `b3RecPlayer_StepFrame`) | il replay del colpo decisivo |
 
