@@ -167,6 +167,11 @@ public:
 	{
 		m_debug = on;
 	}
+	// Cheat mode (--cheat, or F9 while playing a level): endless ammunition to try out a level. Wins are not saved.
+	void SetCheat( bool on )
+	{
+		m_cheat = on;
+	}
 
 	// Used by level builders
 	Scene& GetScene()
@@ -235,6 +240,11 @@ private:
 	Vector3 AimDir() const;
 	float LaunchSpeed() const;
 	int AmmoLeft() const;
+	// Endless ammunition: cheat mode, never in the challenge.
+	bool Cheating() const
+	{
+		return m_cheat && m_challenge == false && m_attract == false;
+	}
 	bool AnyProjectileFlying() const;
 	void SelectAmmo( int index );
 	int ComputeStars() const;
@@ -277,6 +287,7 @@ private:
 	bool m_headless = false;
 	bool m_inputEnabled = true;
 	bool m_debug = false;
+	bool m_cheat = false;
 	Vector2 m_mouseDelta{ 0, 0 };
 	bool m_hadLock = false;
 	int m_lockAttempts = 0;

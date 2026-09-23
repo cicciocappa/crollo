@@ -3,6 +3,7 @@
 // Usage:
 //   crollo                       play
 //   crollo --debug               play with every level unlocked (progress is not changed)
+//   crollo --cheat               play with endless ammunition (F9 in game toggles it; wins are not saved)
 //   crollo --autotest [shots] [level]
 //                                headless: check every level (or just one, 1-based) is stable and winnable
 //   crollo --scan-shots [level]  headless: the most kings a single shot can knock down, per ammunition
@@ -194,6 +195,10 @@ int main( int argc, char** argv )
 		if ( strcmp( argv[i], "--debug" ) == 0 )
 		{
 			game.SetDebug( true );
+		}
+		if ( strcmp( argv[i], "--cheat" ) == 0 )
+		{
+			game.SetCheat( true );
 		}
 	}
 

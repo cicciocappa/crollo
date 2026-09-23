@@ -104,6 +104,7 @@ scena lo riaggancia.
 
 ```bash
 ./build/crollo --debug                        # gioca con tutti i livelli sbloccati (i salvataggi non cambiano)
+./build/crollo --cheat                        # colpi infiniti per provare i livelli (F9 in gioco; vittorie non salvate)
 ./build/crollo --autotest [colpi] [livello]   # headless: ogni livello (o solo quello indicato) è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?

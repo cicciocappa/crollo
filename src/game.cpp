@@ -985,7 +985,10 @@ void Game::Fire()
 	{
 		return;
 	}
-	m_ammo[m_selected] -= 1;
+	if ( Cheating() == false )
+	{
+		m_ammo[m_selected] -= 1;
+	}
 	m_shots += 1;
 	if ( getenv( "CROLLO_DEBUG" ) )
 		fprintf( stderr, "Fire: yaw %.2f pitch %.2f power %.2f t=%.2f\n", m_yaw, m_pitch, m_power, m_screenTime );
@@ -2361,9 +2364,13 @@ void Game::CheckOutcome( float dt )
 		m_winStep = m_scene.stepCount;
 		m_outcomeTimer = 0.0f;
 		m_targetTimeScale = 0.3f;
-		m_bonus = AmmoLeft() * 1500;
+		m_bonus = Cheating() ? 0 : AmmoLeft() * 1500;
 		m_score += m_bonus;
 		m_starsEarned = ComputeStars();
+		if ( Cheating() )
+		{
+			return; // a test run: stars and records stay as they were
+		}
 		if ( m_challenge )
 		{
 			m_challengeTotal += m_score;
@@ -2817,6 +2824,18 @@ void Game::UpdatePlaying( float dt )
 				{
 					SelectAmmo( idx );
 					break;
+				}
+			}
+		}
+		if ( IsKeyPressed( KEY_F9 ) && m_challenge == false )
+		{
+			m_cheat = !m_cheat;
+			if ( m_cheat )
+			{
+				// bring back any ammunition already used up
+				for ( int i = 0; i < (int)Ammo::Count; ++i )
+				{
+					m_ammo[i] = std::max( m_ammo[i], m_level->ammo[i] );
 				}
 			}
 		}
@@ -3700,10 +3719,21 @@ void Game::DrawHUD()
 		}
 		ui::TextShadow( TextFormat( "%d", i + 1 ), { rc.x + 10 * S, rc.y + 4 * S }, 24, sel ? Color{ 90, 40, 10, 255 } : Color{ 255, 230, 180, 200 },
 						sel ? 0.0f : 2.0f );
-		const char* cnt = TextFormat( "x%d", m_ammo[i] );
-		Vector2 cm = ui::Measure( cnt, 30 );
-		ui::TextShadow( cnt, { rc.x + slot - cm.x - 10 * S, rc.y + slot - cm.y - 4 * S }, 30,
-						sel ? Color{ 90, 40, 10, 255 } : ( empty ? GRAY : WHITE ), sel ? 0.0f : 2.0f );
+		if ( Cheating() )
+		{
+			// the font has no infinity sign: draw one
+			Color ic = sel ? Color{ 90, 40, 10, 255 } : WHITE;
+			Vector2 ci{ rc.x + slot - 30 * S, rc.y + slot - 20 * S };
+			DrawRing( { ci.x - 7 * S, ci.y }, 4 * S, 8 * S, 0, 360, 20, ic );
+			DrawRing( { ci.x + 7 * S, ci.y }, 4 * S, 8 * S, 0, 360, 20, ic );
+		}
+		else
+		{
+			const char* cnt = TextFormat( "x%d", m_ammo[i] );
+			Vector2 cm = ui::Measure( cnt, 30 );
+			ui::TextShadow( cnt, { rc.x + slot - cm.x - 10 * S, rc.y + slot - cm.y - 4 * S }, 30,
+							sel ? Color{ 90, 40, 10, 255 } : ( empty ? GRAY : WHITE ), sel ? 0.0f : 2.0f );
+		}
 	}
 	if ( count > 0 )
 	{
@@ -3732,6 +3762,11 @@ void Game::DrawHUD()
 		}
 		ui::TextCentered( TextFormat( "%d", (int)( m_power * 100.0f + 0.5f ) ), rc.x + w * 0.5f, rc.y + h + 14 * S, 30, WHITE );
 		ui::TextCentered( "POTENZA", rc.x + w * 0.5f - 10 * S, rc.y - 50 * S, 24, kCream );
+	}
+
+	if ( Cheating() )
+	{
+		ui::TextShadow( TextFormat( "TRUCCHI (F9): colpi infiniti  -  sparati %d", m_shots ), { 24 * S, 142 * S }, 24, Color{ 255, 150, 110, 255 } );
 	}
 
 	// contextual hints
@@ -4387,7 +4422,11 @@ void Game::DrawResult( bool won )
 		ui::TextCentered( TextFormat( "Punti: %d", m_score ), W * 0.5f, panel.y + 290 * S, 48, ink, false );
 		ui::TextCentered( TextFormat( "Colpi usati: %d  (per 3 stelle: %d)   •   Bonus munizioni: %d", m_shots, m_level ? m_level->par : 0, m_bonus ),
 						  W * 0.5f, panel.y + 352 * S, 26, ink, false );
-		if ( m_newBest )
+		if ( Cheating() )
+		{
+			ui::TextCentered( "Modalità trucchi: vittoria non salvata", W * 0.5f, panel.y + 392 * S, 32, Color{ 210, 60, 40, 255 }, false );
+		}
+		else if ( m_newBest )
 		{
 			ui::TextCentered( "Nuovo record!", W * 0.5f, panel.y + 392 * S, 32, Color{ 210, 60, 40, 255 }, false );
 		}

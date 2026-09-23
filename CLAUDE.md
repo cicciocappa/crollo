@@ -6,9 +6,9 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Con chi e come si lavora
 - Si parla in **italiano**, anche nei commit (messaggi in italiano, stile "Sessione N: ..."). Testi del gioco in italiano.
-- Il lavoro procede per **sessioni** della roadmap nel documento di sviluppo "Crollo — guida allo sviluppo futuro"
-  (Claude Doc: https://claude.ai/code/artifact/76529c1d-4106-4786-9b89-45b6408274d6): tabella "Sessione / Obiettivo /
-  Perché in quest'ordine". A fine sessione la riga va aggiornata con "Fatto (commit xxxxx): ...".
+- Il lavoro procede per **sessioni** della roadmap in `docs/sviluppo.md` ("Crollo — guida allo sviluppo futuro"):
+  tabella "Sessione / Obiettivo / Perché in quest'ordine". A fine sessione la riga va aggiornata con
+  "Fatto (commit xxxxx): ...". Fino alla sessione 4 era un Claude Doc di un altro account, ora non più usato.
 - Il codice imita lo stile esistente: tab, graffe su riga propria, commenti in inglese, sobri.
 - Repository pubblico: https://github.com/cicciocappa/crollo (licenza MIT). Committa e pusha a fine sessione.
 - La versione web pubblicata come Artifact (https://claude.ai/artifact/HNRpbEuELhrBG6CQuAioQ5) si aggiorna solo
@@ -19,8 +19,11 @@ riprendere lo sviluppo e che non si ricava dal codice.
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
 - 19 livelli. Campagne: Prati Alti 8, Valle dei Mulini 3, Picchi Gelati 8; Dune Sospese, Arcipelago delle Tempeste e
   Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
-- L'utente sta facendo provare il gioco ad altri: **la prossima sessione parte dal loro riscontro** (modifiche e
+- L'utente sta facendo provare il gioco ad altri: **la sessione 4b parte dal loro riscontro** (modifiche e
   aggiustamenti), poi la roadmap riprende dalla sessione 5 (Duello 1vs1 sullo stesso PC, "prima solo scontro").
+  Già fatta nella 4b: modalità trucchi (F9 o `--cheat`, colpi infiniti, vittorie non salvate).
+- Sessioni 6-8: una campagna ciascuna con la sua meccanica (Dune = bersagli mobili, Arcipelago = sponde di gomma
+  mobili, Fucina = meccanismi a catena), ultimo livello "boss" molto difficile. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da 8 livelli; Duello prima solo scontro; il suo server può far girare
   Node.js (servirà per l'online a turni, più avanti).
 
