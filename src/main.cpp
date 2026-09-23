@@ -4,6 +4,7 @@
 //   crollo                       play
 //   crollo --debug               play with every level unlocked (progress is not changed)
 //   crollo --autotest [shots]    headless: check every level is stable and winnable
+//   crollo --scan-shots [level]  headless: the most kings a single shot can knock down, per ammunition
 //   crollo --shot <mode> <level> <frames> <out.png>
 //                                render a screenshot (modes: aim, fire, title, select, won)
 
@@ -90,6 +91,22 @@ int main( int argc, char** argv )
 			}
 		}
 		printf( "Round superati %d/%d\n", passed, total );
+		return 0;
+	}
+
+	if ( argc >= 2 && strcmp( argv[1], "--scan-shots" ) == 0 )
+	{
+		SetTraceLogLevel( LOG_WARNING );
+		Game game( true );
+		game.Init( nullptr, nullptr );
+		int only = argc >= 3 ? atoi( argv[2] ) : 0;
+		for ( int i = 0; i < LevelCount(); ++i )
+		{
+			if ( only == 0 || only == i + 1 )
+			{
+				game.ScanForEasyShots( i );
+			}
+		}
 		return 0;
 	}
 

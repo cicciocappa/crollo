@@ -128,6 +128,9 @@ public:
 	void TestShields();
 	void StepSimulation( float dt );
 	bool AutoFireAtKing(); // false when no shot was fired (nothing to hit, or waiting for a shield)
+	// Aims the cannon at a point (planning around obstacles and shields) and fires; false if it had to wait.
+	bool FireAt( Vector3 aimPoint, Ammo type, const Entity* target );
+	void ScanForEasyShots( int levelIndex );
 
 	int KingsRemaining() const;
 	int KingsTotal() const
@@ -205,6 +208,7 @@ private:
 	float PathShieldBlock( Vector3 p0, Vector3 v, Vector3 accel, float maxTime, float startTime ) const;
 	bool ShieldAreaClear( const Mechanism& m ) const;
 	void UpdateShields();
+	void AssignShieldTimerSlots();
 	void DrawShieldGhosts();
 	void DrawShieldTimers();
 

@@ -87,9 +87,13 @@ scena lo riaggancia.
 ./build/crollo --autotest [colpi]             # headless: ogni livello è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
+./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, select, pause, howto, challenge)
 ./build/crollo --export-audio <cartella>      # esporta in WAV tutti i suoni sintetizzati e 30 s di musica
 ```
+
+Lo scanner `--scan-shots` spara un colpo singolo con ogni munizione su una griglia di 15 punti sopra la fortezza e
+segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7 e 8 è voluto: pendolo e reazione a catena).
 
 L'autotest carica ogni livello senza finestra, lascia assestare le strutture per 5 secondi (nessun re deve cadere da solo)
 e poi fa giocare un'IA che risolve la balistica in modo esatto (gravità + vento come accelerazione costante) e sceglie

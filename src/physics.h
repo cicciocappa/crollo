@@ -144,6 +144,9 @@ struct Mechanism
 	float onTime = 0.0f;
 	bool on = true;
 	float untilToggle = 0.0f; // seconds to the next scheduled switch, for warnings and the HUD
+	int timerSlot = 0;		  // where its HUD timer sits on the top edge: -1 left, 0 centre, +1 right
+	int timerGroup = -1;	  // shields lined up behind each other share a group (and a combined window)
+	int timerOrder = 0;		  // 1 = nearest to the cannon in its group, 2 = next...
 };
 
 // Where a blinking shield is in its cycle at simulation time t (ignores any delayed switch-on).

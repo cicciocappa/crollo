@@ -355,6 +355,8 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 		m_audio->SetWindStrength( 0.25f + Vector3Length( m_wind ) * 0.25f );
 	}
 
+	AssignShieldTimerSlots();
+
 	// report whether every king survived the settling
 	for ( const Entity* k : m_kings )
 	{
@@ -896,20 +898,23 @@ void Game::Detonate( Entity* e )
 	if ( tnt )
 	{
 		AddScore( 300, pos, false );
-		Explode( pos, 4.2f, 5200.0f, true );
+		Explode( pos, 4.2f, 2600.0f, true );
 	}
 	else
 	{
-		Explode( pos, 3.6f, 4200.0f, false );
+		// a bomb is a local tool; big blasts belong to TNT (see --scan-shots)
+		Explode( pos, 2.6f, 1300.0f, false );
 	}
 }
 
 void Game::Explode( Vector3 pos, float radius, float impulse, bool big )
 {
+	if ( getenv( "CROLLO_DEBUG" ) )
+		fprintf( stderr, "  esplosione a %.1f %.1f %.1f raggio %.1f\n", pos.x, pos.y, pos.z, radius );
 	b3ExplosionDef def = b3DefaultExplosionDef();
 	def.position = ToB3( pos );
 	def.radius = radius;
-	def.falloff = radius * 0.8f;
+	def.falloff = big ? radius * 0.8f : radius * 0.5f;
 	def.impulsePerArea = impulse;
 	def.maskBits = CatBlock | CatKing | CatProjectile | CatDebris;
 	b3World_Explode( m_scene.World(), &def );
@@ -1337,6 +1342,8 @@ void Game::HandleEvents()
 				bool struckByShot = other->kind == Kind::Projectile && h.speed > 3.0f;
 				if ( struckByShot || h.speed > 8.0f )
 				{
+					if ( getenv( "CROLLO_DEBUG" ) )
+						fprintf( stderr, "  re colpito da kind=%d mat=%d a %.1f m/s\n", (int)other->kind, (int)other->mat, h.speed );
 					DefeatKing( x, "hit" );
 				}
 			}
@@ -1435,6 +1442,62 @@ bool Game::ShieldAreaClear( const Mechanism& m ) const
 	bool found = false;
 	b3World_OverlapShape( m_scene.World(), ToB3( e->pos ), &proxy, filter, OverlapFound, &found );
 	return found == false;
+}
+
+// Shields that line up behind each other as seen from the cannon would stack their timers on top of
+// each other. Give each wall in such a group its own spot on its top edge: left, right, then centre.
+void Game::AssignShieldTimerSlots()
+{
+	std::vector<Mechanism*> shields;
+	for ( Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type == MechType::Blinker && m.entity != nullptr && m.entity->parts.empty() == false )
+		{
+			m.timerSlot = 0;
+			m.timerGroup = -1;
+			m.timerOrder = 0;
+			shields.push_back( &m );
+		}
+	}
+	auto distance = [&]( const Mechanism* m ) { return Vector3Distance( m->entity->pos, m_cannonPos ); };
+	std::sort( shields.begin(), shields.end(), [&]( const Mechanism* a, const Mechanism* b ) { return distance( a ) < distance( b ); } );
+
+	std::vector<bool> grouped( shields.size(), false );
+	for ( size_t i = 0; i < shields.size(); ++i )
+	{
+		if ( grouped[i] )
+		{
+			continue;
+		}
+		const Entity* a = shields[i]->entity;
+		Vector3 da = Vector3Subtract( a->pos, m_cannonPos );
+		float angA = atan2f( da.x, da.z );
+		float halfAngle = atanf( a->parts[0].size.x / std::max( 1.0f, Vector3Length( da ) ) );
+		std::vector<size_t> group{ i };
+		for ( size_t j = i + 1; j < shields.size(); ++j )
+		{
+			const Entity* b = shields[j]->entity;
+			Vector3 db = Vector3Subtract( b->pos, m_cannonPos );
+			float angB = atan2f( db.x, db.z );
+			bool sameLine = fabsf( angA - angB ) < halfAngle * 1.5f;
+			bool sameHeight = fabsf( a->pos.y - b->pos.y ) < a->parts[0].size.y + b->parts[0].size.y;
+			if ( grouped[j] == false && sameLine && sameHeight )
+			{
+				group.push_back( j );
+			}
+		}
+		if ( group.size() > 1 )
+		{
+			const int order[3] = { -1, 1, 0 };
+			for ( size_t k = 0; k < group.size(); ++k )
+			{
+				shields[group[k]]->timerSlot = order[k % 3];
+				shields[group[k]]->timerGroup = (int)i;
+				shields[group[k]]->timerOrder = (int)k + 1;
+				grouped[group[k]] = true;
+			}
+		}
+	}
 }
 
 void Game::UpdateShields()
@@ -1571,6 +1634,17 @@ void Game::DrawShieldTimers()
 			continue;
 		}
 		Vector2 c = GetWorldToScreen( top, m_camera );
+		if ( m.timerSlot != 0 )
+		{
+			// move the timer to the left or right end of the wall's top edge, as seen on screen
+			Vector3 axis = Vector3RotateByQuaternion( { 1, 0, 0 }, e->rot );
+			float off = std::max( 0.0f, e->parts[0].size.x - 0.35f );
+			Vector2 pa = GetWorldToScreen( Vector3Add( top, Vector3Scale( axis, off ) ), m_camera );
+			Vector2 pb = GetWorldToScreen( Vector3Subtract( top, Vector3Scale( axis, off ) ), m_camera );
+			Vector2 left = pa.x < pb.x ? pa : pb;
+			Vector2 right = pa.x < pb.x ? pb : pa;
+			c = m.timerSlot < 0 ? left : right;
+		}
 		float span = m.on ? m.onTime : m.period - m.onTime;
 		float frac = Clamp01( m.untilToggle / std::max( span, 0.01f ) );
 		// cyan ring = wall up, green ring = open; the arc shows the time left in that state
@@ -1578,7 +1652,12 @@ void Game::DrawShieldTimers()
 		float r = 17.0f * S;
 		DrawCircleV( c, r + 3 * S, Color{ 20, 25, 35, 170 } );
 		DrawRing( c, r - 5 * S, r, -90.0f, -90.0f + 360.0f * frac, 32, col );
-		if ( m.on )
+		if ( m.timerOrder > 0 )
+		{
+			// numbered: 1 is the wall nearest to the cannon
+			ui::TextCentered( TextFormat( "%d", m.timerOrder ), c.x, c.y - 14 * S, 26, col, false );
+		}
+		else if ( m.on )
 		{
 			DrawRectangleV( { c.x - 4 * S, c.y - 6 * S }, { 8 * S, 12 * S }, col );
 		}
@@ -1586,6 +1665,62 @@ void Game::DrawShieldTimers()
 		{
 			DrawRing( c, 3 * S, 6 * S, 0, 360, 16, col );
 		}
+	}
+
+	// For walls lined up behind each other, what matters is when they are ALL down at once.
+	std::vector<int> done;
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Blinker || m.timerGroup < 0 || m.timerOrder != 1 ||
+			 std::find( done.begin(), done.end(), m.timerGroup ) != done.end() )
+		{
+			continue;
+		}
+		done.push_back( m.timerGroup );
+		std::vector<const Mechanism*> members;
+		for ( const Mechanism& o : m_scene.mechanisms )
+		{
+			if ( o.type == MechType::Blinker && o.timerGroup == m.timerGroup )
+			{
+				members.push_back( &o );
+			}
+		}
+		auto allDown = [&]( float t ) {
+			for ( const Mechanism* o : members )
+			{
+				if ( BlinkerOnAt( *o, t ) )
+				{
+					return false;
+				}
+			}
+			return true;
+		};
+		float now = m_scene.time;
+		bool openNow = allDown( now );
+		float change = -1.0f;
+		for ( float t = 0.05f; t < 30.0f; t += 0.05f )
+		{
+			if ( allDown( now + t ) != openNow )
+			{
+				change = t;
+				break;
+			}
+		}
+
+		const Entity* e = m.entity;
+		Vector3 top = Vector3Add( e->pos, { 0, e->parts[0].size.y + 0.6f, 0 } );
+		if ( Vector3DotProduct( Vector3Subtract( top, m_camera.position ), Vector3Subtract( m_camera.target, m_camera.position ) ) <= 0.0f )
+		{
+			continue;
+		}
+		Vector2 c = GetWorldToScreen( top, m_camera );
+		const char* label = change < 0.0f ? ( openNow ? "varco sempre aperto" : "nessun varco" )
+							: openNow	  ? TextFormat( "VARCO APERTO: %.1f s", change )
+										  : TextFormat( "varco tra %.1f s", change );
+		Color col = openNow ? Color{ 120, 230, 110, 255 } : Color{ 255, 240, 220, 255 };
+		Vector2 size = ui::Measure( label, 24 );
+		DrawRectangleRounded( { c.x - size.x * 0.5f - 8 * S, c.y + 26 * S, size.x + 16 * S, size.y + 6 * S }, 0.4f, 6, Color{ 20, 25, 35, 190 } );
+		ui::Text( label, { c.x - size.x * 0.5f, c.y + 29 * S }, 24, col );
 	}
 }
 
@@ -1933,6 +2068,13 @@ bool Game::AutoFireAtKing()
 		}
 	}
 
+	return FireAt( aimPoint, type, target );
+}
+
+bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target )
+{
+	Rng& r = FxRng();
+
 	// Exact solution under constant acceleration (gravity + wind): choose a flight time,
 	// then v = (d - a t^2 / 2) / t. Iterate because the muzzle moves with the aim.
 	Vector3 accel = Vector3Add( { 0, -kGravity, 0 }, m_wind );
@@ -1965,6 +2107,23 @@ bool Game::AutoFireAtKing()
 		for ( float t = 0.05f; t < flight + 0.2f; t += 0.05f )
 		{
 			Vector3 p = Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( accel, 0.5f * t * t ) ) );
+			// the blades keep turning while the shot flies: treat their whole disk as closed
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				if ( m.type != MechType::Windmill || m.entity == nullptr )
+				{
+					continue;
+				}
+				float hz = m.entity->pos.z;
+				if ( ( prev.z - hz ) * ( p.z - hz ) <= 0.0f && fabsf( p.z - prev.z ) > 1e-5f )
+				{
+					Vector3 c = Vector3Lerp( prev, p, ( hz - prev.z ) / ( p.z - prev.z ) );
+					if ( Vector2Distance( { c.x, c.y }, { m.entity->pos.x, m.entity->pos.y } ) < m.amplitude + 0.4f )
+					{
+						return false;
+					}
+				}
+			}
 			b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( prev ), ToB3( Vector3Subtract( p, prev ) ), filter );
 			if ( hit.hit )
 			{
@@ -2447,6 +2606,78 @@ void Game::TestShields()
 				kingDown ? "abbattuto" : "in piedi", ok ? "ok" : "DIVERSO" );
 	}
 	printf( "Previsioni corrette: %d/%d\n", agree, total );
+}
+
+// Looks for "easy shots": for every ammunition the level offers, fires one shot at a grid of points
+// over the fortress and reports the most kings a single shot knocks down. A level with several kings
+// that falls to one shot is usually a design problem.
+void Game::ScanForEasyShots( int levelIndex )
+{
+	const LevelDef& def = GetLevel( levelIndex );
+	LoadLevel( levelIndex, false );
+	int kings = KingsTotal();
+	Vector3 center = m_fortressCenter;
+	float reach = std::min( 6.0f, m_fortressRadius * 0.5f );
+
+	std::vector<Vector3> points;
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.maskBits = CatStatic | CatBlock | CatKing;
+	for ( int ix = -2; ix <= 2; ++ix )
+	{
+		for ( int iz = -1; iz <= 1; ++iz )
+		{
+			Vector3 top{ center.x + ix * reach * 0.5f, center.y + 30.0f, center.z + iz * reach * 0.5f };
+			b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( top ), { 0, -60.0f, 0 }, filter );
+			if ( hit.hit )
+			{
+				points.push_back( Vector3Add( ToRl( hit.point ), { 0, 0.2f, 0 } ) );
+			}
+		}
+	}
+
+	printf( "Livello %2d %-22s re:%d |", levelIndex + 1, def.name, kings );
+	for ( int a = 0; a < (int)Ammo::Count; ++a )
+	{
+		if ( def.ammo[a] <= 0 )
+		{
+			continue;
+		}
+		int best = 0;
+		Vector3 bestPoint{};
+		for ( const Vector3& p : points )
+		{
+			LoadLevel( levelIndex, false );
+			SkipIntro();
+			for ( int i = 0; i < 120; ++i )
+			{
+				StepSimulation( kFixedDt );
+			}
+			int waited = 0;
+			while ( FireAt( p, (Ammo)a, nullptr ) == false && waited < 600 )
+			{
+				StepSimulation( kFixedDt );
+				++waited;
+			}
+			for ( int i = 0; i < 60 * 8; ++i )
+			{
+				if ( i == 40 && m_focus && m_focus->ammo == (int)Ammo::Cluster )
+				{
+					Special( m_focus );
+				}
+				StepSimulation( kFixedDt );
+			}
+			if ( m_kingsDown > best )
+			{
+				best = m_kingsDown;
+				bestPoint = p;
+			}
+		}
+		bool alarm = kings >= 2 && best >= kings;
+		printf( " %s %d/%d%s", GetAmmoInfo( (Ammo)a ).name, best, kings,
+				alarm ? TextFormat( " (!! a x=%.1f z=%.1f)", bestPoint.x, bestPoint.z ) : "" );
+		fflush( stdout );
+	}
+	printf( "\n" );
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )

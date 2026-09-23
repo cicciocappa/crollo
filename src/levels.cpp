@@ -492,6 +492,8 @@ Entity* Builder::Windmill( Vector3 base, float towerHeight, float bladeLength, f
 	m.type = MechType::Windmill;
 	m.joint = j;
 	m.speed = speed;
+	m.entity = blades;
+	m.amplitude = bladeLength + 0.5f; // reach of the blade tips from the hub
 	scene.mechanisms.push_back( m );
 	return blades;
 }
@@ -768,13 +770,13 @@ static void Level06( Builder& b )
 	b.Island( { 0, 0, 35 }, 9.5f );
 	b.Windmill( { 0, 0, 29.5f }, 5.5f, 3.2f, 0.9f );
 	b.Wall( { -3.5f, 0, 33.0f }, true, 7, 2, Mat::Stone );
-	float t1 = b.Tower( { -3.2f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -3.2f, t1, 36.5f }, kOrange );
-	float t2 = b.Tower( { 3.2f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 3.2f, t2, 36.5f }, kPurple );
-	float c = b.Column( { 0, 0, 38.5f }, 3, 0.45f, Mat::Stone );
-	b.Box( { 0, c + 0.12f, 38.5f }, { 0.75f, 0.12f, 0.75f }, Mat::Wood );
-	b.King( { 0, c + 0.24f, 38.5f }, kCrimson );
+	float t1 = b.Tower( { -4.6f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { -4.6f, t1, 36.5f }, kOrange );
+	float t2 = b.Tower( { 4.6f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 4.6f, t2, 36.5f }, kPurple );
+	float c = b.Column( { 0, 0, 39.5f }, 3, 0.45f, Mat::Stone );
+	b.Box( { 0, c + 0.12f, 39.5f }, { 0.75f, 0.12f, 0.75f }, Mat::Stone );
+	b.King( { 0, c + 0.24f, 39.5f }, kCrimson );
 	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.0f );
 	b.Flag( { -6.0f, 0, 38.0f }, kOrange );
 	b.Fortress( { 0, 3, 35 }, 12.0f );
@@ -891,12 +893,15 @@ static void Level11( Builder& b )
 	b.Island( { 0, 0, 33.5f }, 9.0f );
 
 	// two kings, each behind its own crystal wall; the walls take turns
-	float t1 = b.Tower( { -2.6f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { -2.6f, t1, 35.0f }, kTeal );
-	float t2 = b.Tower( { 2.6f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 2.6f, t2, 35.0f }, kPurple );
-	b.Shield( { -2.6f, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, 0.0f );
-	b.Shield( { 2.6f, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, 2.0f );
+	// kings on heavy stone pillars: the crystal walls are the defence, not flimsy wood
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		float x = 3.4f * s;
+		float top = b.Column( { x, 0, 35.0f }, 3, 0.5f, Mat::Stone );
+		b.Box( { x, top + 0.12f, 35.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+		b.King( { x, top + 0.24f, 35.0f }, s < 0 ? kTeal : kPurple );
+		b.Shield( { x, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, s < 0 ? 0.0f : 2.0f );
+	}
 
 	b.Box( { 0, 0.4f, 36.5f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, 0.3f );
 	b.Box( { 0, 1.2f, 36.5f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, -0.2f );
@@ -909,28 +914,32 @@ static void Level12( Builder& b )
 {
 	b.PlayerIsland();
 	b.homeY = 1.0f;
-	b.Island( { 0, 1, 36 }, 10.0f );
+	b.Island( { 0, 1, 36 }, 10.5f );
+
+	// Supports are massive stone (a 1 m block weighs 2 t), and the three kings stand far apart,
+	// so no single bomb can take them all: each one has to be earned.
 
 	// left: two walls with different rhythms, the way through opens only when both are down
-	float c = b.Column( { -3.2f, 1.0f, 36.0f }, 2, 0.5f, Mat::Stone );
-	b.Box( { -3.2f, c + 0.12f, 36.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
-	b.King( { -3.2f, c + 0.24f, 36.0f }, kCrimson );
-	b.Shield( { -3.2f, 3.4f, 34.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 3.0f, 1.6f, 0.0f );
-	b.Shield( { -3.2f, 3.4f, 33.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 5.0f, 2.2f, 1.0f );
+	float c = b.Column( { -4.4f, 1.0f, 36.0f }, 2, 0.5f, Mat::Stone );
+	b.Box( { -4.4f, c + 0.12f, 36.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { -4.4f, c + 0.24f, 36.0f }, kCrimson );
+	b.Shield( { -4.4f, 3.4f, 34.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 3.0f, 1.6f, 0.0f );
+	b.Shield( { -4.4f, 3.4f, 33.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 5.0f, 2.2f, 1.0f );
 
-	// right: a tall tower under a crystal canopy, with a stone wall in front forcing a lob
-	float t = b.Tower( { 3.4f, 1.0f, 37.0f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 3.4f, t, 37.0f }, kOrange );
-	b.Shield( { 3.4f, t + 2.2f, 37.0f }, { 1.4f, 0.12f, 1.4f }, 0.0f, 3.5f, 2.0f, 0.5f );
-	b.Wall( { 1.4f, 1.0f, 33.8f }, true, 4, 5, Mat::Stone );
+	// right: a stone pillar under a crystal canopy, with a stone wall in front forcing a lob
+	float t = b.Column( { 4.4f, 1.0f, 37.5f }, 4, 0.5f, Mat::Stone );
+	b.Box( { 4.4f, t + 0.12f, 37.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 4.4f, t + 0.24f, 37.5f }, kOrange );
+	b.Shield( { 4.4f, t + 2.4f, 37.5f }, { 1.4f, 0.12f, 1.4f }, 0.0f, 3.5f, 2.0f, 0.5f );
+	b.Wall( { 2.4f, 1.0f, 34.3f }, true, 4, 6, Mat::Stone );
 
-	// back: an unguarded king on a hut roof, only reachable with a high shot
-	float h = b.Hut( { 0, 1.0f, 40.5f }, 1.1f, 1.6f, Mat::Wood, Mat::Wood );
-	b.King( { 0, h, 40.5f }, kGreen );
+	// back: a king on the roof of a stone hut, only reachable with a high shot
+	float h = b.Hut( { 0, 1.0f, 42.0f }, 1.1f, 1.6f, Mat::Stone, Mat::Stone );
+	b.King( { 0, h, 42.0f }, kGreen );
 
-	b.Trees( { 0, 1, 36 }, 10.0f, 4, 7.8f );
-	b.Flag( { -6.0f, 1.0f, 39.0f }, kCrimson );
-	b.Fortress( { 0, 4.0f, 37.0f }, 12.0f );
+	b.Trees( { 0, 1, 36 }, 10.5f, 4, 8.3f );
+	b.Flag( { -7.0f, 1.0f, 40.0f }, kCrimson );
+	b.Fortress( { 0, 4.0f, 37.5f }, 13.0f );
 }
 
 static const LevelDef s_levels[] = {
