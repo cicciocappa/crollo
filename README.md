@@ -180,7 +180,7 @@ fattore di scala del tempo per lo slow motion.
 
 ## Crediti e licenze
 
-- Codice del gioco: scritto per questo progetto.
+- Codice del gioco: licenza MIT (vedi `LICENSE`). Il font ha una licenza sua, indicata sotto.
 - [Box3D](https://github.com/erincatto/box3d) di Erin Catto — licenza MIT.
 - [raylib](https://www.raylib.com) di Ramon Santamaria — licenza zlib.
 - Font [Lilita One](https://fonts.google.com/specimen/Lilita+One) — SIL Open Font License (`assets/fonts/OFL-LilitaOne.txt`).
