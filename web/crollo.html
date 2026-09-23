@@ -1,0 +1,288 @@
+<title>Crollo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;700;800&display=swap">
+<style>
+  /* One deliberate look for every theme: the game's own dusk sky. */
+  :root {
+    color-scheme: dark;
+    --ink: #0f2340;
+    --dusk: #274a76;
+    --cloud: #eaf0f7;
+    --mist: #9db2cc;
+    --crown: #ffc832;
+    --crown-hi: #ffe08a;
+    --bark: #5a2d0c;
+    --plank: #3a2413;
+    --danger: #ff9b8a;
+    --display: "Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+    --body: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ink);
+    color: var(--cloud);
+    font-family: var(--body);
+    overflow: hidden;
+  }
+  #canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    outline: none;
+    background: var(--ink);
+  }
+
+  #boot {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding-inline: 16px;
+    padding-block: calc(24px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
+    background:
+      radial-gradient(120% 45% at 50% 100%, rgba(234, 240, 247, 0.34), rgba(234, 240, 247, 0) 70%),
+      radial-gradient(60% 30% at 18% 88%, rgba(234, 240, 247, 0.22), rgba(234, 240, 247, 0) 70%),
+      radial-gradient(60% 30% at 84% 92%, rgba(234, 240, 247, 0.2), rgba(234, 240, 247, 0) 70%),
+      linear-gradient(180deg, var(--ink) 0%, var(--dusk) 78%, #4d6f98 100%);
+    transition: opacity 0.35s ease;
+    z-index: 2;
+  }
+  #boot.gone { opacity: 0; pointer-events: none; }
+
+  .stack {
+    width: min(560px, 100%);
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    text-align: center;
+  }
+  h1 {
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(64px, 16vw, 132px);
+    line-height: 0.9;
+    letter-spacing: 0.02em;
+    color: var(--crown);
+    /* chunky outline + drop, like the in-game title */
+    text-shadow:
+      3px 0 0 var(--bark), -3px 0 0 var(--bark), 0 3px 0 var(--bark), 0 -3px 0 var(--bark),
+      3px 3px 0 var(--bark), -3px 3px 0 var(--bark), 3px -3px 0 var(--bark), -3px -3px 0 var(--bark),
+      0 9px 0 var(--bark), 0 16px 24px rgba(0, 0, 0, 0.35);
+    text-wrap: balance;
+  }
+  .tagline {
+    margin: -6px 0 0;
+    font-size: clamp(16px, 4vw, 20px);
+    font-weight: 700;
+    color: var(--cloud);
+  }
+
+  .plank {
+    width: min(360px, 100%);
+    height: 18px;
+    border-radius: 9px;
+    background: var(--plank);
+    border: 2px solid var(--bark);
+    box-shadow: inset 0 2px 0 rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+  }
+  .plank > span {
+    display: block;
+    height: 100%;
+    width: 0%;
+    background: repeating-linear-gradient(90deg, var(--crown) 0 22px, var(--crown-hi) 22px 26px);
+    transition: width 0.2s ease;
+  }
+  #status {
+    margin: -8px 0 0;
+    min-height: 1.4em;
+    font-size: 15px;
+    color: var(--mist);
+    font-variant-numeric: tabular-nums;
+  }
+  #status.error { color: var(--danger); }
+
+  #play {
+    font-family: var(--display);
+    font-size: 30px;
+    letter-spacing: 0.04em;
+    color: var(--bark);
+    background: linear-gradient(180deg, var(--crown-hi) 0%, var(--crown) 45%);
+    border: 3px solid var(--bark);
+    border-radius: 18px;
+    padding: 12px 56px 10px;
+    box-shadow: 0 6px 0 var(--bark);
+    cursor: pointer;
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  #play:hover { filter: brightness(1.06); }
+  #play:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--bark); }
+  #play:focus-visible { outline: 3px solid var(--cloud); outline-offset: 4px; }
+
+  .keys {
+    list-style: none;
+    margin: 4px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px 18px;
+    font-size: 14px;
+    color: var(--mist);
+  }
+  .keys li { display: flex; align-items: center; gap: 6px; }
+  kbd {
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: 12px;
+    color: var(--cloud);
+    padding: 2px 7px;
+    border-radius: 6px;
+    border: 1px solid rgba(234, 240, 247, 0.35);
+    border-bottom-width: 3px;
+    background: rgba(15, 35, 64, 0.55);
+  }
+  .touch-note {
+    display: none;
+    margin: 0;
+    max-width: 34ch;
+    font-size: 15px;
+    color: var(--crown-hi);
+  }
+  @media (pointer: coarse) { .touch-note { display: block; } }
+  .credits { margin: 6px 0 0; font-size: 12px; color: var(--mist); opacity: 0.8; }
+
+  @media (prefers-reduced-motion: reduce) {
+    #boot, .plank > span, #play { transition: none; }
+  }
+</style>
+
+<canvas id="canvas" tabindex="-1" aria-label="Crollo, gioco d'assedio in 3D"></canvas>
+
+<div id="boot" role="dialog" aria-labelledby="boot-title">
+  <div class="stack">
+    <h1 id="boot-title">CROLLO</h1>
+    <p class="tagline">un assedio fisico tra le nuvole</p>
+    <div class="plank" aria-hidden="true"><span id="bar"></span></div>
+    <p id="status" aria-live="polite">Carico il motore fisico…</p>
+    <button id="play" type="button" hidden>GIOCA</button>
+    <p class="touch-note">Crollo si gioca con mouse e tastiera: aprilo da un computer.</p>
+    <ul class="keys">
+      <li><kbd>Mouse</kbd> mira</li>
+      <li><kbd>Rotellina</kbd> potenza</li>
+      <li><kbd>Click</kbd> spara</li>
+      <li><kbd>1–5</kbd> munizioni</li>
+      <li><kbd>Spazio</kbd> abilità</li>
+      <li><kbd>Esc</kbd> pausa</li>
+    </ul>
+    <p class="credits">Fisica Box3D · grafica raylib · compilato in WebAssembly</p>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var canvas = document.getElementById('canvas');
+    var boot = document.getElementById('boot');
+    var bar = document.getElementById('bar');
+    var status = document.getElementById('status');
+    var play = document.getElementById('play');
+
+    function setStatus(text, isError) {
+      status.textContent = text;
+      status.classList.toggle('error', !!isError);
+    }
+    function fail(text) {
+      setStatus(text, true);
+      bar.style.width = '0%';
+    }
+
+    // right mouse is the spyglass, not a context menu
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    var probe = document.createElement('canvas');
+    if (!probe.getContext('webgl2')) {
+      fail('Questo browser non supporta WebGL2, che serve per la grafica 3D.');
+      return;
+    }
+    if (typeof WebAssembly !== 'object') {
+      fail('Questo browser non supporta WebAssembly.');
+      return;
+    }
+
+    function mb(n) { return (n / 1048576).toFixed(1).replace('.', ','); }
+
+    // Download the wasm ourselves so the plank can show real progress.
+    function fetchWasm(url) {
+      return fetch(url).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        var total = Number(res.headers.get('Content-Length')) || 0;
+        if (!res.body || !total) return res.arrayBuffer();
+        var reader = res.body.getReader();
+        var chunks = [];
+        var got = 0;
+        function pump() {
+          return reader.read().then(function (r) {
+            if (r.done) {
+              var out = new Uint8Array(got);
+              var off = 0;
+              chunks.forEach(function (c) { out.set(c, off); off += c.length; });
+              return out.buffer;
+            }
+            chunks.push(r.value);
+            got += r.value.length;
+            bar.style.width = Math.min(95, 95 * got / total) + '%';
+            setStatus('Scarico il gioco… ' + mb(got) + ' / ' + mb(total) + ' MB');
+            return pump();
+          });
+        }
+        return pump();
+      });
+    }
+
+    window.Module = {
+      canvas: canvas,
+      print: function (t) { console.log(t); },
+      printErr: function (t) { console.warn(t); },
+      instantiateWasm: function (imports, done) {
+        fetchWasm('crollo.wasm')
+          .then(function (bytes) {
+            setStatus('Preparo le isole…');
+            return WebAssembly.instantiate(bytes, imports);
+          })
+          .then(function (r) { done(r.instance, r.module); })
+          .catch(function (e) {
+            console.error(e);
+            fail('Il gioco non si è caricato (' + e.message + '). Ricarica la pagina per riprovare.');
+          });
+        return {};
+      },
+      onRuntimeInitialized: function () {
+        bar.style.width = '100%';
+        setStatus('Pronto.');
+        play.hidden = false;
+        play.focus();
+      },
+      onAbort: function (what) {
+        fail('Errore durante l’esecuzione: ' + what);
+      }
+    };
+
+    play.addEventListener('click', function () {
+      // this click is the gesture the browser needs before it lets the game make sound
+      boot.classList.add('gone');
+      boot.setAttribute('aria-hidden', 'true');
+      canvas.focus();
+      setTimeout(function () { boot.hidden = true; }, 400);
+    });
+
+    var script = document.createElement('script');
+    script.src = 'crollo.js';
+    script.onerror = function () { fail('Non trovo crollo.js accanto a questa pagina.'); };
+    document.body.appendChild(script);
+  })();
+</script>
