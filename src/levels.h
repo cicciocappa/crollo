@@ -108,6 +108,17 @@ public:
 	Entity* MagicBarrier( Vector3 center, Vector3 half, float yaw = 0.0f );
 	// A heavy glowing orb that passes through magic barriers and knocks down any king it strikes.
 	Entity* MagicOrb( Vector3 center, float radius = 0.5f );
+	// Unbreakable glass in a brass frame: the king behind it is in plain view, but nothing gets through, blasts
+	// included. `moving` makes it kinematic, for Mover().
+	Entity* GlassPane( Vector3 center, Vector3 half, float yaw = 0.0f, bool moving = false );
+	// A kinematic slab, for Mover().
+	Entity* Platform( Vector3 center, Vector3 half, Mat mat, Color tint = { 0, 0, 0, 0 }, float yaw = 0.0f );
+	// A flying carpet (kinematic, 12 cm thick, centre at `center`), for Mover(). Kings stay on by friction.
+	Entity* Carpet( Vector3 center, float halfX, float halfZ, Color color, float yaw = 0.0f );
+	// Sends a kinematic entity `distance` metres along `axis` and back, `travel` seconds each way, resting
+	// `pause` seconds at each end; `phase` (seconds) shifts it along the cycle. It is moved to where the cycle
+	// puts it at time 0: place riders after this call, on top of e->pos.
+	Entity* Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase = 0.0f );
 	// A fixed rubber wall: shots bounce off it, so it can be used for bank shots.
 	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f );
 
@@ -137,8 +148,9 @@ public:
 	// The wind turns and changes strength after every shot, up to `strength` (the level's wind is the first one).
 	void ShiftingWind( float strength );
 
-	// A tree (a pine if `pine`): fixed, it stops every shot and every blast, but a chain shot fells it.
-	Entity* Tree( Vector3 base, float scale, bool pine, Color leaf, float yaw = 0.0f );
+	// A tree (oak, pine, palm or cactus): fixed, it stops every shot and every blast, but a chain shot fells it.
+	// Returns nullptr, and plants nothing, where it would grow into a block or a king.
+	Entity* Tree( Vector3 base, float scale, TreeKind kind, Color leaf, float yaw = 0.0f );
 	// Trees scattered on a ring around `center`, between `minR` and `radius`.
 	void Trees( Vector3 center, float radius, int count, float minR );
 

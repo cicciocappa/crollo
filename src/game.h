@@ -243,6 +243,10 @@ private:
 	// The boulder snaps windmill blades off their axle.
 	void BreakBlades( Entity* blades );
 	void FellTree( Entity* e );
+	// The kinematic mover `e` is, or rides on (nullptr if none).
+	const Mechanism* MoverUnder( const Entity* e ) const;
+	// Steers the kinematic movers to where they must be at the end of the next step.
+	void DriveMovers( float dt );
 	void TreeFallEffects( Vector3 cutPoint, Color leaf, float scale );
 	void DefeatKing( Entity* king, const char* reason );
 	void PopBalloon( Entity* balloon );

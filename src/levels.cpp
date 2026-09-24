@@ -105,7 +105,9 @@ void Builder::PlayerIsland( Vector3 pos, float yaw )
 		d.color = c;
 		if ( t == Decoration::Tree || t == Decoration::Pine )
 		{
-			Tree( d.pos, d.scale, t == Decoration::Pine, d.color, d.rot );
+			bool pine = t == Decoration::Pine;
+			TreeKind kind = Look().desert ? ( pine ? TreeKind::Cactus : TreeKind::Palm ) : ( pine ? TreeKind::Pine : TreeKind::Oak );
+			Tree( d.pos, d.scale, kind, d.color, d.rot );
 		}
 		else
 		{
@@ -198,6 +200,23 @@ Entity* Builder::King( Vector3 feet, Color robe )
 	e->crownIndex = (int)e->parts.size() - 1;
 
 	e->homeY = feet.y;
+	// riding a lift: he only counts as fallen below the lowest point of its run
+	for ( const Mechanism& m : scene.mechanisms )
+	{
+		if ( m.type != MechType::Mover || m.entity == nullptr )
+		{
+			continue;
+		}
+		Vector3 c = m.entity->pos;
+		Vector3 h = m.entity->parts[0].size;
+		if ( fabsf( feet.x - c.x ) < h.x + 0.2f && fabsf( feet.z - c.z ) < h.z + 0.2f && feet.y > c.y && feet.y < c.y + h.y + 0.4f )
+		{
+			e->homeY = feet.y + std::min( m.home.y, m.home.y + m.amplitude * m.axis.y ) - c.y;
+			// and he sets off already moving with it
+			Vector3 v = Vector3Scale( Vector3Subtract( MoverPosAt( m, 0.01f ), MoverPosAt( m, 0.0f ) ), 100.0f );
+			b3Body_SetLinearVelocity( e->body, ToB3( v ) );
+		}
+	}
 	scene.FinalizeEntity( e );
 	game.RegisterKing( e );
 	return e;
@@ -720,6 +739,115 @@ Entity* Builder::Reinforced( Vector3 center, Vector3 half, float yaw )
 	return e;
 }
 
+Entity* Builder::GlassPane( Vector3 center, Vector3 half, float yaw, bool moving )
+{
+	BodyOptions bo;
+	bo.type = moving ? b3_kinematicBody : b3_staticBody;
+	Entity* e = scene.CreateEntity( moving ? Kind::Mechanism : Kind::Static, Mat::Glass, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = moving ? CatBlock : CatStatic;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Glass, so );
+	// a brass frame, so it never passes for a crystal shield that will switch off
+	const Color brass{ 176, 132, 58, 255 };
+	const float bar = 0.07f;
+	for ( int k = -1; k <= 1; k += 2 )
+	{
+		Part edge;
+		edge.localPos = { 0, k * ( half.y - bar ), 0 };
+		edge.size = { half.x, bar, half.z + 0.03f };
+		edge.mat = Mat::Metal;
+		edge.tint = brass;
+		scene.AddVisual( e, edge );
+		Part post;
+		post.localPos = { k * ( half.x - bar ), 0, 0 };
+		post.size = { bar, half.y, half.z + 0.03f };
+		post.mat = Mat::Metal;
+		post.tint = brass;
+		scene.AddVisual( e, post );
+	}
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Platform( Vector3 center, Vector3 half, Mat mat, Color tint, float yaw )
+{
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, mat, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, mat, so );
+	if ( tint.a > 0 )
+	{
+		e->parts.back().tint = tint;
+	}
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Carpet( Vector3 center, float halfX, float halfZ, Color color, float yaw )
+{
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Sand, center, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.friction = 1.0f;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, { halfX, 0.06f, halfZ }, Mat::Sand, so );
+	e->parts.back().tint = color;
+	// a golden border, a medallion in the middle and a tassel at each corner
+	const Color gold{ 230, 180, 60, 255 };
+	Part border;
+	border.localPos = { 0, -0.015f, 0 };
+	border.size = { halfX + 0.05f, 0.05f, halfZ + 0.05f };
+	border.mat = Mat::Sand;
+	border.tint = gold;
+	scene.AddVisual( e, border );
+	Part medallion;
+	medallion.localPos = { 0, 0.004f, 0 };
+	medallion.size = { halfX * 0.55f, 0.06f, halfZ * 0.55f };
+	medallion.mat = Mat::Sand;
+	medallion.tint = ColorBrightness( color, -0.35f );
+	scene.AddVisual( e, medallion );
+	for ( int i = -1; i <= 1; i += 2 )
+	{
+		for ( int k = -1; k <= 1; k += 2 )
+		{
+			Part tassel;
+			tassel.geo = Geo::Sphere;
+			tassel.localPos = { i * ( halfX + 0.1f ), -0.03f, k * ( halfZ + 0.1f ) };
+			tassel.size = { 0.07f, 0.07f, 0.07f };
+			tassel.mat = Mat::Gold;
+			tassel.tint = gold;
+			scene.AddVisual( e, tassel );
+		}
+	}
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase )
+{
+	Mechanism m;
+	m.type = MechType::Mover;
+	m.entity = e;
+	m.home = e->pos;
+	m.axis = Vector3Normalize( axis );
+	m.amplitude = distance;
+	m.travel = travel;
+	m.pause = pause;
+	m.phase = phase;
+	scene.mechanisms.push_back( m );
+	// start where the cycle puts it at time 0
+	Vector3 start = MoverPosAt( m, 0.0f );
+	b3Body_SetTransform( e->body, ToB3( start ), b3Body_GetRotation( e->body ) );
+	e->pos = e->prevPos = start;
+	return e;
+}
+
 Entity* Builder::MagicBarrier( Vector3 center, Vector3 half, float yaw )
 {
 	BodyOptions bo;
@@ -1002,7 +1130,9 @@ void Builder::Trees( Vector3 center, float radius, int count, float minR )
 		Vector3 base = { center.x + cosf( a ) * r, center.y, center.z + sinf( a ) * r };
 		float scale = rng.Range( 0.7f, 1.2f );
 		float yaw = rng.Range( 0.0f, 6.28f );
-		Tree( base, scale, pine || Look().pinesOnly, ColorMix( Look().leafA, Look().leafB, rng.Float() ), yaw );
+		TreeKind kind = Look().desert ? ( pine ? TreeKind::Cactus : TreeKind::Palm )
+									  : ( pine || Look().pinesOnly ? TreeKind::Pine : TreeKind::Oak );
+		Tree( base, scale, kind, ColorMix( Look().leafA, Look().leafB, rng.Float() ), yaw );
 	}
 }
 
@@ -1013,54 +1143,44 @@ static bool TreeOverlapFound( b3ShapeId shapeId, void* context )
 	return false;
 }
 
-Entity* Builder::Tree( Vector3 base, float scale, bool pine, Color leaf, float yaw )
+Entity* Builder::Tree( Vector3 base, float scale, TreeKind kind, Color leaf, float yaw )
 {
-	// a fixed tree grown into a tower would shove it over: leave that one out
-	float s = scale;
-	b3QueryFilter filter = b3DefaultQueryFilter();
-	filter.categoryBits = CatStatic;
-	filter.maskBits = CatBlock | CatKing;
-	bool found = false;
-	auto probe = [&]( std::initializer_list<Vector3> points, float radius ) {
-		b3Vec3 p[12];
-		int n = 0;
-		for ( Vector3 v : points )
-		{
-			p[n++] = ToB3( v );
-		}
-		b3ShapeProxy proxy{ p, n, radius };
-		b3World_OverlapShape( scene.World(), ToB3( base ), &proxy, filter, TreeOverlapFound, &found );
-	};
-	if ( pine )
-	{
-		probe( { { 0, 0.2f * s, 0 }, { 0, 0.8f * s, 0 } }, 0.12f * s );
-		float r = 0.95f * s, y = 0.6f * s;
-		probe( { { r, y, 0 }, { -r, y, 0 }, { 0, y, r }, { 0, y, -r }, { r * 0.7f, y, r * 0.7f }, { -r * 0.7f, y, r * 0.7f },
-				 { r * 0.7f, y, -r * 0.7f }, { -r * 0.7f, y, -r * 0.7f }, { 0, 3.0f * s, 0 } },
-			   0.0f );
-	}
-	else
-	{
-		Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
-		probe( { { 0, 0.2f * s, 0 }, { 0, 1.6f * s, 0 } }, 0.14f * s );
-		probe( { { 0, 2.0f * s, 0 } }, 0.9f * s );
-		probe( { Vector3RotateByQuaternion( { 0.55f * s, 1.65f * s, 0.2f * s }, q ) }, 0.6f * s );
-		probe( { Vector3RotateByQuaternion( { -0.45f * s, 1.75f * s, -0.3f * s }, q ) }, 0.62f * s );
-	}
-	if ( found )
-	{
-		if ( getenv( "CROLLO_DEBUG" ) )
-			fprintf( stderr, "albero tolto a %.1f %.1f %.1f: toccherebbe una costruzione\n", base.x, base.y, base.z );
-		return nullptr;
-	}
-
 	BodyOptions bo;
 	bo.type = b3_staticBody;
 	Entity* e = scene.CreateEntity( Kind::Static, Mat::Wood, base, QuatYaw( yaw ), bo );
 	ShapeOptions so;
 	so.category = CatStatic;
 	so.hitEvents = true;
-	scene.AddTree( e, scale, pine, leaf, 0.0f, so );
+	std::vector<std::pair<std::vector<Vector3>, float>> probes;
+	scene.AddTree( e, scale, kind, leaf, 0.0f, so, &probes );
+
+	// a fixed tree grown into a tower would shove it over: leave that one out
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.categoryBits = CatStatic;
+	filter.maskBits = CatBlock | CatKing;
+	bool found = false;
+	Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
+	for ( const auto& pr : probes )
+	{
+		b3Vec3 points[B3_MAX_SHAPE_CAST_POINTS];
+		int n = 0;
+		for ( const Vector3& v : pr.first )
+		{
+			if ( n < B3_MAX_SHAPE_CAST_POINTS )
+			{
+				points[n++] = ToB3( Vector3RotateByQuaternion( v, q ) );
+			}
+		}
+		b3ShapeProxy proxy{ points, n, pr.second };
+		b3World_OverlapShape( scene.World(), ToB3( base ), &proxy, filter, TreeOverlapFound, &found );
+	}
+	if ( found )
+	{
+		if ( getenv( "CROLLO_DEBUG" ) )
+			fprintf( stderr, "albero tolto a %.1f %.1f %.1f: toccherebbe una costruzione\n", base.x, base.y, base.z );
+		scene.DestroyEntity( e );
+		return nullptr;
+	}
 	scene.FinalizeEntity( e );
 	return e;
 }
@@ -1144,10 +1264,10 @@ static void GroveKing( Builder& b, Vector3 feet, Color robe )
 	auto ahead = [&]( float d ) { return Vector3Add( feet, Vector3Scale( toCannon, d ) ); };
 	const Biome& look = b.Look();
 	Entity* king = b.King( feet, robe );
-	b.Tree( ahead( -0.75f ), 1.7f, false, ColorMix( look.leafA, look.leafB, 0.3f ), yaw );
+	b.Tree( ahead( -0.75f ), 1.7f, TreeKind::Oak, ColorMix( look.leafA, look.leafB, 0.3f ), yaw );
 	// the pine's lowest branches spread 1.4 m and hang 0.9 m up: the king stands just clear of them, and the
 	// woodpile closes the gap underneath
-	Entity* pine = b.Tree( ahead( 1.85f ), 1.5f, true, ColorMix( look.leafA, look.leafB, 0.8f ), yaw );
+	Entity* pine = b.Tree( ahead( 1.85f ), 1.5f, TreeKind::Pine, ColorMix( look.leafA, look.leafB, 0.8f ), yaw );
 	Vector3 pile = ahead( 3.6f );
 	Entity* logs = b.Ledge( { pile.x, pile.y + 0.5f, pile.z }, { 1.3f, 0.5f, 0.3f }, Mat::Wood, QuaternionFromAxisAngle( { 0, 1, 0 }, yaw ) );
 	// drawn as logs stacked three high and two deep
@@ -1185,6 +1305,266 @@ static void LevelBoschetto( Builder& b )
 	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.2f );
 	b.Flag( { 1.5f, 0, 43.0f }, kPurple );
 	b.Fortress( { 0.5f, 2, 38 }, 11.0f );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Dune Sospese
+// ---------------------------------------------------------------------------------------------
+
+static const Color kGold{ 225, 170, 40, 255 };
+static const Color kCarpetRed{ 170, 40, 45, 255 };
+static const Color kCarpetBlue{ 40, 70, 150, 255 };
+static const Color kCarpetGreen{ 40, 120, 80, 255 };
+static const Color kSandstone{ 232, 196, 138, 255 };
+
+// Gives the stone of everything built since entity `from` the warm colour of sandstone.
+static void Sandstone( Builder& b, size_t from )
+{
+	for ( size_t i = from; i < b.scene.entities.size(); ++i )
+	{
+		Entity* e = b.scene.entities[i];
+		bool changed = false;
+		for ( Part& p : e->parts )
+		{
+			if ( p.mat == Mat::Stone )
+			{
+				p.tint = ColorBrightness( kSandstone, b.rng.Range( -0.06f, 0.06f ) );
+				changed = true;
+			}
+		}
+		if ( changed )
+		{
+			b.scene.FinalizeEntity( e );
+		}
+	}
+}
+
+// A king riding a flying carpet: the carpet crosses from `from` to `to` in `travel` seconds, rests `pause`
+// seconds and comes back. Keep the peak acceleration, 6 * distance / travel^2, under about 3.5 m/s^2, or
+// the king ends up tipping over at the turns.
+static Entity* CarpetKing( Builder& b, Vector3 from, Vector3 to, float travel, float pause, float phase, Color carpet, Color robe )
+{
+	Entity* c = b.Carpet( from, 0.8f, 0.7f, carpet );
+	b.Mover( c, Vector3Subtract( to, from ), Vector3Distance( from, to ), travel, pause, phase );
+	return b.King( Vector3Add( c->pos, { 0, 0.06f, 0 } ), robe );
+}
+
+static void LevelCarovana( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.0f );
+	size_t from = b.scene.entities.size();
+	float t1 = b.Tower( { -3.5f, 0, 37.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { -3.5f, t1, 37.0f }, kTeal );
+	float t2 = b.Tower( { 3.5f, 0, 37.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { 3.5f, t2, 37.0f }, kCrimson );
+	Sandstone( b, from );
+	// a carpet drifting across in front of the towers
+	CarpetKing( b, { -5.5f, 3.2f, 31.5f }, { 5.5f, 3.2f, 31.5f }, 4.0f, 1.5f, 0.0f, kCarpetRed, kGold );
+	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.0f );
+	b.Flag( { 0, 0, 40.5f }, kGold );
+	b.Fortress( { 0, 2, 35 }, 11.0f );
+}
+
+static void LevelVetrate( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.0f );
+	// a glass front: the kings behind it are in plain view, and out of reach of anything but a lob
+	b.GlassPane( { 0, 1.4f, 32.6f }, { 4.4f, 1.4f, 0.06f } );
+	b.King( { -2.7f, 0, 35.4f }, kTeal );
+	b.King( { 2.7f, 0, 35.4f }, kCrimson );
+	size_t from = b.scene.entities.size();
+	float t = b.Tower( { 0, 0, 36.0f }, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Sandstone( b, from );
+	b.King( { 0, t, 36.0f }, kGold );
+	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.0f );
+	b.Flag( { 4.5f, 0, 37.5f }, kGold );
+	b.Fortress( { 0, 2, 35 }, 11.0f );
+}
+
+static void LevelMontacarichi( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.0f );
+	b.Ledge( { 0, 1.6f, 33.0f }, { 5.2f, 1.6f, 0.3f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	// two lifts right behind the wall: a king only shows above it at the top of the run
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Entity* lift = b.Platform( { s * 3.0f, 0.15f, 34.2f }, { 0.8f, 0.15f, 0.8f }, Mat::Stone, kSandstone );
+		b.Mover( lift, { 0, 1, 0 }, 3.4f, 2.2f, 1.8f, s < 0 ? 0.0f : 3.0f );
+		b.King( Vector3Add( lift->pos, { 0, 0.15f, 0 } ), s < 0 ? kTeal : kCrimson );
+	}
+	size_t from = b.scene.entities.size();
+	float t = b.Tower( { 0, 0, 36.8f }, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Sandstone( b, from );
+	b.King( { 0, t, 36.8f }, kGold );
+	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.0f );
+	b.Flag( { -4.5f, 0, 38.0f }, kGold );
+	b.Fortress( { 0, 2, 35 }, 11.0f );
+}
+
+static void LevelTappeti( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.0f );
+	// one carpet sweeps across in front, one climbs and dips on the left
+	CarpetKing( b, { -6.0f, 3.4f, 31.0f }, { 6.0f, 3.4f, 31.0f }, 5.0f, 1.0f, 0.0f, kCarpetRed, kTeal );
+	CarpetKing( b, { -4.5f, 1.2f, 36.0f }, { -4.5f, 5.2f, 38.0f }, 3.0f, 1.2f, 1.5f, kCarpetGreen, kPurple );
+	// the third hides behind a pane of glass held up between two columns, and shows only at the ends of its run
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { 3.5f + s * 1.75f, 2.7f, 34.0f }, { 0.2f, 2.7f, 0.2f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	}
+	b.GlassPane( { 3.5f, 3.6f, 34.0f }, { 1.55f, 1.3f, 0.06f } );
+	CarpetKing( b, { 0.8f, 2.8f, 35.6f }, { 6.8f, 2.8f, 35.6f }, 3.5f, 1.6f, 2.0f, kCarpetBlue, kCrimson );
+	b.ShiftingWind( 1.2f );
+	b.Trees( { 0, 0, 36 }, 9.0f, 4, 7.2f );
+	b.Flag( { 0, 0, 41.0f }, kGold );
+	b.Fortress( { 0, 3, 35 }, 11.0f );
+}
+
+static void LevelMiraggio( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 34.5f }, 9.5f );
+
+	const float front = 34.8f, back = 38.0f, h = 3.2f;
+	b.MagicBarrier( { 0, h * 0.5f, front }, { 3.0f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { 0, h + 0.08f, ( front + back ) * 0.5f }, { 3.0f, 0.08f, ( back - front ) * 0.5f } );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 feet{ s * 1.5f, 0, 36.4f };
+		Entity* king = b.King( feet, s < 0 ? kTeal : kCrimson );
+		float z = 33.3f;
+		Entity* orb = b.MagicOrb( { feet.x * z / feet.z, 0.5f, z } );
+		b.AimHint( king, orb, { 0, 0.1f, -0.25f } );
+	}
+	// a pane of glass slides to and fro in front of the orbs: strike one while it is clear
+	Entity* pane = b.GlassPane( { -3.2f, 1.1f, 31.2f }, { 1.3f, 1.1f, 0.06f }, 0.0f, true );
+	b.Mover( pane, { 1, 0, 0 }, 6.4f, 2.6f, 1.2f );
+
+	// outside: a carpet goes back and forth along the right side
+	CarpetKing( b, { 6.2f, 2.6f, 31.5f }, { 6.2f, 2.6f, 38.5f }, 4.0f, 1.0f, 0.0f, kCarpetRed, kGold );
+	b.Trees( { 0, 0, 34.5f }, 9.5f, 4, 7.6f );
+	b.Flag( { -5.5f, 0, 37.5f }, kGold );
+	b.Fortress( { 1.0f, 2.0f, 35.0f }, 11.0f );
+}
+
+// A king in the oasis: a big cactus in front of him, and behind him a palm leaning forward over his head
+// against lobs. Only the chain shot cuts the cactus down, and it falls on him.
+static void OasisKing( Builder& b, Vector3 feet, Color robe )
+{
+	Vector3 toCannon = Vector3Normalize( { -feet.x, 0.0f, -feet.z } );
+	float yaw = atan2f( toCannon.x, toCannon.z );
+	auto ahead = [&]( float d ) { return Vector3Add( feet, Vector3Scale( toCannon, d ) ); };
+	const Biome& look = b.Look();
+	Entity* king = b.King( feet, robe );
+	// the palm leans along its own x axis: turn it so that points at the cannon
+	b.Tree( ahead( -1.1f ), 1.3f, TreeKind::Palm, look.leafB, atan2f( -toCannon.z, toCannon.x ) );
+	Entity* cactus = b.Tree( ahead( 2.1f ), 1.8f, TreeKind::Cactus, ColorMix( look.leafA, look.leafB, 0.4f ), yaw );
+	if ( cactus )
+	{
+		b.AimHint( king, cactus, { 0, 2.0f, 0 } );
+	}
+}
+
+static void LevelOasi( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	OasisKing( b, { -4.2f, 0, 37.5f }, kTeal );
+	OasisKing( b, { 0.6f, 0, 40.0f }, kGold );
+	OasisKing( b, { 5.0f, 0, 37.0f }, kCrimson );
+	// the pool the oasis is named after
+	b.Ledge( { 0.4f, 0.02f, 35.6f }, { 1.6f, 0.02f, 1.1f }, Mat::Ice, { 0, 0, 0, 1 }, Color{ 70, 150, 200, 255 } );
+	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.3f );
+	b.Flag( { 1.5f, 0, 43.0f }, kGold );
+	b.Fortress( { 0.5f, 2, 38 }, 11.0f );
+}
+
+static void LevelTempesta( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	// three dunes of sandstone, each king behind a heap of sandbags
+	b.Ledge( { -4.5f, 0.75f, 37.0f }, { 1.7f, 0.75f, 1.7f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	b.Ledge( { 0.0f, 1.25f, 39.5f }, { 1.9f, 1.25f, 1.9f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	b.Ledge( { 4.5f, 0.5f, 36.5f }, { 1.6f, 0.5f, 1.6f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	size_t from = b.scene.entities.size();
+	b.homeY = 1.5f;
+	float t1 = b.Tower( { -4.5f, 1.5f, 37.4f }, 1, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { -4.5f, t1, 37.4f }, kTeal );
+	b.SandbagWall( { -6.0f, 1.5f, 35.8f }, true, 3, 2 );
+	b.homeY = 2.5f;
+	b.King( { 0.0f, 2.5f, 40.0f }, kPurple );
+	b.SandbagWall( { -1.5f, 2.5f, 38.4f }, true, 3, 3 );
+	b.homeY = 1.0f;
+	float t3 = b.Tower( { 4.5f, 1.0f, 36.9f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { 4.5f, t3, 36.9f }, kCrimson );
+	b.SandbagWall( { 3.0f, 1.0f, 35.2f }, true, 3, 2 );
+	Sandstone( b, from );
+	b.homeY = 0.0f;
+	// and one on a carpet, high over the dunes
+	CarpetKing( b, { -6.0f, 6.0f, 41.5f }, { 6.0f, 6.0f, 41.5f }, 5.0f, 1.0f, 0.0f, kCarpetBlue, kGold );
+	b.ShiftingWind( 2.0f );
+	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.3f );
+	b.Flag( { -1.0f, 0, 44.0f }, kGold );
+	b.Fortress( { 0, 3, 38 }, 12.0f );
+}
+
+static void LevelPalazzoZaira( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 37 }, 11.0f );
+
+	// the front of the palace: three panes of glass with gaps between them, and the Sultana gliding behind
+	for ( int i = -1; i <= 1; ++i )
+	{
+		b.GlassPane( { i * 4.0f, 1.6f, 33.0f }, { 1.25f, 1.6f, 0.06f } );
+	}
+	CarpetKing( b, { -4.0f, 0.4f, 35.0f }, { 4.0f, 0.4f, 35.0f }, 4.0f, 1.2f, 0.0f, kCarpetRed, kGold );
+
+	// two guards on lifts behind a wall at the back
+	b.Ledge( { 0, 1.6f, 38.6f }, { 8.2f, 1.6f, 0.3f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Entity* lift = b.Platform( { s * 6.4f, 0.15f, 39.8f }, { 0.8f, 0.15f, 0.8f }, Mat::Stone, kSandstone );
+		b.Mover( lift, { 0, 1, 0 }, 3.4f, 2.0f, 1.6f, s < 0 ? 1.0f : 4.6f );
+		b.King( Vector3Add( lift->pos, { 0, 0.15f, 0 } ), s < 0 ? kTeal : kPurple );
+	}
+
+	// a magic kiosk off to the left, clear of the glass: its orb waits on the line from the cannon
+	{
+		Vector3 feet{ -8.6f, 0, 36.0f };
+		b.MagicBarrier( { -8.4f, 1.3f, 35.0f }, { 1.3f, 1.3f, 0.08f } );
+		b.MagicBarrier( { -8.4f, 2.68f, 35.9f }, { 1.3f, 0.08f, 0.9f } );
+		Entity* guard = b.King( feet, kCrimson );
+		float z = 33.6f;
+		Entity* orb = b.MagicOrb( { feet.x * z / feet.z, 0.5f, z } );
+		b.AimHint( guard, orb, { 0, 0.1f, -0.25f } );
+	}
+
+	// mountains of sandbags on either side of the front
+	b.SandbagWall( { 6.0f, 0, 32.2f }, true, 3, 3 );
+	b.SandbagWall( { -2.8f, 0, 30.6f }, true, 2, 2 );
+	// palms and cacti round the back, clear of every line of fire
+	const Biome& look = b.Look();
+	b.Tree( { -4.0f, 0, 45.0f }, 1.2f, TreeKind::Palm, look.leafB, 0.4f );
+	b.Tree( { 4.5f, 0, 45.0f }, 1.1f, TreeKind::Palm, look.leafA, 2.2f );
+	b.Tree( { 9.5f, 0, 36.0f }, 1.0f, TreeKind::Cactus, look.leafA, 1.0f );
+	b.Tree( { -9.8f, 0, 41.0f }, 0.9f, TreeKind::Cactus, look.leafB, 2.0f );
+	b.Flag( { 0, 0, 44.0f }, kGold );
+	b.Flag( { 7.5f, 0, 41.0f }, kGold );
+	b.Fortress( { 0, 2, 37 }, 13.0f );
 }
 
 static void Level04( Builder& b )
@@ -1992,6 +2372,30 @@ static const LevelDef s_levels[] = {
 	{ "Il Boschetto", "Nel mio boschetto nessuno mi trova. Nemmeno le tue palle di ferro.",
 	  "Le palle rimbalzano sui tronchi: solo la PALLA INCATENATA (4) taglia gli alberi. Premi TAB per trovare i re nascosti.",
 	  { 2, 0, 0, 4, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelBoschetto, "prati_boschetto" },
+	{ "La Carovana", "Benvenuto sulle Dune. Qui niente sta fermo, men che meno io.",
+	  "Il re sul tappeto volante si muove: mira dove sar\u00e0 quando arriva la palla, non dove \u00e8 adesso.",
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCarovana, "dune_carovana" },
+	{ "Vetrate", "Guardami pure. Toccarmi \u00e8 un'altra faccenda.",
+	  "Il vetro cerchiato d'ottone non si rompe e non si spegne: passaci sopra, di pallonetto.",
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelVetrate, "dune_vetrate" },
+	{ "Il Montacarichi", "Su e gi\u00f9, su e gi\u00f9. Prendimi, se ci riesci.",
+	  "I re salgono e scendono dietro il muro: spara mentre salgono, la palla arriva quando sono in cima.",
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMontacarichi, "dune_montacarichi" },
+	{ "Tappeti in Volo", "I miei tappeti volano pi\u00f9 alti delle tue palle. E il vento soffia per me.",
+	  "Tre re su tre tappeti. Uno passa dietro il vetro: aspetta che esca allo scoperto. Il vento cambia a ogni colpo.",
+	  { 6, 0, 0, 0, 0, 0, 0 }, 3, { 0.6f, 0, 0 }, LevelTappeti, "dune_tappeti" },
+	{ "Miraggio", "Vedi le mie sfere? Sono un miraggio. O forse no.",
+	  "Le sfere magiche passano la barriera, ma davanti scorre una lastra di vetro: colpisci la sfera quando la lastra \u00e8 lontana.",
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMiraggio, "dune_miraggio" },
+	{ "L'Oasi", "All'ombra delle mie palme non mi trova nessuno.",
+	  "I cactus fermano le palle e le palme riparano dall'alto: taglia i cactus con la PALLA INCATENATA (4), poi finisci il lavoro.",
+	  { 3, 0, 0, 4, 0, 0, 0 }, 5, { 0, 0, 0 }, LevelOasi, "dune_oasi" },
+	{ "Tempesta di Sabbia", "Senti il vento? Soffia sempre dalla mia parte.",
+	  "Il vento cambia forte a ogni colpo: guarda la freccia. I sacchi inghiottono le palle, il MACIGNO (5) passa.",
+	  { 6, 1, 0, 0, 1, 0, 0 }, 4, { -1.2f, 0, 0 }, LevelTempesta, "dune_tempesta" },
+	{ "Il Palazzo di Zaira", "Vetro, magia e sabbia. Il mio palazzo \u00e8 un gioiello, e io la sua perla.",
+	  "La Sultana passa dietro la facciata di vetro: spara nei varchi. Le guardie salgono e scendono, la sfera magica passa la barriera.",
+	  { 7, 2, 0, 2, 1, 0, 0 }, 5, { 0, 0, 0 }, LevelPalazzoZaira, "dune_palazzo" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -2028,7 +2432,9 @@ static std::vector<Campaign> BuildCampaigns()
 	c.push_back( { "Dune Sospese", "Sultana Zaira", { 225, 170, 40, 255 }, 3,
 				   "Sulle Dune Sospese la sabbia vola pi\u00f9 in alto delle isole. La Sultana Zaira si nasconde dietro montagne "
 				   "di sacchi, e il vento cambia a ogni colpo.",
-				   "La tempesta di sabbia si posa. Quattro frammenti su sei.", {} } );
+				   "La tempesta di sabbia si posa. Quattro frammenti su sei.",
+				   { idx( "dune_carovana" ), idx( "dune_vetrate" ), idx( "dune_montacarichi" ), idx( "dune_tappeti" ),
+					 idx( "dune_miraggio" ), idx( "dune_oasi" ), idx( "dune_tempesta" ), idx( "dune_palazzo" ) } } );
 	c.push_back( { "Arcipelago delle Tempeste", "Re Fulmine", { 40, 60, 140, 255 }, 4,
 				   "Nell'Arcipelago delle Tempeste le isole non stanno ferme un attimo, e Re Fulmine ama far piovere lampi sui "
 				   "suoi nemici.",

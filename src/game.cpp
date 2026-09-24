@@ -334,6 +334,7 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	// Let the structures settle before the player sees them.
 	for ( int i = 0; i < 30; ++i )
 	{
+		DriveMovers( kFixedDt );
 		m_scene.Step( kFixedDt, kSubSteps );
 	}
 	for ( Entity* e : m_scene.entities )
@@ -858,7 +859,7 @@ void Game::TestCampaigns()
 	spread( need );
 	check( CampaignUnlocked( 1 ) && need == ( CampaignMaxStars( 0 ) + 1 ) / 2,
 		   TextFormat( "%d stelle su %d aprono la Valle dei Mulini", need, CampaignMaxStars( 0 ) ) );
-	check( CampaignUnlocked( 3 ) == false, "le campagne senza livelli restano chiuse" );
+	check( CampaignUnlocked( 4 ) == false, "le campagne senza livelli restano chiuse" );
 	check( CampaignUnlocked( 2 ) == false, "i Picchi Gelati chiusi senza stelle nella Valle dei Mulini" );
 	m_progress.stars[GetCampaign( 2 ).levels[0]] = 1;
 	check( CampaignUnlocked( 2 ), "un regno dove hai già stelle resta aperto anche se il precedente è cresciuto" );
@@ -1604,9 +1605,8 @@ void Game::FellTree( Entity* e )
 	Vector3 base = e->pos;
 	Quaternion rot = e->rot;
 	float scale = e->tree;
-	bool pine = e->pine;
+	TreeKind kind = e->treeKind;
 	Color leaf = e->leaf;
-	Vector3 blow = ToRl( e->lastVel );
 	Kill( e );
 
 	// the stump stays where it was
@@ -1614,7 +1614,7 @@ void Game::FellTree( Entity* e )
 	BodyOptions sb;
 	sb.type = b3_staticBody;
 	Entity* stump = m_scene.CreateEntity( Kind::Static, Mat::Wood, base, ToB3( rot ), sb );
-	float radius = ( pine ? 0.12f : 0.14f ) * scale;
+	float radius = TreeTrunkRadius( kind, scale );
 	ShapeOptions so;
 	so.category = CatStatic;
 	so.visible = false;
@@ -1623,19 +1623,20 @@ void Game::FellTree( Entity* e )
 	p.geo = Geo::Cylinder;
 	p.size = { radius, cut, radius };
 	p.mat = Mat::Wood;
-	p.tint = pine ? Color{ 100, 70, 45, 255 } : Color{ 110, 76, 48, 255 };
+	p.tint = TreeBark( kind, leaf );
 	m_scene.AddVisual( stump, p );
 	Part ring = p;
 	ring.localPos = { 0, cut, 0 };
 	ring.size = { radius * 0.8f, 0.01f, radius * 0.8f };
 	ring.mat = Mat::Plain;
-	ring.tint = Color{ 222, 190, 140, 255 };
+	ring.tint = TreeCutColor( kind );
 	m_scene.AddVisual( stump, ring );
 	m_scene.FinalizeEntity( stump );
 
 	// the rest topples over the way the chain was going, pivoting on the stump. It lets the shot that
 	// cut it through for a moment, then it is solid again, and heavy enough to knock a king down.
-	Vector3 dir = { blow.x, 0.0f, blow.z };
+	// away from the cannon: the spinning chain's own velocity swings too far to either side
+	Vector3 dir = { base.x - m_cannonPos.x, 0.0f, base.z - m_cannonPos.z };
 	dir = Vector3Length( dir ) > 0.1f ? Vector3Normalize( dir ) : Vector3{ 0, 0, 1 };
 	Vector3 cutPoint = Vector3Add( base, Vector3RotateByQuaternion( { 0, cut, 0 }, rot ) );
 	BodyOptions bo;
@@ -1644,7 +1645,7 @@ void Game::FellTree( Entity* e )
 	ShapeOptions to;
 	to.category = CatBlock;
 	to.mask = CatAll & ~(uint64_t)CatProjectile;
-	m_scene.AddTree( t, scale, pine, leaf, cut, to );
+	m_scene.AddTree( t, scale, kind, leaf, cut, to );
 	t->tree = 0.0f;
 	t->lethal = true;
 	t->ghost = 0.5f;
@@ -1815,6 +1816,7 @@ void Game::FixedStep()
 			b3PrismaticJoint_SetTargetTranslation( m.joint, m.amplitude * sinf( m.speed * m_scene.time + m.phase ) );
 		}
 	}
+	DriveMovers( dt );
 	UpdateShields();
 
 	for ( Entity* e : m_scene.entities )
@@ -2006,7 +2008,8 @@ void Game::HandleEvents()
 			Mat m = struck->isStatic ? other->mat : struck->mat;
 			if ( struck->isStatic && other->kind == Kind::Projectile )
 			{
-				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand || struck->mat == Mat::Magic;
+				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand || struck->mat == Mat::Magic ||
+							 struck->mat == Mat::Glass;
 				m = keeps || struck->tree > 0.0f ? struck->mat : Mat::Rock;
 			}
 			HitEffects( h.point, h.speed, m, std::max( a->mass, b->mass ), true );
@@ -2528,6 +2531,7 @@ void Game::HitEffects( Vector3 point, float speed, Mat m, float heavyMass, bool 
 			case Mat::Shield:
 			case Mat::Magic:
 			case Mat::Orb:
+			case Mat::Glass:
 				sfx = Sfx::IceHit;
 				heavyMass = -1.0f; // bright crystal ping, see below
 				break;
@@ -2973,6 +2977,42 @@ bool Game::AutoFireAtKing()
 	return FireAt( aimPoint, type, goal, lob );
 }
 
+void Game::DriveMovers( float dt )
+{
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type == MechType::Mover && m.entity != nullptr && m.entity->alive )
+		{
+			// kinematic: it reaches the next point of its run exactly at the end of the step
+			b3WorldTransform xf{ ToB3( MoverPosAt( m, m_scene.time + dt ) ), b3Body_GetRotation( m.entity->body ) };
+			b3Body_SetTargetTransform( m.entity->body, xf, dt, true );
+		}
+	}
+}
+
+const Mechanism* Game::MoverUnder( const Entity* e ) const
+{
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Mover || m.entity == nullptr || m.entity->alive == false )
+		{
+			continue;
+		}
+		if ( m.entity == e )
+		{
+			return &m;
+		}
+		// standing on it (or, for a lift, about to be)
+		Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( e->pos, m.entity->pos ), QuaternionInvert( m.entity->rot ) );
+		Vector3 h = m.entity->parts[0].size;
+		if ( fabsf( local.x ) < h.x + 0.2f && fabsf( local.z ) < h.z + 0.2f && local.y > 0.0f && local.y < h.y + 0.6f )
+		{
+			return &m;
+		}
+	}
+	return nullptr;
+}
+
 bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob )
 {
 	Rng& r = FxRng();
@@ -2980,12 +3020,22 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	// Exact solution under constant acceleration (gravity + wind): choose a flight time,
 	// then v = (d - a t^2 / 2) / t. Iterate because the muzzle moves with the aim.
 	Vector3 accel = Vector3Add( { 0, -kGravity, 0 }, m_wind );
-	float scale = type == Ammo::Boulder ? 0.82f : 1.0f;
+	// the boulder and the chain leave the muzzle slower than the power setting says (see FireProjectile)
+	float scale = type == Ammo::Boulder ? 0.82f : type == Ammo::Chain ? 0.95f : 1.0f;
+
+	// a target riding a mover is aimed at where it will be when the shot gets there
+	const Mechanism* ride = target != nullptr ? MoverUnder( target ) : nullptr;
+	const Vector3 aimNow = aimPoint;
+	auto lead = [&]( float t ) {
+		return ride ? Vector3Subtract( MoverPosAt( *ride, m_scene.time + t ), MoverPosAt( *ride, m_scene.time ) ) : Vector3{ 0, 0, 0 };
+	};
 
 	// Solve an arc for a chosen horizontal speed. Iterate because the muzzle moves with the aim.
 	auto solve = [&]( float hs, Vector3& v, float& flight ) {
-		for ( int iter = 0; iter < 4; ++iter )
+		flight = 0.0f;
+		for ( int iter = 0; iter < 5; ++iter )
 		{
+			aimPoint = Vector3Add( aimNow, lead( flight ) );
 			Vector3 d = Vector3Subtract( aimPoint, Muzzle() );
 			float hd = sqrtf( d.x * d.x + d.z * d.z );
 			flight = std::max( 0.5f, hd / hs );
@@ -3005,7 +3055,14 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
 	bool sliderBlocked = false;
 	float edgeReach = type == Ammo::Boulder ? 0.5f : 0.0f;
-	std::vector<Vector3> edges{ { 0, 0, 0 } };
+	// the underside of the ball too, or a lob clips the top edge of the wall it just clears
+	std::vector<Vector3> edges{ { 0, 0, 0 }, { 0, -0.32f, 0 } };
+	if ( ride != nullptr )
+	{
+		// a moving target is often caught through a gap: keep the whole ball clear of its sides
+		edges.push_back( { 0.32f, 0, 0 } );
+		edges.push_back( { -0.32f, 0, 0 } );
+	}
 	if ( edgeReach > 0.0f )
 	{
 		edges.push_back( { 0, edgeReach, 0 } );
@@ -3042,6 +3099,29 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 					}
 				}
 			}
+			// kinematic movers: where will each one be when the shot gets there?
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				// the target's own carpet or lift sits right under it: nothing to avoid there
+				if ( m.type != MechType::Mover || m.entity == nullptr || m.entity->alive == false || &m == ride )
+				{
+					continue;
+				}
+				Vector3 shift = Vector3Subtract( MoverPosAt( m, m_scene.time + t ), MoverPosAt( m, m_scene.time ) );
+				Vector3 c = Vector3Add( m.entity->pos, shift );
+				Vector3 h = m.entity->parts[0].size;
+				float pad = 0.35f + edgeReach;
+				for ( int k = 1; k <= 4; ++k )
+				{
+					Vector3 q = Vector3Lerp( prev, p, k * 0.25f );
+					Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( q, c ), QuaternionInvert( m.entity->rot ) );
+					if ( fabsf( local.x ) < h.x + pad && fabsf( local.y ) < h.y + pad && fabsf( local.z ) < h.z + pad )
+					{
+						sliderBlocked = true;
+						return false;
+					}
+				}
+			}
 			// the blades keep turning while the shot flies: treat their whole disk as closed
 			for ( const Mechanism& m : m_scene.mechanisms )
 			{
@@ -3059,21 +3139,30 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 					}
 				}
 			}
+			// a moving target is not where the shot will meet it yet: stop at the meeting point, or the ray
+			// runs on through the empty spot and into whatever lies behind
+			bool arrived = ride != nullptr && t >= flight;
+			Vector3 to = arrived ? aimPoint : p;
 			// the boulder is big: check its top, bottom and sides too, not just its centre
 			for ( const Vector3& o : edges )
 			{
 				Vector3 from = Vector3Add( prev, o );
-				b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( from ), ToB3( Vector3Subtract( p, prev ) ), filter );
+				b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( from ), ToB3( Vector3Subtract( to, prev ) ), filter );
 				Entity* struck = hit.hit ? EntityFromShape( hit.shapeId ) : nullptr;
 				bool sliding = false;
 				for ( const Mechanism& m : m_scene.mechanisms )
 				{
-					sliding = sliding || ( m.type == MechType::Slider && m.entity == struck && struck != nullptr );
+					bool moves = m.type == MechType::Slider || m.type == MechType::Mover;
+					sliding = sliding || ( moves && m.entity == struck && struck != nullptr );
 				}
 				if ( hit.hit && sliding == false )
 				{
 					return struck == target || Vector3Distance( ToRl( hit.point ), aimPoint ) < 1.2f + edgeReach;
 				}
+			}
+			if ( arrived )
+			{
+				return true;
 			}
 			prev = p;
 		}
@@ -3093,6 +3182,11 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 		Vector3 v;
 		float flight;
 		if ( lob > 0.0f && speeds[k] > lob )
+		{
+			continue;
+		}
+		// a long lob gives a moving target too long to wander: wait for a straighter shot instead
+		if ( ride && lob <= 0.0f && speeds[k] < 16.0f )
 		{
 			continue;
 		}
@@ -3121,9 +3215,9 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 			break;
 		}
 	}
-	if ( found == false && ( waitForShield || waitForSlider ) )
+	if ( found == false && ( waitForShield || waitForSlider || ride ) )
 	{
-		return false; // a window will open: try again on a later frame
+		return false; // a window will open, or the target will come out: try again on a later frame
 	}
 	if ( found == false && fallback == false )
 	{
@@ -3515,8 +3609,13 @@ bool Game::PlayOutAutomatically( int maxShots, int& downAtStart, int& shots )
 	SkipIntro();
 	m_camMode = CamMode::Aim;
 
-	// Stability: nothing should fall over on its own.
-	for ( int i = 0; i < 300; ++i )
+	// Stability: nothing should fall over on its own. Kings on movers get several full rounds.
+	bool moving = false;
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		moving = moving || m.type == MechType::Mover;
+	}
+	for ( int i = 0; i < ( moving ? 1200 : 300 ); ++i )
 	{
 		StepSimulation( kFixedDt );
 	}
@@ -3892,7 +3991,7 @@ void Game::TestMaterialsAndAmmo()
 			Entity* pine = nullptr;
 			for ( Entity* e : m_scene.entities )
 			{
-				if ( e->tree > 0.0f && e->pine && ( pine == nullptr || Vector3Distance( e->pos, king->pos ) < Vector3Distance( pine->pos, king->pos ) ) )
+				if ( e->tree > 0.0f && e->treeKind == TreeKind::Pine && ( pine == nullptr || Vector3Distance( e->pos, king->pos ) < Vector3Distance( pine->pos, king->pos ) ) )
 				{
 					pine = e;
 				}
@@ -3913,6 +4012,57 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Alberi: palla -> %s e il re %s, catena -> %s e il re %s -> %s\n", ball.first ? "regge" : "cade",
 				ball.second ? "cade" : "resta in piedi", chain.first ? "regge" : "cade", chain.second ? "cade" : "resta in piedi",
 				ball.first && ball.second == false && chain.first == false && chain.second ? "ok" : "FALLITO" );
+	}
+
+	// 7c. moving targets: the king on the flying carpet of La Carovana, shot at twenty moments of its run,
+	// mostly while it moves. The AI aims where he will be.
+	{
+		int hits = 0, moving = 0;
+		const int trials = 20;
+		for ( int k = 0; k < trials; ++k )
+		{
+			LoadLevel( FindLevelById( "dune_carovana" ), false );
+			SkipIntro();
+			settle( 30 + k * 34 );
+			Entity* rider = nullptr;
+			for ( Entity* e : m_kings )
+			{
+				rider = MoverUnder( e ) ? e : rider;
+			}
+			int waited = 0;
+			while ( FireAt( Vector3Add( rider->pos, { 0, 0.7f, 0 } ), Ammo::Ball, rider ) == false && waited < 600 )
+			{
+				settle( 1 );
+				++waited;
+			}
+			moving += Vector3Length( ToRl( b3Body_GetLinearVelocity( MoverUnder( rider )->entity->body ) ) ) > 0.5f ? 1 : 0;
+			settle( 240 );
+			hits += rider->defeated ? 1 : 0;
+		}
+		printf( "Tappeto volante: re colpito %d volte su %d (%d mentre si muoveva) -> %s\n", hits, trials, moving,
+				hits >= trials - 1 && moving >= trials / 2 ? "ok" : "FALLITO" );
+	}
+
+	// 7d. glass: a ball and a bomb, straight at the pane of Vetrate in front of a king, and he stays up
+	{
+		auto shootGlass = [&]( Ammo type ) {
+			LoadLevel( FindLevelById( "dune_vetrate" ), false );
+			SkipIntro();
+			settle( 60 );
+			Entity* king = nullptr;
+			for ( Entity* e : m_kings )
+			{
+				king = e->pos.x < -1.0f ? e : king;
+			}
+			Vector3 at{ king->pos.x, 1.2f, 32.0f };
+			FireProjectile( type, at, { 0, 0, 1 }, 18.0f );
+			settle( 240 );
+			return king->defeated;
+		};
+		bool ball = shootGlass( Ammo::Ball );
+		bool bomb = shootGlass( Ammo::Bomb );
+		printf( "Vetro: palla -> il re %s, bomba -> il re %s -> %s\n", ball ? "cade" : "resta in piedi", bomb ? "cade" : "resta in piedi",
+				ball == false && bomb == false ? "ok" : "FALLITO" );
 	}
 
 	// 8. windmill blades: a ball bounces off, the boulder snaps them off the axle

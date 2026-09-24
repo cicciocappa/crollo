@@ -47,6 +47,7 @@ struct Biome
 	int musicStyle;
 	float lavaGlow;
 	bool pinesOnly;
+	bool desert = false; // palms and cacti instead of oaks and pines
 };
 
 const Biome& GetBiome( int index );
@@ -141,7 +142,7 @@ public:
 	bool shadowsEnabled = true;
 
 private:
-	void DrawItems( Shader shader, bool shadowPass );
+	void DrawItems( Shader shader, bool shadowPass, bool clear = false );
 
 	Shader m_lit{};
 	Shader m_depth{};

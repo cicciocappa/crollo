@@ -44,7 +44,7 @@ static const Biome s_biomes[] = {
 	  { 0.84f, 0.71f, 0.45f }, { 0.93f, 0.80f, 0.53f },
 	  { 0.70f, 0.50f, 0.32f }, { 0.83f, 0.62f, 0.40f },
 	  { 95, 130, 60, 255 }, { 135, 150, 70, 255 }, { 170, 150, 90, 255 }, { 195, 175, 110, 255 }, { 150, 112, 80, 255 },
-	  0.0090f, Ambient::Sand, 3, 0.0f, false },
+	  0.0090f, Ambient::Sand, 3, 0.0f, false, true },
 
 	// Arcipelago delle Tempeste: grey sky, dark sea of clouds, rain
 	{ "Arcipelago delle Tempeste",

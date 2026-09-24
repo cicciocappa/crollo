@@ -155,6 +155,7 @@ void main()
 	float edge = 1.0;
 	float fresnelK = 0.0;
 	vec3 emissive = vec3(0.0);
+	float alpha = 1.0;
 	vec3 p = vLocalPos;
 
 	if (matType == 1) // wood
@@ -317,6 +318,16 @@ void main()
 		specK = 0.8;
 		fresnelK = 0.4;
 	}
+	else if (matType == 18) // glass: a faint tint, sharp highlights and diagonal streaks of glare
+	{
+		float streak = smoothstep(0.82, 1.0, sin((p.x + p.y * 0.8 + p.z) * 2.6) * 0.5 + 0.5);
+		albedo = vec3(0.70, 0.88, 0.95);
+		emissive = vec3(0.55, 0.72, 0.80) * streak * 0.4;
+		shininess = 140.0;
+		specK = 1.4;
+		fresnelK = 0.9;
+		alpha = 0.18 + 0.45 * streak;
+	}
 	else if (matType == 0)
 	{
 		albedo *= 0.9 + 0.2 * fbm(vWorldPos * 2.0);
@@ -346,7 +357,8 @@ void main()
 	float sink = smoothstep(cloudY + 3.0, cloudY - 3.0, vWorldPos.y);
 	col = mix(col, sinkColor, sink);
 
-	finalColor = vec4(col, 1.0);
+	alpha = clamp(alpha + fres * 0.7 + spec * 0.4, 0.0, 1.0);
+	finalColor = vec4(col, alpha);
 }
 )";
 
@@ -881,7 +893,8 @@ void Renderer::AddParts( const std::vector<Part>& parts, Vector3 pos, Quaternion
 		item.mat = part.mat;
 		item.tint = part.tint;
 		item.flash = flash;
-		item.castShadow = part.mat != Mat::Magic; // the lattice is mostly holes: no solid shadow
+		// the lattice is mostly holes and the glass is clear: no solid shadow
+		item.castShadow = part.mat != Mat::Magic && part.mat != Mat::Glass;
 
 		switch ( part.geo )
 		{
@@ -1060,7 +1073,7 @@ void Renderer::AddRope( Vector3 a, Vector3 b, float radius, float sag, Color col
 	}
 }
 
-void Renderer::DrawItems( Shader shader, bool shadowPass )
+void Renderer::DrawItems( Shader shader, bool shadowPass, bool clear )
 {
 	Material& mat = shadowPass ? m_depthMat : m_litMat;
 	(void)shader;
@@ -1068,6 +1081,11 @@ void Renderer::DrawItems( Shader shader, bool shadowPass )
 	for ( const DrawItem& it : m_items )
 	{
 		if ( shadowPass && it.castShadow == false )
+		{
+			continue;
+		}
+		// see-through items go in a pass of their own, after everything solid
+		if ( shadowPass == false && ( it.mat == Mat::Glass ) != clear )
 		{
 			continue;
 		}
@@ -1153,6 +1171,14 @@ void Renderer::RenderOpaque()
 	rlActiveTextureSlot( 0 );
 
 	DrawItems( m_lit, false );
+
+	// glass last, blended over what is behind it, without hiding what comes later
+	rlDrawRenderBatchActive();
+	BeginBlendMode( BLEND_ALPHA );
+	rlDisableDepthMask();
+	DrawItems( m_lit, false, true );
+	rlEnableDepthMask();
+	EndBlendMode();
 }
 
 void Renderer::EndScene()

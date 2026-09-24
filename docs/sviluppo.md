@@ -67,9 +67,12 @@ Tutte le misure sono in metri, con l'asse Y verso l'alto. Il cannone sta nell'or
 | `Pendulum(perno, lunghezza, raggio)` | palla d'acciaio su portale | entità |
 | `Windmill(base, altezza, pale, velocità)` | mulino con motore | entità (pale) |
 | `Slider(centro, mezze_misure, asse, ampiezza, velocità, fase, materiale)` | lastra che scorre su guide | entità |
+| `Carpet(centro, mezza_x, mezza_z, colore)` / `Platform(centro, mezze_misure, materiale, tinta)` | tappeto volante / lastra, corpi cinematici | entità |
+| `Mover(entità, asse, distanza, andata_s, pausa_s, fase)` | fa andare e tornare un corpo cinematico, con pause e partenze dolci; poi si posa il re su `e->pos` | entità |
+| `GlassPane(centro, mezze_misure, yaw, mobile)` | vetro infrangibile con cornice d'ottone: ferma colpi ed esplosioni | entità |
 | `BalloonBasket(centro, colore, veste)` | re in un cesto sotto un pallone | entità (pallone) |
-| `Tree(base, scala, pino, colore, yaw)` | albero fisso: ferma colpi ed esplosioni, solo la catena lo taglia (non nasce dove toccherebbe una costruzione) | entità (o nulla) |
-| `Trees(...)` | alberi sparsi su un anello attorno all'isola | — |
+| `Tree(base, scala, TreeKind, colore, yaw)` | albero fisso: ferma colpi ed esplosioni, solo la catena lo taglia (non nasce dove toccherebbe una costruzione) | entità (o nulla) |
+| `Trees(...)` | alberi sparsi su un anello attorno all'isola (querce e pini, o palme e cactus nel deserto) | — |
 | `Flag(...)` | decorazione senza fisica | — |
 | `Fortress(centro, raggio)` | dove guardano telecamere e ombre (obbligatorio) | — |
 
@@ -278,7 +281,7 @@ L'ordine consigliato parte dalle cose piccole che rendono il gioco più vario, p
 | 5b | Fatto (commit 7b09315): correzioni dalla prova della Valle dei Mulini: pendolo che oscilla già all'inizio, niente vento variabile in Due Mulini (passa al Granaio), cornice della barriera magica giusta anche su fianchi e tetti, la regina non resta più incastrata nel tetto della casamatta; l'IA tiene da parte i macigni per i portoni | |
 | 5 | Fatto (commit cf00588): Valle dei Mulini ad almeno 8 livelli, con i pezzi che ci sono già: pale che si spezzano, portoni rinforzati, vento variabile, pendoli, scudi mobili; in più barriera magica e sfere magiche (`MagicBarrier`, `MagicOrb`, `CatBarrier`). Nuovi livelli: Il Granaio, Sfere Magiche, Due Mulini, Sponda Magica, Il Palazzo di Ottavia | la seconda campagna era ferma a 3 livelli e sta proprio all'inizio del gioco |
 | 5c | Fatto (commit 47748dc): la palla incatenata non era più un doppione della palla: tutti gli alberi diventano solidi (fermano colpi ed esplosioni) e solo la catena li taglia; l'albero tagliato cade e abbatte il re dietro. Nuovo livello Il Boschetto nei Prati Alti (9 livelli). La telecamera che segue la catena oscilla all'inizio e poi si calma | richiesta dopo la prova dei Prati Alti |
-| 6 | Dune Sospese: cactus e palme; piattaforme e nastri cinematici, vetro infrangibile, IA che anticipa i bersagli mobili; vetro e bersagli mobili insieme alle sfere magiche; almeno 8 livelli con boss finale | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
+| 6 | Fatto (commit xxxxxxx): Dune Sospese a 8 livelli (La Carovana, Vetrate, Il Montacarichi, Tappeti in Volo, Miraggio, L'Oasi, Tempesta di Sabbia e il finale Il Palazzo di Zaira). Palme e cactus solidi al posto di querce e pini; tappeti volanti e ascensori cinematici (`Mover`); vetro infrangibile in un passaggio trasparente; l'IA mira dove sarà il re, aspetta il varco, calcola bene la catena e tiene conto del raggio della palla | i bersagli mobili sono la meccanica più semplice e servono anche dopo |
 | 7 | Arcipelago delle Tempeste: gomma che scorre e ruota, ventole e correnti, isole che fluttuano; almeno 8 livelli di sponda con boss finale | riusa i corpi cinematici della sessione 6 |
 | 8 | Fucina del Vulcano: bersagli-interruttore, parti di catena, soluzione scritta nei livelli, scudi orbitanti, arpione; almeno 8 livelli con boss finale | la più complessa: usa tutti i pezzi precedenti |
 | 9 | Tutte le campagne a 10 livelli, riusando le meccaniche ovunque; livelli bonus sbloccati con le stelle | più livelli, gioco più interessante |

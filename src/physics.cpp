@@ -29,6 +29,7 @@ static const MatProps s_matProps[(int)Mat::Count] = {
 	{ 2600.0f, 1.0f, 0.0f, { 196, 170, 122, 255 }, "sabbia" },
 	{ 1000.0f, 0.3f, 0.2f, { 170, 110, 255, 255 }, "magia" },
 	{ 1500.0f, 0.2f, 0.1f, { 190, 140, 255, 255 }, "sfera magica" },
+	{ 2500.0f, 0.3f, 0.25f, { 205, 232, 240, 255 }, "vetro" },
 };
 
 const MatProps& GetMatProps( Mat m )
@@ -395,69 +396,249 @@ const b3HullData* Scene::RockHull( float radius, uint32_t seed )
 	return h;
 }
 
-void Scene::AddTree( Entity* e, float scale, bool pine, Color leaf, float cut, const ShapeOptions& opt )
+Vector3 MoverPosAt( const Mechanism& m, float t )
 {
-	float s = scale;
-	float height = ( pine ? 0.8f : 1.6f ) * s;
-	float radius = ( pine ? 0.12f : 0.14f ) * s;
-	auto at = [&]( float x, float y, float z ) { return Vector3{ x * s, y * s - cut, z * s }; };
-
-	// the trunk: a capsule inside, a cylinder to look at
-	float length = height - cut;
-	if ( length > 0.05f )
+	// out, rest, back, rest: eased at both ends so whatever rides on it does not slide off
+	float cycle = 2.0f * ( m.travel + m.pause );
+	float u = fmodf( t + m.phase, cycle );
+	if ( u < 0.0f )
 	{
-		ShapeOptions trunk = opt;
-		trunk.visible = false;
-		float half = std::max( 0.0f, length * 0.5f - radius );
-		AddCapsule( e, { 0, length * 0.5f, 0 }, radius, half, Mat::Wood, trunk );
-		Part p;
-		p.geo = Geo::Cylinder;
-		p.size = { radius, length, radius };
-		p.mat = Mat::Wood;
-		p.tint = pine ? Color{ 100, 70, 45, 255 } : Color{ 110, 76, 48, 255 };
-		AddVisual( e, p );
-		if ( cut > 0.0f )
-		{
-			// the fresh cut at the bottom
-			p.localPos = { 0, -0.01f, 0 };
-			p.size = { radius * 0.8f, 0.01f, radius * 0.8f };
-			p.mat = Mat::Plain;
-			p.tint = Color{ 222, 190, 140, 255 };
-			AddVisual( e, p );
-		}
+		u += cycle;
 	}
-
-	// the leaves are light
-	ShapeOptions leaves = opt;
-	leaves.densityScale = opt.densityScale * 0.12f;
-	if ( pine )
+	float f;
+	if ( u < m.pause )
 	{
-		leaves.visible = false;
-		Vector3 base = at( 0, 0.6f, 0 );
-		AddHull( e, base, b3Quat_identity, Cone( 2.4f * s, 0.95f * s, 0.06f * s, 10 ), Mat::Plain, leaves );
-		for ( int i = 0; i < 3; ++i )
-		{
-			float r = ( 0.95f - i * 0.25f ) * s;
-			Part p;
-			p.geo = Geo::Cone;
-			p.localPos = at( 0, 0.6f + i * 0.65f, 0 );
-			p.size = { r, 1.1f * s, r };
-			p.mat = Mat::Plain;
-			p.tint = ColorBrightness( leaf, -0.08f * i );
-			AddVisual( e, p );
-		}
+		f = 0.0f;
+	}
+	else if ( u < m.pause + m.travel )
+	{
+		f = ( u - m.pause ) / m.travel;
+	}
+	else if ( u < 2.0f * m.pause + m.travel )
+	{
+		f = 1.0f;
 	}
 	else
 	{
-		AddSphere( e, at( 0, 2.0f, 0 ), 0.9f * s, Mat::Plain, leaves );
-		e->parts.back().tint = leaf;
-		AddSphere( e, at( 0.55f, 1.65f, 0.2f ), 0.6f * s, Mat::Plain, leaves );
-		e->parts.back().tint = ColorBrightness( leaf, -0.1f );
-		AddSphere( e, at( -0.45f, 1.75f, -0.3f ), 0.62f * s, Mat::Plain, leaves );
-		e->parts.back().tint = ColorBrightness( leaf, 0.08f );
+		f = 1.0f - ( u - 2.0f * m.pause - m.travel ) / m.travel;
+	}
+	f = f * f * ( 3.0f - 2.0f * f );
+	return Vector3Add( m.home, Vector3Scale( m.axis, m.amplitude * f ) );
+}
+
+float TreeTrunkRadius( TreeKind kind, float scale )
+{
+	switch ( kind )
+	{
+		case TreeKind::Pine:
+			return 0.12f * scale;
+		case TreeKind::Palm:
+			return 0.15f * scale;
+		case TreeKind::Cactus:
+			return 0.22f * scale;
+		default:
+			return 0.14f * scale;
+	}
+}
+
+Color TreeBark( TreeKind kind, Color leaf )
+{
+	switch ( kind )
+	{
+		case TreeKind::Pine:
+			return Color{ 100, 70, 45, 255 };
+		case TreeKind::Palm:
+			return Color{ 130, 100, 64, 255 };
+		case TreeKind::Cactus:
+			return leaf;
+		default:
+			return Color{ 110, 76, 48, 255 };
+	}
+}
+
+Color TreeCutColor( TreeKind kind )
+{
+	return kind == TreeKind::Cactus ? Color{ 200, 215, 150, 255 } : Color{ 222, 190, 140, 255 };
+}
+
+void Scene::AddTree( Entity* e, float scale, TreeKind kind, Color leaf, float cut, const ShapeOptions& opt,
+					 std::vector<std::pair<std::vector<Vector3>, float>>* probes )
+{
+	float s = scale;
+	float radius = TreeTrunkRadius( kind, s );
+	Color bark = TreeBark( kind, leaf );
+	auto at = [&]( float x, float y, float z ) { return Vector3{ x * s, y * s - cut, z * s }; };
+	auto probe = [&]( std::vector<Vector3> points, float r ) {
+		if ( probes )
+		{
+			probes->push_back( { points, r } );
+		}
+	};
+	auto visual = [&]( Geo geo, Vector3 pos, Vector3 size, Mat mat, Color tint, Quaternion rot = { 0, 0, 0, 1 } ) {
+		Part p;
+		p.geo = geo;
+		p.localPos = pos;
+		p.localRot = rot;
+		p.size = size;
+		p.mat = mat;
+		p.tint = tint;
+		AddVisual( e, p );
+	};
+	ShapeOptions hidden = opt;
+	hidden.visible = false;
+	// the leaves are light
+	ShapeOptions leaves = opt;
+	leaves.densityScale = opt.densityScale * 0.12f;
+	ShapeOptions hiddenLeaves = leaves;
+	hiddenLeaves.visible = false;
+
+	// a straight trunk: a capsule inside, a cylinder to look at (oaks, pines and the cactus column)
+	auto straightTrunk = [&]( float height, Mat mat, const ShapeOptions& so ) {
+		float length = height - cut;
+		if ( length <= 0.05f )
+		{
+			return;
+		}
+		float half = std::max( 0.0f, length * 0.5f - radius );
+		AddCapsule( e, { 0, length * 0.5f, 0 }, radius, half, mat, so );
+		e->parts.back().visible = false;
+		visual( Geo::Cylinder, { 0, 0, 0 }, { radius, length, radius }, mat, bark );
+		probe( { { 0, radius, 0 }, { 0, length - radius, 0 } }, radius );
+	};
+
+	switch ( kind )
+	{
+		case TreeKind::Oak:
+		{
+			straightTrunk( 1.6f * s, Mat::Wood, hidden );
+			const Vector3 centres[3] = { { 0, 2.0f, 0 }, { 0.55f, 1.65f, 0.2f }, { -0.45f, 1.75f, -0.3f } };
+			const float radii[3] = { 0.9f, 0.6f, 0.62f };
+			const float shade[3] = { 0.0f, -0.1f, 0.08f };
+			for ( int i = 0; i < 3; ++i )
+			{
+				Vector3 c = at( centres[i].x, centres[i].y, centres[i].z );
+				AddSphere( e, c, radii[i] * s, Mat::Plain, leaves );
+				e->parts.back().tint = ColorBrightness( leaf, shade[i] );
+				probe( { c }, radii[i] * s );
+			}
+			break;
+		}
+		case TreeKind::Pine:
+		{
+			straightTrunk( 0.8f * s, Mat::Wood, hidden );
+			Vector3 base = at( 0, 0.6f, 0 );
+			AddHull( e, base, b3Quat_identity, Cone( 2.4f * s, 0.95f * s, 0.06f * s, 10 ), Mat::Plain, hiddenLeaves );
+			std::vector<Vector3> ring;
+			for ( int k = 0; k < 8; ++k )
+			{
+				float a = k * PI / 4.0f;
+				ring.push_back( Vector3Add( base, { cosf( a ) * 0.95f * s, 0, sinf( a ) * 0.95f * s } ) );
+			}
+			ring.push_back( at( 0, 3.0f, 0 ) );
+			probe( ring, 0.0f );
+			for ( int i = 0; i < 3; ++i )
+			{
+				float r = ( 0.95f - i * 0.25f ) * s;
+				visual( Geo::Cone, at( 0, 0.6f + i * 0.65f, 0 ), { r, 1.1f * s, r }, Mat::Plain, ColorBrightness( leaf, -0.08f * i ) );
+			}
+			break;
+		}
+		case TreeKind::Palm:
+		{
+			// a trunk that bends away over its height, in four ringed segments getting thinner
+			const float H = 3.2f, lean = 0.45f;
+			auto trunkAt = [&]( float f ) { return at( lean * f * f, H * f, 0 ); };
+			float f0 = std::min( 0.9f, cut / ( H * s ) );
+			Vector3 foot = trunkAt( f0 ), top = trunkAt( 1.0f );
+			Vector3 axis = Vector3Subtract( top, foot );
+			float len = Vector3Length( axis );
+			Quaternion tilt = QuaternionFromVector3ToVector3( { 0, 1, 0 }, Vector3Scale( axis, 1.0f / len ) );
+			AddHull( e, foot, ToB3( tilt ), Cylinder( len, radius * 0.9f, 0.0f, 8 ), Mat::Wood, hidden );
+			probe( { foot, top }, radius * 0.9f );
+			const int segments = 4;
+			for ( int i = 0; i < segments; ++i )
+			{
+				float fa = f0 + ( 1.0f - f0 ) * i / segments, fb = f0 + ( 1.0f - f0 ) * ( i + 1 ) / segments;
+				Vector3 pa = trunkAt( fa ), pb = trunkAt( fb );
+				Vector3 d = Vector3Subtract( pb, pa );
+				float r = radius * ( 1.0f - 0.25f * fa );
+				Quaternion q = QuaternionFromVector3ToVector3( { 0, 1, 0 }, Vector3Normalize( d ) );
+				visual( Geo::Cylinder, pa, { r, Vector3Length( d ) + 0.02f, r }, Mat::Wood, ColorBrightness( bark, i % 2 ? -0.08f : 0.0f ), q );
+			}
+			// the crown: drooping fronds around a few coconuts, solid as a flat cone
+			Vector3 crown = top;
+			AddHull( e, Vector3Add( crown, { 0, -0.6f * s, 0 } ), b3Quat_identity, Cone( 0.7f * s, 1.6f * s, 0.45f * s, 8 ), Mat::Plain, hiddenLeaves );
+			std::vector<Vector3> ring;
+			for ( int k = 0; k < 8; ++k )
+			{
+				float a = k * PI / 4.0f;
+				ring.push_back( Vector3Add( crown, { cosf( a ) * 1.6f * s, -0.6f * s, sinf( a ) * 1.6f * s } ) );
+				ring.push_back( Vector3Add( crown, { cosf( a ) * 0.45f * s, 0.1f * s, sinf( a ) * 0.45f * s } ) );
+			}
+			probe( ring, 0.0f );
+			for ( int k = 0; k < 7; ++k )
+			{
+				float a = k * 2.0f * PI / 7.0f + 0.3f;
+				Vector3 dir{ cosf( a ), 0.0f, sinf( a ) };
+				Quaternion q = QuaternionMultiply( QuaternionFromAxisAngle( { 0, 1, 0 }, -a ), QuaternionFromAxisAngle( { 0, 0, 1 }, -0.38f ) );
+				visual( Geo::Sphere, Vector3Add( crown, Vector3Add( Vector3Scale( dir, 0.8f * s ), { 0, -0.28f * s, 0 } ) ),
+						{ 0.95f * s, 0.05f * s, 0.26f * s }, Mat::Plain, ColorBrightness( leaf, k % 2 ? -0.1f : 0.05f ), q );
+			}
+			for ( int k = 0; k < 3; ++k )
+			{
+				float a = k * 2.0f * PI / 3.0f + 1.0f;
+				Vector3 dir{ cosf( a ), 0.0f, sinf( a ) };
+				Quaternion q = QuaternionMultiply( QuaternionFromAxisAngle( { 0, 1, 0 }, -a ), QuaternionFromAxisAngle( { 0, 0, 1 }, 0.5f ) );
+				visual( Geo::Sphere, Vector3Add( crown, Vector3Add( Vector3Scale( dir, 0.45f * s ), { 0, 0.2f * s, 0 } ) ),
+						{ 0.6f * s, 0.05f * s, 0.2f * s }, Mat::Plain, ColorBrightness( leaf, 0.12f ), q );
+				visual( Geo::Sphere, Vector3Add( crown, Vector3Add( Vector3Scale( dir, 0.17f * s ), { 0, -0.2f * s, 0 } ) ),
+						{ 0.11f * s, 0.11f * s, 0.11f * s }, Mat::Wood, Color{ 105, 75, 40, 255 } );
+			}
+			break;
+		}
+		case TreeKind::Cactus:
+		{
+			// a saguaro: a tall column with two arms, and a flower on top
+			ShapeOptions flesh = hidden;
+			flesh.densityScale = opt.densityScale * 0.5f;
+			straightTrunk( 2.3f * s, Mat::Plain, flesh );
+			float column = 2.3f * s - cut;
+			if ( column > 0.05f )
+			{
+				visual( Geo::Sphere, { 0, column, 0 }, { radius, radius, radius }, Mat::Plain, bark );
+				visual( Geo::Sphere, { 0, column + radius * 0.95f, 0 }, { 0.07f * s, 0.07f * s, 0.07f * s }, Mat::Plain, Color{ 245, 130, 165, 255 } );
+			}
+			float armR = 0.14f * s;
+			auto arm = [&]( float side, float y, float reach, float up ) {
+				Vector3 elbow = at( side * reach, y, 0 );
+				Vector3 from = at( side * 0.1f, y, 0 );
+				float halfX = fabsf( elbow.x - from.x ) * 0.5f;
+				Vector3 mid = { ( elbow.x + from.x ) * 0.5f, elbow.y, 0 };
+				AddBox( e, mid, b3Quat_identity, { halfX, armR * 0.9f, armR * 0.9f }, Mat::Plain, flesh );
+				e->parts.back().visible = false;
+				Quaternion q = QuaternionFromAxisAngle( { 0, 0, 1 }, side > 0.0f ? -PI * 0.5f : PI * 0.5f );
+				visual( Geo::Cylinder, from, { armR, halfX * 2.0f, armR }, Mat::Plain, bark, q );
+				float rise = up * s;
+				AddCapsule( e, Vector3Add( elbow, { 0, rise * 0.5f, 0 } ), armR, rise * 0.5f, Mat::Plain, flesh );
+				e->parts.back().visible = false;
+				visual( Geo::Sphere, elbow, { armR, armR, armR }, Mat::Plain, bark );
+				visual( Geo::Cylinder, elbow, { armR, rise, armR }, Mat::Plain, bark );
+				visual( Geo::Sphere, Vector3Add( elbow, { 0, rise, 0 } ), { armR, armR, armR }, Mat::Plain, bark );
+				probe( { from, elbow }, armR );
+				probe( { elbow, Vector3Add( elbow, { 0, rise, 0 } ) }, armR );
+			};
+			arm( 1.0f, 0.95f, 0.58f, 0.7f );
+			arm( -1.0f, 1.3f, 0.52f, 0.55f );
+			break;
+		}
+	}
+	if ( cut > 0.0f )
+	{
+		// the fresh cut at the bottom
+		visual( Geo::Cylinder, { 0, -0.01f, 0 }, { radius * 0.8f, 0.01f, radius * 0.8f }, Mat::Plain, TreeCutColor( kind ) );
 	}
 	e->tree = scale;
-	e->pine = pine;
+	e->treeKind = kind;
 	e->leaf = leaf;
 }
 

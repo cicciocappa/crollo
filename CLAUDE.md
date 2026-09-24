@@ -14,17 +14,19 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - La versione web pubblicata come Artifact (https://claude.ai/artifact/HNRpbEuELhrBG6CQuAioQ5) si aggiorna solo
   quando l'utente lo chiede: pagina `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm`.
 
-## Stato (fine sessione 5c, settembre 2026)
+## Stato (fine sessione 6, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 28 livelli. Campagne: Prati Alti 9, Valle dei Mulini 8, Picchi Gelati 11; Dune Sospese, Arcipelago delle Tempeste e
+- 36 livelli. Campagne: Prati Alti 9, Valle dei Mulini 8, Picchi Gelati 11, Dune Sospese 8; Arcipelago delle Tempeste e
   Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
 - Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche.
 - Sessione 5c fatta: alberi solidi che solo la palla incatenata taglia (prima la catena era un doppione della palla),
   livello Il Boschetto nei Prati Alti; la telecamera che segue la catena oscilla sempre meno.
-- Prossima: sessione 6 (Dune Sospese). Poi versione mobile (10); multiplayer alla fine (11+).
+- Sessione 6 fatta: Dune Sospese a 8 livelli, palme e cactus, tappeti volanti e ascensori (`Mover`), vetro, IA con anticipo.
+- Prossima: prova delle Dune da parte dell'utente, poi sessione 7 (Arcipelago). Poi versione mobile (10); multiplayer
+  alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
@@ -32,8 +34,9 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 28/28); --autotest 12 N per il solo livello N
-./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18)
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 36/36); --autotest 12 N per il solo livello N
+./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18; oggi lo
+                                        # scanner trova solo il 7, ma la Valanga si vince comunque con un colpo)
 ./build/crollo --autotest-challenge     # 30/30
 ./build/crollo --test-shields           # 16/16
 ./build/crollo --test-ammo              # nessun "FALLITO"
@@ -80,10 +83,23 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Alberi**: tutti quelli del Builder (`Tree`, `Trees`, isola del cannone) sono corpi statici (`Entity::tree` > 0): fermano
   palle, macigni ed esplosioni; solo la catena li taglia (`Game::FellTree`: ceppo statico + albero dinamico, letale, che
   per 0,5 s lascia passare i colpi). `Builder::Tree` non crea l'albero se toccherebbe blocchi o re (restituisce nullptr:
-  controllalo prima di `AimHint`). Cactus e palme delle Dune andranno fatti allo stesso modo, per coerenza.
+  controllalo prima di `AimHint`). Palme e cactus delle Dune (`TreeKind`) funzionano allo stesso modo.
 - Riparo per un re a terra (`GroveKing` nel Boschetto): pino davanti a 1,85 m (i rami bassi sporgono 1,4 m a 0,9 m
   d'altezza), chioma di quercia sopra la testa contro i pallonetti, catasta sotto i rami. Contro la palla regge in una
-  griglia di 33.000 tiri; lo 0,3% abbatte un re *diverso* di rimbalzo, rotolando sull'isola.
+  griglia di 33.000 tiri; lo 0,3% abbatte un re *diverso* di rimbalzo, rotolando sull'isola. Provato dall'utente: i re
+  tagliato il pino restano appoggiati al ceppo e si finiscono con una palla; gli va bene così.
+- **Mover** (tappeti, ascensori, vetro mobile): corpi cinematici guidati da `DriveMovers` con `b3Body_SetTargetTransform`,
+  anche nei 30 passi di assestamento di `LoadLevel` (altrimenti al primo passo saltano e travolgono il re). Il re che ci
+  sta sopra parte con la loro velocità e cade solo sotto il punto più basso della corsa. Accelerazione di punta
+  6·distanza/andata² sotto ~3,5 m/s², o il re si ribalta alle curve (l'autotest ora controlla 20 s nei livelli con Mover).
+- IA e bersagli mobili: mira dove sarà il re, ferma il controllo della traiettoria al punto d'incontro, usa solo tiri tesi
+  (≥ 16 m/s in orizzontale) e aspetta il varco. Il controllo della traiettoria guarda anche il fondo della palla (e i
+  fianchi, per i bersagli mobili): prima i pallonetti sfioravano i bordi. La catena parte al 95% della velocità: l'IA ora
+  ne tiene conto (prima i tiri di catena arrivavano corti).
+- **Vetro** (`Mat::Glass`): statico, fermo come la roccia per colpi ed esplosioni; disegnato dopo gli opachi, con fusione
+  alfa e senza scrivere la profondità. Una bomba che esplode *sopra* il bordo del vetro raggiunge i re dietro.
+- Palme e cactus: `Biome::desert`; il cactus tagliato che cade contro la palma dietro il re rotola di lato: nell'Oasi
+  spesso serve un secondo colpo (voluto: più munizioni e par 5). Gli alberi tagliati cadono lontano dal cannone.
 - Web: `EXPORTED_RUNTIME_METHODS=HEAPF32`; nei test di input via browser tieni premuti tasti e click ~120 ms.
 
 ## Nuovo PC

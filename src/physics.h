@@ -4,6 +4,7 @@
 #include "box3d/box3d.h"
 #include "math_util.h"
 
+#include <utility>
 #include <vector>
 
 enum class Mat : uint8_t
@@ -26,6 +27,7 @@ enum class Mat : uint8_t
 	Sand,
 	Magic, // the magic barrier: a glowing lattice you can see through
 	Orb,   // the magic orbs that pass through it
+	Glass, // unbreakable glass: see-through, stops everything
 	Count
 };
 
@@ -76,6 +78,19 @@ struct Part
 	bool visible = true;
 };
 
+enum class TreeKind : uint8_t
+{
+	Oak,
+	Pine,
+	Palm,
+	Cactus,
+};
+
+// Trunk radius and bark colour of a tree of the given kind and size.
+float TreeTrunkRadius( TreeKind kind, float scale );
+Color TreeBark( TreeKind kind, Color leaf );
+Color TreeCutColor( TreeKind kind );
+
 struct Entity
 {
 	b3BodyId body = b3_nullBodyId;
@@ -100,7 +115,7 @@ struct Entity
 	bool lethal = false;	  // heavy stones, snowballs, collapsing roofs: knock down any king they strike
 	bool reinforced = false;  // iron-banded masonry: fixed, and only the boulder breaks it
 	float tree = 0.0f;		  // > 0: a standing tree of this size, fixed until a chain shot fells it
-	bool pine = false;
+	TreeKind treeKind = TreeKind::Oak;
 	Color leaf{};
 	float ghost = 0.0f;		  // seconds before a felled tree starts colliding with shots again
 	float flash = 0.0f;		  // hit flash for rendering
@@ -142,6 +157,7 @@ enum class MechType : uint8_t
 	Windmill,
 	Slider,
 	Blinker, // a crystal shield that switches on and off on a fixed schedule
+	Mover,	 // a kinematic body that travels `amplitude` metres along `axis` and back, pausing at each end
 };
 
 struct Mechanism
@@ -162,7 +178,15 @@ struct Mechanism
 	int timerSlot = 0;		  // where its HUD timer sits on the top edge: -1 left, 0 centre, +1 right
 	int timerGroup = -1;	  // shields lined up behind each other share a group (and a combined window)
 	int timerOrder = 0;		  // 1 = nearest to the cannon in its group, 2 = next...
+
+	// Mover: `travel` seconds from one end to the other, `pause` seconds at each end; starts from `home`
+	Vector3 home{};
+	float travel = 0.0f;
+	float pause = 0.0f;
 };
+
+// Where a mover is at simulation time t.
+Vector3 MoverPosAt( const Mechanism& m, float t );
 
 // Where a blinking shield is in its cycle at simulation time t (ignores any delayed switch-on).
 inline bool BlinkerOnAt( const Mechanism& m, float t )
@@ -280,7 +304,9 @@ public:
 
 	// Shapes and parts of a tree whose base is at the body origin, from height `cut` up
 	// (0 = the whole tree; above 0 the trunk starts at the origin, for a tree felled at that height).
-	void AddTree( Entity* e, float scale, bool pine, Color leaf, float cut, const ShapeOptions& opt );
+	// `probes` (optional) collects the collision shapes as point clouds with a radius, in body space.
+	void AddTree( Entity* e, float scale, TreeKind kind, Color leaf, float cut, const ShapeOptions& opt,
+				  std::vector<std::pair<std::vector<Vector3>, float>>* probes = nullptr );
 
 	// Joints and ropes
 	Rope& AddRope( b3BodyId a, Vector3 worldA, b3BodyId b, Vector3 worldB, float radius, Color color );
