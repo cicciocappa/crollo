@@ -417,6 +417,7 @@ private:
 	float m_yaw = 0.0f;
 	float m_pitch = 0.35f;
 	float m_power = 0.55f;
+	float m_wheelAcc = 0.0f; // mouse wheel movement not yet turned into a power step
 	float m_recoil = 0.0f;
 	float m_reload = 0.0f;
 

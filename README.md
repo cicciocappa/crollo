@@ -102,7 +102,8 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 | Tasto | Azione |
 |---|---|
 | Mouse | ruota il cannone |
-| Rotellina / W-S | potenza (SHIFT per regolazioni fini) |
+| Rotellina | potenza di 1 in 1 (con SHIFT di 5 in 5) |
+| W-S | potenza continua (SHIFT: più lenta) |
 | Click sinistro | spara (in volo: torna al cannone) |
 | Click destro (tenuto) | cannocchiale |
 | 1-7, Q/E | scegli la munizione |

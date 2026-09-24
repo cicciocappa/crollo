@@ -4070,7 +4070,20 @@ void Game::UpdatePlaying( float dt )
 				m_pitch += keyRate;
 			if ( IsKeyDown( KEY_DOWN ) )
 				m_pitch -= keyRate;
-			m_power += wheel * 0.025f;
+			// the wheel moves the power one point per notch, five with SHIFT (a notch may come as one big
+			// value or, from a touchpad, as many small ones)
+			if ( wheel * m_wheelAcc < 0.0f )
+			{
+				m_wheelAcc = 0.0f;
+			}
+			m_wheelAcc += wheel;
+			if ( fabsf( m_wheelAcc ) >= 0.5f )
+			{
+				bool shift = IsKeyDown( KEY_LEFT_SHIFT ) || IsKeyDown( KEY_RIGHT_SHIFT );
+				float step = ( m_wheelAcc > 0.0f ? 1.0f : -1.0f ) * ( shift ? 5.0f : 1.0f );
+				m_power = ( roundf( m_power * 100.0f ) + step ) / 100.0f;
+				m_wheelAcc = 0.0f;
+			}
 			float powerRate = ( IsKeyDown( KEY_LEFT_SHIFT ) ? 0.08f : 0.35f ) * dt;
 			if ( IsKeyDown( KEY_W ) )
 				m_power += powerRate;
@@ -5551,6 +5564,24 @@ void Game::DrawHUD()
 		}
 		ui::TextCentered( TextFormat( "%d", (int)( m_power * 100.0f + 0.5f ) ), rc.x + w * 0.5f, rc.y + h + 14 * S, 30, WHITE );
 		ui::TextCentered( "POTENZA", rc.x + w * 0.5f - 10 * S, rc.y - 50 * S, 24, kCream );
+
+		// where the cannon points: degrees off the line to the fortress, and elevation, so a shot can be repeated
+		// or corrected by a known amount
+		float turn = ( m_yaw - m_cannonBaseYaw ) * RAD2DEG;
+		const char* dir = fabsf( turn ) < 0.05f ? "0,0\u00b0" : TextFormat( "%.1f\u00b0 a %s", fabsf( turn ), turn > 0.0f ? "sinistra" : "destra" );
+		const char* lines[2][2] = { { "DIREZIONE", dir }, { "ALZO", TextFormat( "%.1f\u00b0", m_pitch * RAD2DEG ) } };
+		float y = rc.y + h + 54 * S;
+		for ( const auto& line : lines )
+		{
+			// decimal comma, the Italian way
+			std::string value = line[1];
+			std::replace( value.begin(), value.end(), '.', ',' );
+			Vector2 lm = ui::Measure( line[0], 20 );
+			Vector2 vm = ui::Measure( value.c_str(), 26 );
+			ui::TextShadow( line[0], { W - 20 * S - lm.x, y }, 20, kCream );
+			ui::TextShadow( value.c_str(), { W - 20 * S - vm.x, y + 20 * S }, 26, WHITE );
+			y += 50 * S;
+		}
 	}
 
 	if ( Cheating() )
@@ -6051,7 +6082,7 @@ void Game::DrawHowTo()
 	y += 60 * S;
 	const char* lines[] = {
 		"Mouse  -  ruota il cannone",
-		"Rotellina / W-S  -  potenza del colpo (SHIFT per regolazioni fini)",
+		"Rotellina  -  potenza di 1 in 1 (con SHIFT di 5 in 5)   W-S  -  potenza continua (SHIFT: pi\u00f9 lenta)",
 		"Click sinistro  -  spara (e in volo: torna al cannone)",
 		"Click destro (tieni premuto)  -  cannocchiale",
 		"1 - 7  oppure  Q / E  -  scegli la munizione",
