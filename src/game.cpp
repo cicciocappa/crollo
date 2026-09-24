@@ -4998,6 +4998,64 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Soffioni: mentre soffia la palla risale a %.1f m e il re %s, quando tace il re %s -> %s\n", on.first,
 				on.second ? "cade" : "resta in piedi", off.second ? "cade" : "resta in piedi",
 				on.first > 6.0f && on.second == false && off.second ? "ok" : "FALLITO" );
+
+		// and a real lob, aimed as if there were no air: thrown off while it blows, on target when it does not
+		auto lob = [&]( bool blowing, float hs, const char* level ) {
+			LoadLevel( FindLevelById( level ), false );
+			SkipIntro();
+			const AirCurrent& c = m_scene.currents[0];
+			Entity* king = m_kings[0];
+			Vector3 aim = Vector3Add( king->pos, { 0, 0.7f, 0 } );
+			Vector3 v{};
+			float flight = 0.0f;
+			for ( int iter = 0; iter < 4; ++iter )
+			{
+				Vector3 d = Vector3Subtract( aim, Muzzle() );
+				flight = sqrtf( d.x * d.x + d.z * d.z ) / hs;
+				Vector3 accel = Vector3Add( { 0, -kGravity, 0 }, m_wind ); // the wind, yes; the air of the blowhole, no
+				v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
+				Vector3 dir = Vector3Normalize( v );
+				m_yaw = atan2f( dir.x, dir.z );
+				m_pitch = asinf( dir.y );
+			}
+			// the last second of the flight entirely in the blowing (or the calm) part of the cycle
+			int guard = 0;
+			auto fits = [&]() {
+				for ( float t = flight - 1.0f; t <= flight + 0.3f; t += 0.1f )
+				{
+					if ( c.BlowsAt( m_scene.time + t ) != blowing )
+					{
+						return false;
+					}
+				}
+				return true;
+			};
+			while ( fits() == false && guard++ < 1200 )
+			{
+				StepSimulation( kFixedDt );
+			}
+			FireProjectile( Ammo::Ball, Muzzle(), Vector3Normalize( v ), Vector3Length( v ) );
+			settle( (int)( ( flight + 2.0f ) * 60.0f ) );
+			return king->defeated;
+		};
+		int thrown = 0, landed = 0;
+		const float speeds[] = { 6.5f, 7.5f, 8.5f }; // steep enough to clear the walls of the pit
+		for ( float hs : speeds )
+		{
+			thrown += lob( true, hs, "arcipelago_soffioni" ) ? 0 : 1;
+			landed += lob( false, hs, "arcipelago_soffioni" ) ? 1 : 0;
+			if ( getenv( "CROLLO_DEBUG" ) )
+				fprintf( stderr, "  pallonetto a %.1f m/s: finora respinti %d, a segno %d\n", hs, thrown, landed );
+		}
+		printf( "Soffioni: pallonetti respinti mentre soffia %d su 3, a segno quando tace %d su 3 -> %s\n", thrown, landed,
+				thrown == 3 && landed == 3 ? "ok" : "FALLITO" );
+		// the eye of the storm never stops blowing: no lob reaches the king on the pillar
+		int eye = 0;
+		for ( float hs : speeds )
+		{
+			eye += lob( true, hs, "arcipelago_ciclone" ) ? 0 : 1;
+		}
+		printf( "Occhio del Ciclone: pallonetti respinti %d su 3 -> %s\n", eye, eye == 3 ? "ok" : "FALLITO" );
 	}
 }
 

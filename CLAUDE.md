@@ -142,6 +142,11 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
   `LoadDef` fa partire torri e re alla velocità di ciò che li porta (se l'isola parte a metà corsa, la torre ferma crolla).
   Un'isola mobile non deve passare dentro una fissa: la barca del Porto sbatteva la torre contro il bordo dell'isola.
   L'IA prevede dove saranno i muri fissati sulla giostra (`CarouselWall`).
+- Una colonna d'aria larga quanto il pozzo non ferma i pallonetti: arrivando ripidi ci passano solo l'ultimo decimo di
+  secondo. Il soffio si allarga sopra il pozzo (3,2 m) con 40 m/s²; `--test-ammo` tira pallonetti veri (con il vento, senza
+  l'aria) a soffione acceso e spento, e contro l'Occhio del Ciclone.
+- Cornici e fasce decorative (vetro, gomma mobile, barriera) devono sporgere di ~1 cm dalle facce che bordano: con facce
+  complanari c'è z-fighting (il vetro, disegnato dopo e senza scrivere la profondità, sfarfalla).
 - Debug: `printf` finisce in un buffer quando l'uscita va in una pipe, e un blocco sembrava nel livello 29 mentre era
   nel 44: per capire dove si ferma usa `stderr` (`CROLLO_DEBUG`) o gdb con `kill -INT`.
 - `Progress::kMaxLevels` è 64: allargalo prima di superarlo (il file salva per id).

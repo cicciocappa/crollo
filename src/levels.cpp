@@ -759,19 +759,20 @@ Entity* Builder::GlassPane( Vector3 center, Vector3 half, float yaw, bool moving
 	so.category = moving ? CatBlock : CatStatic;
 	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Glass, so );
 	// a brass frame, so it never passes for a crystal shield that will switch off
+	// (standing a centimetre proud of the glass, so their faces never share a plane with its edges)
 	const Color brass{ 176, 132, 58, 255 };
-	const float bar = 0.07f;
+	const float bar = 0.07f, proud = 0.012f;
 	for ( int k = -1; k <= 1; k += 2 )
 	{
 		Part edge;
 		edge.localPos = { 0, k * ( half.y - bar ), 0 };
-		edge.size = { half.x, bar, half.z + 0.03f };
+		edge.size = { half.x + proud, bar + proud, half.z + 0.03f };
 		edge.mat = Mat::Metal;
 		edge.tint = brass;
 		scene.AddVisual( e, edge );
 		Part post;
 		post.localPos = { k * ( half.x - bar ), 0, 0 };
-		post.size = { bar, half.y, half.z + 0.03f };
+		post.size = { bar + proud, half.y + proud, half.z + 0.03f };
 		post.mat = Mat::Metal;
 		post.tint = brass;
 		scene.AddVisual( e, post );
@@ -882,7 +883,7 @@ Entity* Builder::MagicBarrier( Vector3 center, Vector3 half, float yaw )
 		{
 			float pos[3] = { 0, 0, 0 };
 			float size[3] = { 0, 0, 0 };
-			pos[across] = s * ( h[across] + 0.08f );
+			pos[across] = s * ( h[across] + 0.07f ); // overlapping the lattice's edge by a centimetre
 			size[across] = 0.08f;
 			size[along] = h[along] + 0.16f;
 			size[thin] = h[thin] + 0.06f;
@@ -925,19 +926,20 @@ Entity* Builder::Bumper( Vector3 center, Vector3 half, float yaw, bool moving )
 	if ( moving )
 	{
 		// a frame of dark iron round the edges, so a panel that moves is told apart from the fixed ones
+		// (a centimetre proud of the rubber, so their faces never share a plane)
 		const Color iron{ 52, 54, 62, 255 };
-		const float bar = 0.06f;
+		const float bar = 0.06f, proud = 0.012f;
 		for ( int k = -1; k <= 1; k += 2 )
 		{
 			Part edge;
 			edge.localPos = { 0, k * ( half.y - bar ), 0 };
-			edge.size = { half.x + 0.02f, bar, half.z + 0.03f };
+			edge.size = { half.x + 0.02f, bar + proud, half.z + 0.03f };
 			edge.mat = Mat::Metal;
 			edge.tint = iron;
 			scene.AddVisual( e, edge );
 			Part post;
 			post.localPos = { k * ( half.x - bar ), 0, 0 };
-			post.size = { bar, half.y + 0.02f, half.z + 0.03f };
+			post.size = { bar + proud, half.y + 0.02f, half.z + 0.03f };
 			post.mat = Mat::Metal;
 			post.tint = iron;
 			scene.AddVisual( e, post );
@@ -2120,7 +2122,17 @@ static void Blowpit( Builder& b, Vector3 c, float phase, Color robe )
 		b.Ledge( { c.x, h * 0.5f, c.z + s * ( hw + t ) }, { hw + 2.0f * t, h * 0.5f, t }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
 		b.Ledge( { c.x + s * ( hw + t ), h * 0.5f, c.z }, { t, h * 0.5f, hw }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
 	}
-	b.Updraft( { c.x, 0, c.z }, hw, hw, 14.0f, 34.0f, 5.0f, 2.6f, phase );
+	// the breath fills the pit and spreads out above it: a lob coming down steeply crosses a good few metres of
+	// it, not just the last one
+	b.Updraft( { c.x, 0, c.z }, hw, hw, h, 40.0f, 5.0f, 2.6f, phase );
+	AirCurrent plume;
+	plume.center = { c.x, h + 6.0f, c.z };
+	plume.half = { 3.2f, 6.0f, 3.2f };
+	plume.accel = { 0, 40.0f, 0 };
+	plume.period = 5.0f;
+	plume.onTime = 2.6f;
+	plume.phase = phase;
+	b.scene.currents.push_back( plume );
 	b.King( { c.x, 0.06f, c.z }, robe );
 	b.Flag( { c.x + hw * 0.6f, h, c.z + hw + t }, robe, 0.6f );
 }
@@ -2219,7 +2231,7 @@ static void LevelCiclone( Builder& b )
 	b.homeY = 5.0f;
 	b.King( { 0, 5.0f, 38.0f }, kStorm );
 	b.homeY = 0.0f;
-	b.Updraft( { 0, 5.05f, 38.0f }, 2.4f, 2.4f, 14.0f, 26.0f );
+	b.Updraft( { 0, 5.05f, 38.0f }, 3.2f, 3.2f, 14.0f, 40.0f );
 	struct Drift
 	{
 		Vector3 top;
