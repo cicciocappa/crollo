@@ -2964,6 +2964,11 @@ bool Game::AutoFireAtKing()
 		{
 			type = Ammo::Chain;
 		}
+		else if ( ( goal->mat == Mat::Glass || goal->mat == Mat::Magic ) && m_ammo[(int)Ammo::Implosion] > 0 )
+		{
+			// the vortex pulls through glass and barriers: nothing else reaches a king shut behind them
+			type = Ammo::Implosion;
+		}
 		else if ( type == Ammo::Boulder && m_ammo[(int)Ammo::Boulder] <= ironWalls )
 		{
 			spare( Ammo::Boulder );
@@ -2975,6 +2980,17 @@ bool Game::AutoFireAtKing()
 	}
 
 	return FireAt( aimPoint, type, goal, lob );
+}
+
+bool Game::ClusterSplitDue( int step ) const
+{
+	if ( m_focus == nullptr || m_focus->alive == false || m_focus->ammo != (int)Ammo::Cluster || m_focus->specialUsed )
+	{
+		return false;
+	}
+	// a few metres short of the point the AI aimed at, so the pellets fan out over what stands there
+	Vector3 d = Vector3Subtract( m_aiAim, m_focus->pos );
+	return m_aiAimed ? sqrtf( d.x * d.x + d.z * d.z ) < 6.0f : step == 40;
 }
 
 void Game::DriveMovers( float dt )
@@ -3224,6 +3240,8 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 		return false;
 	}
 
+	m_aiAim = aimPoint;
+	m_aiAimed = true;
 	Vector3 dir = Vector3Normalize( best );
 	float speed = Vector3Length( best ) / scale;
 	m_yaw = atan2f( dir.x, dir.z );
@@ -3637,8 +3655,7 @@ bool Game::PlayOutAutomatically( int maxShots, int& downAtStart, int& shots )
 		++shots;
 		for ( int i = 0; i < 60 * 8; ++i )
 		{
-			// split the cluster shortly after launch
-			if ( i == 40 && m_focus && m_focus->ammo == (int)Ammo::Cluster )
+			if ( ClusterSplitDue( i ) )
 			{
 				Special( m_focus );
 			}
@@ -3747,7 +3764,7 @@ void Game::ScanForEasyShots( int levelIndex )
 			}
 			for ( int i = 0; i < 60 * 8; ++i )
 			{
-				if ( i == 40 && m_focus && m_focus->ammo == (int)Ammo::Cluster )
+				if ( ClusterSplitDue( i ) )
 				{
 					Special( m_focus );
 				}
@@ -4063,6 +4080,31 @@ void Game::TestMaterialsAndAmmo()
 		bool bomb = shootGlass( Ammo::Bomb );
 		printf( "Vetro: palla -> il re %s, bomba -> il re %s -> %s\n", ball ? "cade" : "resta in piedi", bomb ? "cade" : "resta in piedi",
 				ball == false && bomb == false ? "ok" : "FALLITO" );
+	}
+
+	// 7e. the glass case of Le Teche: a ball and a bomb against it leave the king be, the vortex pulls him down
+	{
+		auto shootCase = [&]( Ammo type ) {
+			LoadLevel( FindLevelById( "dune_teche" ), false );
+			SkipIntro();
+			settle( 60 );
+			Entity* king = nullptr;
+			for ( Entity* e : m_kings )
+			{
+				king = e->pos.x < -3.0f ? e : king;
+			}
+			// straight at the front pane, level with the king
+			Vector3 at{ king->pos.x, king->pos.y + 0.7f, king->pos.z - 4.0f };
+			FireProjectile( type, at, { 0, 0, 1 }, 16.0f );
+			settle( 240 );
+			return king->defeated;
+		};
+		bool ball = shootCase( Ammo::Ball );
+		bool bomb = shootCase( Ammo::Bomb );
+		bool vortex = shootCase( Ammo::Implosion );
+		printf( "Teca di vetro: palla -> il re %s, bomba -> %s, vortice -> %s -> %s\n", ball ? "cade" : "resta in piedi",
+				bomb ? "cade" : "resta in piedi", vortex ? "cade" : "resta in piedi",
+				ball == false && bomb == false && vortex ? "ok" : "FALLITO" );
 	}
 
 	// 8. windmill blades: a ball bounces off, the boulder snaps them off the axle

@@ -247,6 +247,8 @@ private:
 	const Mechanism* MoverUnder( const Entity* e ) const;
 	// Steers the kinematic movers to where they must be at the end of the next step.
 	void DriveMovers( float dt );
+	// Automatic play: time to split the cluster shot in flight (`step` frames after the shot).
+	bool ClusterSplitDue( int step ) const;
 	void TreeFallEffects( Vector3 cutPoint, Color leaf, float scale );
 	void DefeatKing( Entity* king, const char* reason );
 	void PopBalloon( Entity* balloon );
@@ -428,6 +430,8 @@ private:
 	Vector3 m_shotDir{ 0, 0, 1 };
 	std::vector<int> m_shotSerials;
 	int m_shotPartner = 0; // chain shot: the second ball, so the replay can watch the pair
+	Vector3 m_aiAim{};	   // where the automatic player last aimed
+	bool m_aiAimed = false;
 	std::vector<ReplayEvent> m_replayEvents;
 	b3RecPlayer* m_player = nullptr;
 	bool m_replayAvailable = false;

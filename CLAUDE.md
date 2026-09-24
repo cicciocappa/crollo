@@ -17,7 +17,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 ## Stato (fine sessione 6, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 36 livelli. Campagne: Prati Alti 9, Valle dei Mulini 8, Picchi Gelati 11, Dune Sospese 8; Arcipelago delle Tempeste e
+- 40 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10; Arcipelago delle Tempeste e
   Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
@@ -25,6 +25,8 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - Sessione 5c fatta: alberi solidi che solo la palla incatenata taglia (prima la catena era un doppione della palla),
   livello Il Boschetto nei Prati Alti; la telecamera che segue la catena oscilla sempre meno.
 - Sessione 6 fatta: Dune Sospese a 8 livelli, palme e cactus, tappeti volanti e ascensori (`Mover`), vetro, IA con anticipo.
+- Sessione 6b fatta (richiesta dell'utente: grappolo e Vortice non servivano mai): Il Bazar e Il Frutteto (grappolo
+  indispensabile), Le Teche e La Cupola Stregata (Vortice indispensabile); Dune e Valle a 10 livelli.
 - Prossima: prova delle Dune da parte dell'utente, poi sessione 7 (Arcipelago). Poi versione mobile (10); multiplayer
   alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
@@ -34,7 +36,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 36/36); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 40/40); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18; oggi lo
                                         # scanner trova solo il 7, ma la Valanga si vince comunque con un colpo)
 ./build/crollo --autotest-challenge     # 30/30
@@ -100,6 +102,12 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
   alfa e senza scrivere la profondità. Una bomba che esplode *sopra* il bordo del vetro raggiunge i re dietro.
 - Palme e cactus: `Biome::desert`; il cactus tagliato che cade contro la palma dietro il re rotola di lato: nell'Oasi
   spesso serve un secondo colpo (voluto: più munizioni e par 5). Gli alberi tagliati cadono lontano dal cannone.
+- **Grappolo indispensabile**: re a coppie su colonne fisse a ~1,6 m, meno colpi che re; l'IA (autotest e scanner) apre il
+  grappolo a 6 m dal punto mirato (`ClusterSplitDue`) e con `AimHint` fra i due re mira al centro della coppia.
+- **Vortice indispensabile**: `Implode` non ha la protezione di `Explode`, quindi risucchia *attraverso* vetro, roccia e
+  barriera magica. Re chiusi dentro (tetto compreso) si prendono solo così; l'IA sceglie il Vortice se il bersaglio del
+  suggerimento è di vetro o di barriera. Tieni le teche a più di ~6 m, o un Vortice solo le svuota tutte.
+- `BackTrees(b, centro, raggio)`: alberi solo dietro e ai lati, quando quelli a caso di `Trees` finirebbero sulla linea di tiro.
 - Web: `EXPORTED_RUNTIME_METHODS=HEAPF32`; nei test di input via browser tieni premuti tasti e click ~120 ms.
 
 ## Nuovo PC

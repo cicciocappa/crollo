@@ -1567,6 +1567,140 @@ static void LevelPalazzoZaira( Builder& b )
 	b.Fortress( { 0, 2, 37 }, 13.0f );
 }
 
+// A few trees round the back half of an island, where they never stand in the line of fire.
+static void BackTrees( Builder& b, Vector3 centre, float radius )
+{
+	const Biome& look = b.Look();
+	const float angles[4] = { 0.35f, 1.2f, 1.95f, 2.8f };
+	for ( int i = 0; i < 4; ++i )
+	{
+		Vector3 base{ centre.x + cosf( angles[i] ) * radius, centre.y, centre.z + sinf( angles[i] ) * radius };
+		bool alt = i % 2 == 1;
+		TreeKind kind = look.desert ? ( alt ? TreeKind::Cactus : TreeKind::Palm ) : ( alt || look.pinesOnly ? TreeKind::Pine : TreeKind::Oak );
+		b.Tree( base, b.rng.Range( 0.8f, 1.15f ), kind, ColorMix( look.leafA, look.leafB, b.rng.Float() ), b.rng.Range( 0.0f, 6.28f ) );
+	}
+}
+
+static void LevelBazar( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.0f );
+	// two kings on neighbouring columns of sandstone: a ball takes one, a cluster split in time takes both
+	Entity* pair[2];
+	for ( int i = 0; i < 2; ++i )
+	{
+		float x = 2.2f + ( i == 0 ? -0.8f : 0.8f );
+		b.Ledge( { x, 1.1f, 36.0f }, { 0.4f, 1.1f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+		b.homeY = 2.2f;
+		pair[i] = b.King( { x, 2.2f, 36.0f }, i == 0 ? kTeal : kCrimson );
+	}
+	b.AimHint( pair[0], pair[1], { -0.8f, 0.7f, 0 } );
+	b.AimHint( pair[1], pair[0], { 0.8f, 0.7f, 0 } );
+	// the third stands well apart
+	b.Ledge( { -4.4f, 0.8f, 36.5f }, { 0.4f, 0.8f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	b.homeY = 1.6f;
+	b.King( { -4.4f, 1.6f, 36.5f }, kGold );
+	b.homeY = 0.0f;
+	// market stalls
+	b.Ledge( { -1.0f, 0.5f, 38.5f }, { 1.2f, 0.5f, 0.6f }, Mat::Wood, { 0, 0, 0, 1 }, Color{ 150, 105, 60, 255 } );
+	b.Ledge( { -1.0f, 1.6f, 38.5f }, { 1.4f, 0.05f, 0.9f }, Mat::Sand, { 0, 0, 0, 1 }, Color{ 190, 60, 50, 255 } );
+	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.4f );
+	b.Flag( { 0, 0, 40.5f }, kGold );
+	b.Fortress( { 0, 2, 36 }, 11.0f );
+}
+
+// A king on a wooden pedestal, shut in a case of glass, roof and all: no shot and no blast gets in. The vortex
+// does: set off against the glass, it pulls him off his pedestal.
+static void CaseKing( Builder& b, Vector3 base, Color robe )
+{
+	const float h = 1.5f, w = 0.9f;
+	Entity* front = b.GlassPane( { base.x, base.y + h, base.z - w }, { w + 0.06f, h, 0.06f } );
+	b.GlassPane( { base.x, base.y + h, base.z + w }, { w + 0.06f, h, 0.06f } );
+	b.GlassPane( { base.x - w, base.y + h, base.z }, { w - 0.06f, h, 0.06f }, PI * 0.5f );
+	b.GlassPane( { base.x + w, base.y + h, base.z }, { w - 0.06f, h, 0.06f }, PI * 0.5f );
+	Entity* roof = b.GlassPane( { base.x, base.y + 2.0f * h + 0.06f, base.z }, { w + 0.06f, w + 0.06f, 0.06f } );
+	// the roof lies flat
+	b3Body_SetTransform( roof->body, b3Body_GetPosition( roof->body ), QuatAxisAngle( { 1, 0, 0 }, PI * 0.5f ) );
+	b.scene.FinalizeEntity( roof );
+	b.Box( { base.x, base.y + 0.6f, base.z }, { 0.3f, 0.6f, 0.3f }, Mat::Wood );
+	Entity* king = b.King( { base.x, base.y + 1.2f, base.z }, robe );
+	b.AimHint( king, front, { 0, 0.5f, -0.1f } );
+}
+
+static void LevelTeche( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.5f );
+	// far enough apart that one vortex never reaches two cases
+	CaseKing( b, { -6.3f, 0, 35.2f }, kTeal );
+	CaseKing( b, { 0.0f, 0, 39.3f }, kGold );
+	CaseKing( b, { 6.3f, 0, 35.2f }, kCrimson );
+	BackTrees( b, { 0, 0, 36 }, 8.4f );
+	b.Flag( { -3.0f, 0, 42.0f }, kGold );
+	b.Fortress( { 0, 2, 37 }, 11.0f );
+}
+
+// Two kings on neighbouring wooden posts, and hints that send the automatic player between them.
+static void KingPair( Builder& b, Vector3 centre, float gap, float height, Color a, Color c )
+{
+	Entity* pair[2];
+	for ( int i = 0; i < 2; ++i )
+	{
+		float x = centre.x + ( i == 0 ? -gap : gap ) * 0.5f;
+		b.Ledge( { x, centre.y + height * 0.5f, centre.z }, { 0.4f, height * 0.5f, 0.4f }, Mat::Wood, { 0, 0, 0, 1 },
+				 Color{ 150, 105, 60, 255 } );
+		b.homeY = centre.y + height;
+		pair[i] = b.King( { x, centre.y + height, centre.z }, i == 0 ? a : c );
+	}
+	b.AimHint( pair[0], pair[1], { -gap * 0.5f, 0.7f, 0 } );
+	b.AimHint( pair[1], pair[0], { gap * 0.5f, 0.7f, 0 } );
+}
+
+static void LevelFrutteto( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.5f );
+	// two pairs and one on its own: five kings, four clusters
+	KingPair( b, { -3.8f, 0, 36.0f }, 1.6f, 1.8f, kTeal, kGreen );
+	KingPair( b, { 3.8f, 0, 36.0f }, 1.6f, 2.4f, kCrimson, kPurple );
+	float t = b.Tower( { 0, 0, 40.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.homeY = 0.0f;
+	b.King( { 0, t, 40.0f }, kOrange );
+	BackTrees( b, { 0, 0, 36 }, 8.2f );
+	b.Flag( { 3.0f, 0, 41.0f }, kOrange );
+	b.Fortress( { 0, 2, 37 }, 11.0f );
+}
+
+static void LevelCupola( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.5f );
+	// two towers shut under an enchanted dome, and no orb anywhere: the vortex pulls right through it
+	const float x0 = -4.0f, x1 = 4.0f, z0 = 35.0f, z1 = 39.0f, h = 4.2f;
+	Entity* front = b.MagicBarrier( { 0, h * 0.5f, z0 }, { ( x1 - x0 ) * 0.5f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { 0, h * 0.5f, z1 }, { ( x1 - x0 ) * 0.5f, h * 0.5f, 0.08f } );
+	b.MagicBarrier( { x0, h * 0.5f, ( z0 + z1 ) * 0.5f }, { 0.08f, h * 0.5f, ( z1 - z0 ) * 0.5f } );
+	b.MagicBarrier( { x1, h * 0.5f, ( z0 + z1 ) * 0.5f }, { 0.08f, h * 0.5f, ( z1 - z0 ) * 0.5f } );
+	b.MagicBarrier( { 0, h + 0.08f, ( z0 + z1 ) * 0.5f }, { ( x1 - x0 ) * 0.5f, 0.08f, ( z1 - z0 ) * 0.5f } );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		float t = b.Tower( { s * 2.2f, 0, 37.0f }, 2, 0.8f, 1.1f, Mat::Wood, Mat::Wood );
+		Entity* king = b.King( { s * 2.2f, t, 37.0f }, s < 0 ? kTeal : kCrimson );
+		// against the front of the dome, level with the king
+		b.AimHint( king, front, { s * 2.2f, t + 0.7f - front->pos.y, -0.1f } );
+	}
+	// and one outside, in plain view
+	float t = b.Tower( { -7.4f, 0, 31.6f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { -7.4f, t, 31.6f }, kOrange );
+	b.Trees( { 0, 0, 36 }, 9.5f, 4, 7.8f );
+	b.Flag( { 6.0f, 0, 39.0f }, kOrange );
+	b.Fortress( { -1.0f, 2, 36 }, 11.0f );
+}
+
 static void Level04( Builder& b )
 {
 	b.PlayerIsland();
@@ -2396,6 +2530,18 @@ static const LevelDef s_levels[] = {
 	{ "Il Palazzo di Zaira", "Vetro, magia e sabbia. Il mio palazzo \u00e8 un gioiello, e io la sua perla.",
 	  "La Sultana passa dietro la facciata di vetro: spara nei varchi. Le guardie salgono e scendono, la sfera magica passa la barriera.",
 	  { 7, 2, 0, 2, 1, 0, 0 }, 5, { 0, 0, 0 }, LevelPalazzoZaira, "dune_palazzo" },
+	{ "Il Bazar", "Due re sulle colonne, uno in disparte. E per te, solo due colpi.",
+	  "Due colpi per tre re: il GRAPPOLO (3) si divide con SPAZIO. Aprilo poco prima delle colonne e prenderai due re insieme.",
+	  { 0, 0, 2, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelBazar, "dune_bazar" },
+	{ "Le Teche", "I miei tesori stanno sotto vetro. Me compreso.",
+	  "Nessun colpo entra nelle teche, e il vetro ferma le esplosioni. Il VORTICE (6) invece attraversa il vetro e risucchia.",
+	  { 2, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelTeche, "dune_teche" },
+	{ "Il Frutteto", "Nel mio frutteto i re crescono a coppie. Raccoglili, se ci riesci.",
+	  "Cinque re e quattro grappoli: apri il GRAPPOLO (3) con SPAZIO poco prima di ogni coppia.",
+	  { 0, 0, 4, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelFrutteto, "mulini_frutteto" },
+	{ "La Cupola Stregata", "Sotto la mia cupola non entra niente. Nemmeno le tue sfere.",
+	  "La barriera ferma palle ed esplosioni, e qui non ci sono sfere magiche. Il VORTICE (6) invece la attraversa.",
+	  { 2, 1, 0, 0, 0, 3, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -2420,8 +2566,8 @@ static std::vector<Campaign> BuildCampaigns()
 				   "il momento.",
 				   "Le pale si fermano e il secondo frammento torna al suo posto. Pi\u00f9 in alto, dove l'aria si fa gelida, "
 				   "qualcuno ha costruito un palazzo di ghiaccio.",
-				   { idx( "mulini_mulino" ), idx( "mulini_pendolo" ), idx( "mulini_granaio" ), idx( "mulini_sfere" ),
-					 idx( "mulini_due" ), idx( "mulini_scudi" ), idx( "mulini_sponda" ), idx( "mulini_palazzo" ) } } );
+				   { idx( "mulini_mulino" ), idx( "mulini_pendolo" ), idx( "mulini_granaio" ), idx( "mulini_frutteto" ), idx( "mulini_sfere" ),
+					 idx( "mulini_due" ), idx( "mulini_scudi" ), idx( "mulini_sponda" ), idx( "mulini_cupola" ), idx( "mulini_palazzo" ) } } );
 	c.push_back( { "Picchi Gelati", "Re Ghiacciolo III", kTeal, 2,
 				   "Sui Picchi Gelati regna Re Ghiacciolo III, che non si fida di nessuno, e meno che mai dei muri normali: "
 				   "i suoi sono di cristallo, e si accendono e si spengono quando vuole lui.",
@@ -2434,7 +2580,8 @@ static std::vector<Campaign> BuildCampaigns()
 				   "di sacchi, e il vento cambia a ogni colpo.",
 				   "La tempesta di sabbia si posa. Quattro frammenti su sei.",
 				   { idx( "dune_carovana" ), idx( "dune_vetrate" ), idx( "dune_montacarichi" ), idx( "dune_tappeti" ),
-					 idx( "dune_miraggio" ), idx( "dune_oasi" ), idx( "dune_tempesta" ), idx( "dune_palazzo" ) } } );
+					 idx( "dune_miraggio" ), idx( "dune_bazar" ), idx( "dune_oasi" ), idx( "dune_teche" ),
+					 idx( "dune_tempesta" ), idx( "dune_palazzo" ) } } );
 	c.push_back( { "Arcipelago delle Tempeste", "Re Fulmine", { 40, 60, 140, 255 }, 4,
 				   "Nell'Arcipelago delle Tempeste le isole non stanno ferme un attimo, e Re Fulmine ama far piovere lampi sui "
 				   "suoi nemici.",

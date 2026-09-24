@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **36 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **40 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -50,15 +50,19 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   34. *L'Oasi*: re dietro grandi **cactus** e sotto le **palme**; la catena taglia i cactus.
   35. *Tempesta di Sabbia*: dune di arenaria, montagne di sacchi, un tappeto in alto e vento forte e variabile.
   36. *Il Palazzo di Zaira*: il finale delle Dune: la Sultana su un tappeto dietro una facciata di vetro con i varchi, guardie sugli ascensori e un chiosco magico.
+  37. *Il Bazar*: tre re e due soli colpi: il **grappolo** aperto al momento giusto prende i due re sulle colonne vicine.
+  38. *Le Teche*: re chiusi in teche di vetro, tetto compreso: solo il **Vortice** attraversa il vetro e li risucchia.
+  39. *Il Frutteto*: cinque re, due coppie, quattro grappoli.
+  40. *La Cupola Stregata*: due torri sotto una cupola di barriera magica senza sfere: ci vuole il Vortice.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
   in ordine. Un prologo accoglie la prima visita, un epilogo chiude l'ultimo livello, e i sottotitoli dei livelli sono le
   provocazioni del re di turno.
   - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 28, 5, 8, 13, 14 e 10 come finale.
-  - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 23, 25, 9, 26 e 27 come finale — tramonto, foglie al vento.
+  - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 39, 23, 25, 9, 26, 40 e 27 come finale — tramonto, foglie al vento.
   - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
-  - *Dune Sospese* (Sultana Zaira): 29, 30, 31, 32, 33, 34, 35 e 36 come finale — sabbia, palme e cactus.
+  - *Dune Sospese* (Sultana Zaira): 29, 30, 31, 32, 33, 37, 34, 38, 35 e 36 come finale — sabbia, palme e cactus.
   - *Arcipelago delle Tempeste*, *Fucina del Vulcano*: in arrivo. I biomi sono già pronti e si vedono
     nella sfida infinita.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
