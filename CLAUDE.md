@@ -27,6 +27,8 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - Sessione 6 fatta: Dune Sospese a 8 livelli, palme e cactus, tappeti volanti e ascensori (`Mover`), vetro, IA con anticipo.
 - Sessione 6b fatta (richiesta dell'utente: grappolo e Vortice non servivano mai): Il Bazar e Il Frutteto (grappolo
   indispensabile), Le Teche e La Cupola Stregata (Vortice indispensabile); Dune e Valle a 10 livelli.
+- Sessione 6c fatta (riscontro sulle Dune): granelli di sabbia al posto delle foglie, vento fisso in tutte le Dune (niente
+  più vento variabile nemmeno in Tappeti e Tempesta), re sparsi a caso a ogni tentativo e munizioni più generose.
 - Prossima: prova delle Dune da parte dell'utente, poi sessione 7 (Arcipelago). Poi versione mobile (10); multiplayer
   alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
@@ -107,6 +109,13 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Vortice indispensabile**: `Implode` non ha la protezione di `Explode`, quindi risucchia *attraverso* vetro, roccia e
   barriera magica. Re chiusi dentro (tetto compreso) si prendono solo così; l'IA sceglie il Vortice se il bersaglio del
   suggerimento è di vetro o di barriera. Tieni le teche a più di ~6 m, o un Vortice solo le svuota tutte.
+- **Re sparsi** (`b.Scatter(p, rx, rz)`): il seme della disposizione cambia a ogni tentativo (`Game::m_layoutSeed`, 0 nei
+  test e nelle demo = disposizione disegnata). Sposta insieme il re e ciò che lo regge. L'autotest prova ogni livello
+  sparso anche in 5 disposizioni (`CROLLO_DEBUG=1` stampa dove stanno i re). Idea dell'utente: così il pallonetto si
+  cerca sempre un po' per tentativi e le munizioni possono essere generose. Oggi: Dune (non i tappeti) e Il Frutteto.
+- Vento delle Dune: fisso, verso +x (a sinistra dal cannone); i granelli (`PType::Grain`) seguono il vento vero.
+- IA: il fondo della palla si controlla perpendicolare alla traiettoria (sui pallonetti ripidi tocca lo spigolo con la
+  parte davanti); per i bersagli mobili conta solo colpire il re, non "qualcosa entro 1,2 m" (era il muro del Montacarichi).
 - `BackTrees(b, centro, raggio)`: alberi solo dietro e ai lati, quando quelli a caso di `Trees` finirebbero sulla linea di tiro.
 - Web: `EXPORTED_RUNTIME_METHODS=HEAPF32`; nei test di input via browser tieni premuti tasti e click ~120 ms.
 

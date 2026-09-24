@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
 
 #if defined( __EMSCRIPTEN__ )
@@ -326,6 +327,12 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 		m_ammo[i] = attract ? 99 : m_level->ammo[i];
 	}
 
+	// every attempt lays the scattered kings out afresh, so aim is never just remembered
+	m_scattered = false;
+	if ( m_headless == false )
+	{
+		m_layoutSeed = attract ? 0u : (uint32_t)GetRandomValue( 1, 1 << 30 );
+	}
 	Builder b( *this, seed );
 	b.plan = plan;
 	b.biome = &GetBiome( m_biome );
@@ -2606,8 +2613,8 @@ void Game::UpdateWorld( float dt )
 				b = { 215, 230, 250, 255 };
 				break;
 			case Ambient::Sand:
-				a = { 185, 135, 75, 255 };
-				b = { 215, 165, 100, 255 };
+				a = { 240, 205, 115, 255 };
+				b = { 225, 150, 70, 255 };
 				break;
 			case Ambient::Rain:
 				a = { 190, 205, 225, 255 };
@@ -3071,8 +3078,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
 	bool sliderBlocked = false;
 	float edgeReach = type == Ammo::Boulder ? 0.5f : 0.0f;
-	// the underside of the ball too, or a lob clips the top edge of the wall it just clears
-	std::vector<Vector3> edges{ { 0, 0, 0 }, { 0, -0.32f, 0 } };
+	std::vector<Vector3> edges{ { 0, 0, 0 } };
 	if ( ride != nullptr )
 	{
 		// a moving target is often caught through a gap: keep the whole ball clear of its sides
@@ -3160,7 +3166,16 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 			bool arrived = ride != nullptr && t >= flight;
 			Vector3 to = arrived ? aimPoint : p;
 			// the boulder is big: check its top, bottom and sides too, not just its centre
-			for ( const Vector3& o : edges )
+			// the underside of the ball too, across its path, or a lob clips the top edge of the wall it just
+			// clears: coming down steeply, the part that touches is not the one straight below the centre
+			Vector3 dir = Vector3Normalize( Vector3Subtract( to, prev ) );
+			Vector3 under = Vector3Subtract( { 0, -1, 0 }, Vector3Scale( dir, -dir.y ) );
+			std::vector<Vector3> offsets = edges;
+			if ( Vector3Length( under ) > 0.1f )
+			{
+				offsets.push_back( Vector3Scale( Vector3Normalize( under ), 0.32f ) );
+			}
+			for ( const Vector3& o : offsets )
 			{
 				Vector3 from = Vector3Add( prev, o );
 				b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( from ), ToB3( Vector3Subtract( to, prev ) ), filter );
@@ -3173,7 +3188,9 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 				}
 				if ( hit.hit && sliding == false )
 				{
-					return struck == target || Vector3Distance( ToRl( hit.point ), aimPoint ) < 1.2f + edgeReach;
+					// something right next to a still target is as good as the target; a moving one is not
+					// where the ray finds it, so only the target itself will do
+					return struck == target || ( ride == nullptr && Vector3Distance( ToRl( hit.point ), aimPoint ) < 1.2f + edgeReach );
 				}
 			}
 			if ( arrived )
@@ -4189,6 +4206,7 @@ void Game::TestMaterialsAndAmmo()
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
 {
+	m_layoutSeed = 0;
 	LoadLevel( levelIndex, false );
 	int downAtStart = 0, shots = 0;
 	bool ok = PlayOutAutomatically( maxShots, downAtStart, shots );
@@ -4196,6 +4214,36 @@ bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
 	{
 		printf( "Livello %2d %-22s re:%d abbattuti-all'avvio:%d colpi:%d vinto:%s punti:%d corpi:%d\n", levelIndex + 1,
 				GetLevel( levelIndex ).name, KingsTotal(), downAtStart, shots, m_won ? "SI" : "no", m_score, (int)m_scene.entities.size() );
+	}
+	// kings placed at random: a few other layouts must be stable and winnable too
+	if ( m_scattered )
+	{
+		const int layouts = 5;
+		int won = 0;
+		std::string worst;
+		for ( int k = 1; k <= layouts; ++k )
+		{
+			m_layoutSeed = (uint32_t)k * 7919u;
+			LoadLevel( levelIndex, false );
+			if ( getenv( "CROLLO_DEBUG" ) )
+			{
+				fprintf( stderr, "disposizione %d:", k );
+				for ( const Entity* e : m_kings )
+				{
+					fprintf( stderr, " (%.1f %.1f %.1f)", e->pos.x, e->pos.y, e->pos.z );
+				}
+				fprintf( stderr, "\n" );
+			}
+			bool fine = PlayOutAutomatically( maxShots, downAtStart, shots );
+			won += fine ? 1 : 0;
+			worst += TextFormat( " %d%s", shots, fine ? "" : ( downAtStart > 0 ? "(cade)" : "(perso)" ) );
+		}
+		m_layoutSeed = 0;
+		if ( verbose )
+		{
+			printf( "           disposizioni a caso: %d/%d vinte, colpi:%s\n", won, layouts, worst.c_str() );
+		}
+		ok = ok && won == layouts;
 	}
 	return ok;
 }

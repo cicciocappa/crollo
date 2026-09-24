@@ -30,6 +30,14 @@ void Particles::Update( float dt, Vector3 wind )
 			// smoke drifts with the wind
 			p.vel = Vector3Add( Vector3Scale( Vector3Subtract( p.vel, wind ), k ), wind );
 		}
+		else if ( p.type == PType::Grain )
+		{
+			// sand goes wherever the wind takes it, a little faster near the islands than a flake would
+			Vector3 target = Vector3Add( Vector3Scale( wind, 3.0f ), { 0, -p.gravity, 0 } );
+			p.vel = Vector3Add( Vector3Scale( Vector3Subtract( p.vel, target ), k ), target );
+			p.pos.y += sinf( p.life * p.spin.y + p.spin.x ) * p.spin.z * dt;
+			p.vel.y += p.gravity * dt;
+		}
 		else if ( p.type == PType::Flake )
 		{
 			// falls at its own terminal speed, carried by the wind, fluttering side to side
@@ -45,7 +53,7 @@ void Particles::Update( float dt, Vector3 wind )
 			p.vel = Vector3Scale( p.vel, k );
 		}
 		p.pos = Vector3Add( p.pos, Vector3Scale( p.vel, dt ) );
-		if ( p.type != PType::Flake ) // for weather, grow is the aspect ratio of the flake
+		if ( p.type != PType::Flake && p.type != PType::Grain ) // for weather, grow is the aspect ratio of the flake
 		{
 			p.size += p.grow * dt;
 		}
@@ -93,7 +101,7 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 	std::vector<const Particle*> smoke;
 	for ( const Particle& p : m_items )
 	{
-		if ( p.type == PType::Smoke || p.type == PType::Flake )
+		if ( p.type == PType::Smoke || p.type == PType::Flake || p.type == PType::Grain )
 		{
 			smoke.push_back( &p );
 		}
@@ -124,6 +132,17 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 			DrawBillboardPro( camera, flake, src, p->pos, { 0, 1, 0 }, size, { size.x * 0.5f, size.y * 0.5f }, spin, WithAlpha( p->color, a ) );
 			continue;
 		}
+		if ( p->type == PType::Grain )
+		{
+			float a = std::min( 1.0f, t * 6.0f ) * std::min( 1.0f, p->life * 1.5f ) * ( p->color.a / 255.0f );
+			a *= Clamp01( ( Vector3Distance( p->pos, camera.position ) - 1.5f ) / 3.0f );
+			if ( a > 0.01f )
+			{
+				// the round weather texture: white to the edge, so a tiny dot keeps its colour
+				DrawBillboard( camera, renderer.FlakeTexture(), p->pos, p->size, WithAlpha( p->color, a ) );
+			}
+			continue;
+		}
 		float alpha = ( t < 0.1f ? t / 0.1f : 1.0f ) * ( 1.0f - t );
 		DrawBillboard( camera, tex, p->pos, p->size, WithAlpha( p->color, alpha * ( p->color.a / 255.0f ) ) );
 	}
@@ -132,7 +151,7 @@ void Particles::Draw( Renderer& renderer, const Camera3D& camera )
 	BeginBlendMode( BLEND_ADDITIVE );
 	for ( const Particle& p : m_items )
 	{
-		if ( p.type == PType::Smoke || p.type == PType::Chip || p.type == PType::Flake || p.type == PType::Streak )
+		if ( p.type == PType::Smoke || p.type == PType::Chip || p.type == PType::Flake || p.type == PType::Streak || p.type == PType::Grain )
 		{
 			continue;
 		}
@@ -445,18 +464,16 @@ void Particles::Weather( Ambient kind, Vector3 focus, float dt, Vector3 wind, Co
 				p.color.a = 230;
 				break;
 			case Ambient::Sand:
-				// grains stream sideways close to the islands
-				p.type = PType::Flake;
+				// specks of sand streaming with the wind, close to the islands
+				p.type = PType::Grain;
 				p.pos.y = focus.y + r.Range( -2.0f, 8.0f );
-				p.size = r.Range( 0.06f, 0.1f );
-				p.grow = 0.6f;
+				p.size = r.Range( 0.045f, 0.075f );
 				p.gravity = r.Range( 0.1f, 0.4f );
 				p.drag = 1.0f;
-				p.drift = { 4.5f, 0.0f, 1.2f };
-				p.vel = p.drift;
-				p.spin = { r.Range( 0.0f, 6.28f ), r.Range( 4.0f, 8.0f ), r.Range( 0.3f, 0.8f ) };
+				p.vel = Vector3Scale( wind, 3.0f );
+				p.spin = { r.Range( 0.0f, 6.28f ), r.Range( 2.0f, 4.0f ), r.Range( 0.1f, 0.3f ) };
 				p.maxLife = p.life = 6.0f;
-				p.color.a = 235;
+				p.color.a = 230;
 				break;
 			case Ambient::Rain:
 				p.type = PType::Streak;

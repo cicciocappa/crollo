@@ -135,6 +135,15 @@ public:
 	void LoadChallenge( int round, bool fresh );
 	void SkipIntro();
 	bool RunAutoTest( int levelIndex, int maxShots, bool verbose );
+	// Layout of the kings in levels that scatter them (0 = exactly as designed, as in the tests).
+	uint32_t LayoutSeed() const
+	{
+		return m_layoutSeed;
+	}
+	void MarkScattered()
+	{
+		m_scattered = true;
+	}
 	bool RunChallengeTest( int round, uint32_t seed, int maxShots, bool verbose );
 	bool PlayOutAutomatically( int maxShots, int& downAtStart, int& shots );
 	void TestShields();
@@ -430,6 +439,8 @@ private:
 	Vector3 m_shotDir{ 0, 0, 1 };
 	std::vector<int> m_shotSerials;
 	int m_shotPartner = 0; // chain shot: the second ball, so the replay can watch the pair
+	uint32_t m_layoutSeed = 0; // a new one for every attempt at a level, 0 in the tests
+	bool m_scattered = false;  // the level places some kings at random within a patch
 	Vector3 m_aiAim{};	   // where the automatic player last aimed
 	bool m_aiAimed = false;
 	std::vector<ReplayEvent> m_replayEvents;

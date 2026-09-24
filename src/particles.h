@@ -17,6 +17,7 @@ enum class PType : uint8_t
 	Ring,	// expanding shockwave billboard
 	Flake,	// weather: leaf, snowflake or sand grain, drifts with the wind and flutters
 	Streak, // weather: a rain drop drawn as a short line along its velocity
+	Grain,	// weather: a speck of sand, a round dot carried by the wind
 };
 
 enum class Ambient : uint8_t;

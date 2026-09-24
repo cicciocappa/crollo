@@ -66,6 +66,7 @@ public:
 	Game& game;
 	Scene& scene;
 	Rng rng;
+	Rng layout; // for Scatter(): changes with every attempt at the level
 	float homeY = 0.0f;
 	Vector3 faceTarget{ 0, 0, 0 }; // kings look at the cannon
 	const ChallengePlan* plan = nullptr; // set for procedural rounds
@@ -142,6 +143,9 @@ public:
 	// the front, two behind): shatter the front one and the roof tips forward onto whoever is underneath.
 	// Returns the front pillar.
 	Entity* SnowShelter( Vector3 base, float halfX, float halfZ, float height );
+	// `p` moved at random within +-rx, +-rz (on every attempt a new layout; unchanged in the tests), so the
+	// player cannot just repeat the aim that worked last time. Move a king and all that belongs to him by it.
+	Vector3 Scatter( Vector3 p, float rx, float rz );
 	// Tells the autotest AI (and the demo) to go for `via` instead of `king` while `via` has not moved.
 	// `lob` > 0 keeps it to high arcs: horizontal speeds up to `lob` m/s.
 	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 }, float lob = 0.0f );

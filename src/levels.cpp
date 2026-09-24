@@ -20,7 +20,18 @@ Builder::Builder( Game& g, uint32_t seed )
 	: game( g )
 	, scene( g.GetScene() )
 	, rng( seed )
+	, layout( g.LayoutSeed() * 2654435761u ^ seed )
 {
+}
+
+Vector3 Builder::Scatter( Vector3 p, float rx, float rz )
+{
+	game.MarkScattered();
+	if ( game.LayoutSeed() == 0 )
+	{
+		return p;
+	}
+	return { p.x + layout.Range( -rx, rx ), p.y, p.z + layout.Range( -rz, rz ) };
 }
 
 const Biome& Builder::Look() const
@@ -1355,10 +1366,12 @@ static void LevelCarovana( Builder& b )
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 35 }, 9.0f );
 	size_t from = b.scene.entities.size();
-	float t1 = b.Tower( { -3.5f, 0, 37.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -3.5f, t1, 37.0f }, kTeal );
-	float t2 = b.Tower( { 3.5f, 0, 37.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 3.5f, t2, 37.0f }, kCrimson );
+	Vector3 p1 = b.Scatter( { -3.5f, 0, 37.0f }, 1.2f, 1.0f );
+	float t1 = b.Tower( p1, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kTeal );
+	Vector3 p2 = b.Scatter( { 3.5f, 0, 37.0f }, 1.2f, 1.0f );
+	float t2 = b.Tower( p2, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kCrimson );
 	Sandstone( b, from );
 	// a carpet drifting across in front of the towers
 	CarpetKing( b, { -5.5f, 3.2f, 31.5f }, { 5.5f, 3.2f, 31.5f }, 4.0f, 1.5f, 0.0f, kCarpetRed, kGold );
@@ -1374,12 +1387,14 @@ static void LevelVetrate( Builder& b )
 	b.Island( { 0, 0, 35 }, 9.0f );
 	// a glass front: the kings behind it are in plain view, and out of reach of anything but a lob
 	b.GlassPane( { 0, 1.4f, 32.6f }, { 4.4f, 1.4f, 0.06f } );
-	b.King( { -2.7f, 0, 35.4f }, kTeal );
-	b.King( { 2.7f, 0, 35.4f }, kCrimson );
+	// never much closer than 3 m behind the glass, or no lob can drop onto them
+	b.King( b.Scatter( { -2.7f, 0, 35.9f }, 0.7f, 0.4f ), kTeal );
+	b.King( b.Scatter( { 2.7f, 0, 35.9f }, 0.7f, 0.4f ), kCrimson );
 	size_t from = b.scene.entities.size();
-	float t = b.Tower( { 0, 0, 36.0f }, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Vector3 p = b.Scatter( { 0, 0, 36.0f }, 0.8f, 0.6f );
+	float t = b.Tower( p, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
 	Sandstone( b, from );
-	b.King( { 0, t, 36.0f }, kGold );
+	b.King( { p.x, t, p.z }, kGold );
 	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.0f );
 	b.Flag( { 4.5f, 0, 37.5f }, kGold );
 	b.Fortress( { 0, 2, 35 }, 11.0f );
@@ -1399,9 +1414,10 @@ static void LevelMontacarichi( Builder& b )
 		b.King( Vector3Add( lift->pos, { 0, 0.15f, 0 } ), s < 0 ? kTeal : kCrimson );
 	}
 	size_t from = b.scene.entities.size();
-	float t = b.Tower( { 0, 0, 36.8f }, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Vector3 p = b.Scatter( { 0, 0, 36.8f }, 1.4f, 0.7f );
+	float t = b.Tower( p, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
 	Sandstone( b, from );
-	b.King( { 0, t, 36.8f }, kGold );
+	b.King( { p.x, t, p.z }, kGold );
 	b.Trees( { 0, 0, 35 }, 9.0f, 4, 7.0f );
 	b.Flag( { -4.5f, 0, 38.0f }, kGold );
 	b.Fortress( { 0, 2, 35 }, 11.0f );
@@ -1422,7 +1438,6 @@ static void LevelTappeti( Builder& b )
 	}
 	b.GlassPane( { 3.5f, 3.6f, 34.0f }, { 1.55f, 1.3f, 0.06f } );
 	CarpetKing( b, { 0.8f, 2.8f, 35.6f }, { 6.8f, 2.8f, 35.6f }, 3.5f, 1.6f, 2.0f, kCarpetBlue, kCrimson );
-	b.ShiftingWind( 1.2f );
 	b.Trees( { 0, 0, 36 }, 9.0f, 4, 7.2f );
 	b.Flag( { 0, 0, 41.0f }, kGold );
 	b.Fortress( { 0, 3, 35 }, 11.0f );
@@ -1479,9 +1494,9 @@ static void LevelOasi( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 36 }, 10.0f );
-	OasisKing( b, { -4.2f, 0, 37.5f }, kTeal );
-	OasisKing( b, { 0.6f, 0, 40.0f }, kGold );
-	OasisKing( b, { 5.0f, 0, 37.0f }, kCrimson );
+	OasisKing( b, b.Scatter( { -4.2f, 0, 37.5f }, 0.8f, 0.8f ), kTeal );
+	OasisKing( b, b.Scatter( { 0.6f, 0, 40.0f }, 0.8f, 0.6f ), kGold );
+	OasisKing( b, b.Scatter( { 5.0f, 0, 37.0f }, 0.8f, 0.8f ), kCrimson );
 	// the pool the oasis is named after
 	b.Ledge( { 0.4f, 0.02f, 35.6f }, { 1.6f, 0.02f, 1.1f }, Mat::Ice, { 0, 0, 0, 1 }, Color{ 70, 150, 200, 255 } );
 	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.3f );
@@ -1494,27 +1509,28 @@ static void LevelTempesta( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 36 }, 10.0f );
-	// three dunes of sandstone, each king behind a heap of sandbags
-	b.Ledge( { -4.5f, 0.75f, 37.0f }, { 1.7f, 0.75f, 1.7f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
-	b.Ledge( { 0.0f, 1.25f, 39.5f }, { 1.9f, 1.25f, 1.9f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
-	b.Ledge( { 4.5f, 0.5f, 36.5f }, { 1.6f, 0.5f, 1.6f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	// three dunes of sandstone, each king behind a heap of sandbags; each dune lies somewhere else every time
+	Vector3 d1 = b.Scatter( { 0, 0, 0 }, 0.8f, 0.8f ), d2 = b.Scatter( { 0, 0, 0 }, 0.8f, 0.6f ), d3 = b.Scatter( { 0, 0, 0 }, 0.8f, 0.8f );
+	auto at = []( Vector3 d, float x, float y, float z ) { return Vector3{ x + d.x, y, z + d.z }; };
+	b.Ledge( at( d1, -4.5f, 0.75f, 37.0f ), { 1.7f, 0.75f, 1.7f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	b.Ledge( at( d2, 0.0f, 1.25f, 39.5f ), { 1.9f, 1.25f, 1.9f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	b.Ledge( at( d3, 4.5f, 0.5f, 36.5f ), { 1.6f, 0.5f, 1.6f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
 	size_t from = b.scene.entities.size();
 	b.homeY = 1.5f;
-	float t1 = b.Tower( { -4.5f, 1.5f, 37.4f }, 1, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -4.5f, t1, 37.4f }, kTeal );
-	b.SandbagWall( { -6.0f, 1.5f, 35.8f }, true, 3, 2 );
+	float t1 = b.Tower( at( d1, -4.5f, 1.5f, 37.4f ), 1, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( at( d1, -4.5f, t1, 37.4f ), kTeal );
+	b.SandbagWall( at( d1, -6.0f, 1.5f, 35.8f ), true, 3, 2 );
 	b.homeY = 2.5f;
-	b.King( { 0.0f, 2.5f, 40.0f }, kPurple );
-	b.SandbagWall( { -1.5f, 2.5f, 38.4f }, true, 3, 3 );
+	b.King( at( d2, 0.0f, 2.5f, 40.0f ), kPurple );
+	b.SandbagWall( at( d2, -1.5f, 2.5f, 38.4f ), true, 3, 3 );
 	b.homeY = 1.0f;
-	float t3 = b.Tower( { 4.5f, 1.0f, 36.9f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 4.5f, t3, 36.9f }, kCrimson );
-	b.SandbagWall( { 3.0f, 1.0f, 35.2f }, true, 3, 2 );
+	float t3 = b.Tower( at( d3, 4.5f, 1.0f, 36.9f ), 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( at( d3, 4.5f, t3, 36.9f ), kCrimson );
+	b.SandbagWall( at( d3, 3.0f, 1.0f, 35.2f ), true, 3, 2 );
 	Sandstone( b, from );
 	b.homeY = 0.0f;
 	// and one on a carpet, high over the dunes
 	CarpetKing( b, { -6.0f, 6.0f, 41.5f }, { 6.0f, 6.0f, 41.5f }, 5.0f, 1.0f, 0.0f, kCarpetBlue, kGold );
-	b.ShiftingWind( 2.0f );
 	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.3f );
 	b.Flag( { -1.0f, 0, 44.0f }, kGold );
 	b.Fortress( { 0, 3, 38 }, 12.0f );
@@ -1588,19 +1604,21 @@ static void LevelBazar( Builder& b )
 	b.Island( { 0, 0, 35 }, 9.0f );
 	// two kings on neighbouring columns of sandstone: a ball takes one, a cluster split in time takes both
 	Entity* pair[2];
+	Vector3 c = b.Scatter( { 2.2f, 0, 36.0f }, 1.0f, 1.0f );
 	for ( int i = 0; i < 2; ++i )
 	{
-		float x = 2.2f + ( i == 0 ? -0.8f : 0.8f );
-		b.Ledge( { x, 1.1f, 36.0f }, { 0.4f, 1.1f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+		float x = c.x + ( i == 0 ? -0.8f : 0.8f );
+		b.Ledge( { x, 1.1f, c.z }, { 0.4f, 1.1f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
 		b.homeY = 2.2f;
-		pair[i] = b.King( { x, 2.2f, 36.0f }, i == 0 ? kTeal : kCrimson );
+		pair[i] = b.King( { x, 2.2f, c.z }, i == 0 ? kTeal : kCrimson );
 	}
 	b.AimHint( pair[0], pair[1], { -0.8f, 0.7f, 0 } );
 	b.AimHint( pair[1], pair[0], { 0.8f, 0.7f, 0 } );
 	// the third stands well apart
-	b.Ledge( { -4.4f, 0.8f, 36.5f }, { 0.4f, 0.8f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
+	Vector3 d = b.Scatter( { -4.4f, 0, 36.5f }, 1.0f, 1.0f );
+	b.Ledge( { d.x, 0.8f, d.z }, { 0.4f, 0.8f, 0.4f }, Mat::Stone, { 0, 0, 0, 1 }, kSandstone );
 	b.homeY = 1.6f;
-	b.King( { -4.4f, 1.6f, 36.5f }, kGold );
+	b.King( { d.x, 1.6f, d.z }, kGold );
 	b.homeY = 0.0f;
 	// market stalls
 	b.Ledge( { -1.0f, 0.5f, 38.5f }, { 1.2f, 0.5f, 0.6f }, Mat::Wood, { 0, 0, 0, 1 }, Color{ 150, 105, 60, 255 } );
@@ -1634,9 +1652,9 @@ static void LevelTeche( Builder& b )
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 36 }, 9.5f );
 	// far enough apart that one vortex never reaches two cases
-	CaseKing( b, { -6.3f, 0, 35.2f }, kTeal );
-	CaseKing( b, { 0.0f, 0, 39.3f }, kGold );
-	CaseKing( b, { 6.3f, 0, 35.2f }, kCrimson );
+	CaseKing( b, b.Scatter( { -6.3f, 0, 35.2f }, 0.6f, 0.7f ), kTeal );
+	CaseKing( b, b.Scatter( { 0.0f, 0, 39.3f }, 0.8f, 0.5f ), kGold );
+	CaseKing( b, b.Scatter( { 6.3f, 0, 35.2f }, 0.6f, 0.7f ), kCrimson );
 	BackTrees( b, { 0, 0, 36 }, 8.4f );
 	b.Flag( { -3.0f, 0, 42.0f }, kGold );
 	b.Fortress( { 0, 2, 37 }, 11.0f );
@@ -1664,11 +1682,12 @@ static void LevelFrutteto( Builder& b )
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 36 }, 9.5f );
 	// two pairs and one on its own: five kings, four clusters
-	KingPair( b, { -3.8f, 0, 36.0f }, 1.6f, 1.8f, kTeal, kGreen );
-	KingPair( b, { 3.8f, 0, 36.0f }, 1.6f, 2.4f, kCrimson, kPurple );
-	float t = b.Tower( { 0, 0, 40.0f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	KingPair( b, b.Scatter( { -3.8f, 0, 36.0f }, 0.8f, 0.8f ), 1.6f, 1.8f, kTeal, kGreen );
+	KingPair( b, b.Scatter( { 3.8f, 0, 36.0f }, 0.8f, 0.8f ), 1.6f, 2.4f, kCrimson, kPurple );
+	Vector3 p = b.Scatter( { 0, 0, 40.0f }, 1.0f, 0.6f );
+	float t = b.Tower( p, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
 	b.homeY = 0.0f;
-	b.King( { 0, t, 40.0f }, kOrange );
+	b.King( { p.x, t, p.z }, kOrange );
 	BackTrees( b, { 0, 0, 36 }, 8.2f );
 	b.Flag( { 3.0f, 0, 41.0f }, kOrange );
 	b.Fortress( { 0, 2, 37 }, 11.0f );
@@ -2508,40 +2527,40 @@ static const LevelDef s_levels[] = {
 	  { 2, 0, 0, 4, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelBoschetto, "prati_boschetto" },
 	{ "La Carovana", "Benvenuto sulle Dune. Qui niente sta fermo, men che meno io.",
 	  "Il re sul tappeto volante si muove: mira dove sar\u00e0 quando arriva la palla, non dove \u00e8 adesso.",
-	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCarovana, "dune_carovana" },
+	  { 7, 0, 0, 0, 0, 0, 0 }, 3, { 0.8f, 0, 0.2f }, LevelCarovana, "dune_carovana" },
 	{ "Vetrate", "Guardami pure. Toccarmi \u00e8 un'altra faccenda.",
 	  "Il vetro cerchiato d'ottone non si rompe e non si spegne: passaci sopra, di pallonetto.",
-	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelVetrate, "dune_vetrate" },
+	  { 8, 0, 0, 0, 0, 0, 0 }, 3, { 0.6f, 0, 0.15f }, LevelVetrate, "dune_vetrate" },
 	{ "Il Montacarichi", "Su e gi\u00f9, su e gi\u00f9. Prendimi, se ci riesci.",
 	  "I re salgono e scendono dietro il muro: spara mentre salgono, la palla arriva quando sono in cima.",
-	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMontacarichi, "dune_montacarichi" },
+	  { 7, 0, 0, 0, 0, 0, 0 }, 3, { 0.8f, 0, 0.2f }, LevelMontacarichi, "dune_montacarichi" },
 	{ "Tappeti in Volo", "I miei tappeti volano pi\u00f9 alti delle tue palle. E il vento soffia per me.",
-	  "Tre re su tre tappeti. Uno passa dietro il vetro: aspetta che esca allo scoperto. Il vento cambia a ogni colpo.",
-	  { 6, 0, 0, 0, 0, 0, 0 }, 3, { 0.6f, 0, 0 }, LevelTappeti, "dune_tappeti" },
+	  "Tre re su tre tappeti. Uno passa dietro il vetro: aspetta che esca allo scoperto. E tieni conto del vento.",
+	  { 6, 0, 0, 0, 0, 0, 0 }, 3, { 1.0f, 0, 0.25f }, LevelTappeti, "dune_tappeti" },
 	{ "Miraggio", "Vedi le mie sfere? Sono un miraggio. O forse no.",
 	  "Le sfere magiche passano la barriera, ma davanti scorre una lastra di vetro: colpisci la sfera quando la lastra \u00e8 lontana.",
-	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMiraggio, "dune_miraggio" },
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0.7f, 0, 0.15f }, LevelMiraggio, "dune_miraggio" },
 	{ "L'Oasi", "All'ombra delle mie palme non mi trova nessuno.",
 	  "I cactus fermano le palle e le palme riparano dall'alto: taglia i cactus con la PALLA INCATENATA (4), poi finisci il lavoro.",
-	  { 3, 0, 0, 4, 0, 0, 0 }, 5, { 0, 0, 0 }, LevelOasi, "dune_oasi" },
+	  { 4, 0, 0, 5, 0, 0, 0 }, 5, { 0.8f, 0, 0.2f }, LevelOasi, "dune_oasi" },
 	{ "Tempesta di Sabbia", "Senti il vento? Soffia sempre dalla mia parte.",
-	  "Il vento cambia forte a ogni colpo: guarda la freccia. I sacchi inghiottono le palle, il MACIGNO (5) passa.",
-	  { 6, 1, 0, 0, 1, 0, 0 }, 4, { -1.2f, 0, 0 }, LevelTempesta, "dune_tempesta" },
+	  "Il vento soffia forte: guarda la freccia e mira controvento. I sacchi inghiottono le palle, il MACIGNO (5) passa.",
+	  { 8, 1, 0, 0, 1, 0, 0 }, 4, { 1.8f, 0, 0.4f }, LevelTempesta, "dune_tempesta" },
 	{ "Il Palazzo di Zaira", "Vetro, magia e sabbia. Il mio palazzo \u00e8 un gioiello, e io la sua perla.",
 	  "La Sultana passa dietro la facciata di vetro: spara nei varchi. Le guardie salgono e scendono, la sfera magica passa la barriera.",
-	  { 7, 2, 0, 2, 1, 0, 0 }, 5, { 0, 0, 0 }, LevelPalazzoZaira, "dune_palazzo" },
+	  { 7, 2, 0, 2, 1, 0, 0 }, 5, { 1.0f, 0, 0.25f }, LevelPalazzoZaira, "dune_palazzo" },
 	{ "Il Bazar", "Due re sulle colonne, uno in disparte. E per te, solo due colpi.",
 	  "Due colpi per tre re: il GRAPPOLO (3) si divide con SPAZIO. Aprilo poco prima delle colonne e prenderai due re insieme.",
-	  { 0, 0, 2, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelBazar, "dune_bazar" },
+	  { 0, 0, 2, 0, 0, 0, 0 }, 2, { 0.6f, 0, 0.15f }, LevelBazar, "dune_bazar" },
 	{ "Le Teche", "I miei tesori stanno sotto vetro. Me compreso.",
 	  "Nessun colpo entra nelle teche, e il vetro ferma le esplosioni. Il VORTICE (6) invece attraversa il vetro e risucchia.",
-	  { 2, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelTeche, "dune_teche" },
+	  { 2, 1, 0, 0, 0, 5, 0 }, 3, { 0.7f, 0, 0.15f }, LevelTeche, "dune_teche" },
 	{ "Il Frutteto", "Nel mio frutteto i re crescono a coppie. Raccoglili, se ci riesci.",
 	  "Cinque re e quattro grappoli: apri il GRAPPOLO (3) con SPAZIO poco prima di ogni coppia.",
 	  { 0, 0, 4, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelFrutteto, "mulini_frutteto" },
 	{ "La Cupola Stregata", "Sotto la mia cupola non entra niente. Nemmeno le tue sfere.",
 	  "La barriera ferma palle ed esplosioni, e qui non ci sono sfere magiche. Il VORTICE (6) invece la attraversa.",
-	  { 2, 1, 0, 0, 0, 3, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
+	  { 2, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -2577,7 +2596,7 @@ static std::vector<Campaign> BuildCampaigns()
 					 idx( "gelo_curling_campioni" ), idx( "gelo_reggia" ) } } );
 	c.push_back( { "Dune Sospese", "Sultana Zaira", { 225, 170, 40, 255 }, 3,
 				   "Sulle Dune Sospese la sabbia vola pi\u00f9 in alto delle isole. La Sultana Zaira si nasconde dietro montagne "
-				   "di sacchi, e il vento cambia a ogni colpo.",
+				   "di sacchi, e il vento non smette mai di soffiare.",
 				   "La tempesta di sabbia si posa. Quattro frammenti su sei.",
 				   { idx( "dune_carovana" ), idx( "dune_vetrate" ), idx( "dune_montacarichi" ), idx( "dune_tappeti" ),
 					 idx( "dune_miraggio" ), idx( "dune_bazar" ), idx( "dune_oasi" ), idx( "dune_teche" ),
