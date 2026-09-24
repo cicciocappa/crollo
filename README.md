@@ -78,7 +78,9 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 - Stelle in base ai colpi usati, bonus per le munizioni avanzate, progressi salvati.
 - Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong) con vento ambientale: ogni regno ha accordi, scala e tempo suoi
   (cadenza andalusa nei Prati Alti, fa maggiore caldo nella Valle, mi minore lento e acuto sui Picchi...).
-- Grafica: shadow mapping con PCF, materiali procedurali nello shader (venature del legno, pietra, ghiaccio con fresnel, TNT), cielo con mare di nuvole procedurale in cui gli oggetti "affondano", particelle, slow motion, screen shake.
+- Grafica: shadow mapping con PCF, materiali procedurali nello shader (venature del legno, pietra, ghiaccio con fresnel, TNT, reticolo della barriera magica), vetro trasparente disegnato in un passaggio a parte dopo gli oggetti opachi, cielo con mare di nuvole procedurale in cui gli oggetti "affondano", particelle, slow motion, screen shake.
+- **Alberi** solidi in ogni regno (querce e pini, palme e cactus nel deserto): fermano colpi ed esplosioni, e solo la palla incatenata li taglia: resta il ceppo e l'albero cade lontano dal cannone.
+- **Vento**: dove soffia è un'accelerazione costante sui proiettili, indicata da una freccia; nelle Dune è fisso e le particelle di sabbia lo seguono, in alcuni livelli di altri regni cambia a ogni colpo.
 
 ## Comandi
 
@@ -122,7 +124,7 @@ cd build-web && python3 -m http.server 8000   # poi apri http://localhost:8000
 ```
 
 Escono tre file da pubblicare insieme: `index.html` (la pagina, generata da `web/crollo.html`), `crollo.js` e
-`crollo.wasm` (~1,2 MB, con il font incorporato). Va servita da un server HTTP qualsiasi, non aperta come file.
+`crollo.wasm` (~1,4 MB, con il font incorporato). Va servita da un server HTTP qualsiasi, non aperta come file.
 La build web usa WebGL2 e gira su un solo thread (niente `SharedArrayBuffer`, quindi nessun header speciale lato server);
 i salvataggi finiscono nel `localStorage` del browser. Nel browser ESC libera il mouse e mette in pausa; un click sulla
 scena lo riaggancia.
@@ -135,7 +137,8 @@ scena lo riaggancia.
 ./build/crollo --autotest [colpi] [livello]   # headless: ogni livello (o solo quello indicato) è stabile e vincibile?
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
-./build/crollo --test-ammo                    # gomma, sacchi di sabbia, Vortice e bomba adesiva si comportano come previsto?
+./build/crollo --test-ammo                    # munizioni e materiali: gomma, sacchi, Vortice, adesiva, portoni, alberi,
+                                              # tappeto volante, vetro, teca di vetro... si comportano come previsto?
 ./build/crollo --test-campaigns               # campagne, sblocchi e migrazione dei vecchi salvataggi
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, map, select, story, outro, pause, howto, challenge)
@@ -143,7 +146,8 @@ scena lo riaggancia.
 ```
 
 Lo scanner `--scan-shots` spara un colpo singolo con ogni munizione su una griglia di 15 punti sopra la fortezza e
-segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7 e 18 è voluto: pendolo e valanga). Con `CROLLO_DEBUG=1` stampa anche l'esito di ogni singolo tiro.
+segnala con `!!` i livelli in cui un solo colpo abbatte tutti i re (nei livelli 7 e 18 è voluto: pendolo e valanga;
+oggi lo scanner lo trova solo nel 7, ma la Valanga si vince comunque con un colpo). Con `CROLLO_DEBUG=1` stampa anche l'esito di ogni singolo tiro.
 
 Nei livelli in cui i re si abbattono indirettamente (pietre da curling, sfere magiche, colonne, diga, portoni) il livello indica all'IA dove
 mirare con `Builder::AimHint`, così il test automatico e la demo del menu giocano come un giocatore che ha capito il
@@ -158,9 +162,13 @@ Con `select`, `story` e `outro` il numero del livello indica la campagna (0-5). 
 l'ordine dei livelli e delle campagne può cambiare senza perdere i progressi. I salvataggi vecchi, che usavano l'indice
 (`level 1 3`), vengono letti e riscritti nel formato nuovo al primo salvataggio.
 
-L'autotest carica ogni livello senza finestra, lascia assestare le strutture per 5 secondi (nessun re deve cadere da solo)
-e poi fa giocare un'IA che risolve la balistica in modo esatto (gravità + vento come accelerazione costante) e sceglie
-la parabola facendo *ray cast* lungo la traiettoria per evitare gli ostacoli. La stessa IA gioca la demo nel menu principale.
+L'autotest carica ogni livello senza finestra, lascia assestare le strutture per 5 secondi (20 nei livelli con
+piattaforme mobili: nessun re deve cadere da solo) e poi fa giocare un'IA che risolve la balistica in modo esatto
+(gravità + vento come accelerazione costante) e sceglie la parabola facendo *ray cast* lungo la traiettoria, anche sul
+fondo e sui fianchi della palla, per evitare gli ostacoli. Contro i bersagli mobili mira dove saranno quando arriva il
+colpo e aspetta che si apra il varco; il grappolo lo apre a pochi metri dal bersaglio. Nei livelli con i re sparsi
+l'autotest gioca la disposizione disegnata e altre cinque a caso, e le deve vincere tutte. La stessa IA gioca la demo
+nel menu principale.
 
 ## Come viene usato Box3D
 
@@ -169,7 +177,7 @@ la parabola facendo *ray cast* lungo la traiettoria per evitare gli ostacoli. La
 | Convex hull (`b3MakeTransformedBoxHull`, `b3CreateCylinder`, `b3CreateCone`, `b3CreateHull`) | blocchi, isole, re, corone, macigni irregolari |
 | Sfere, corpi multi-shape | proiettili, re (tunica + testa), cesti, pale del mulino |
 | Continuous collision (`isBullet`) | proiettili veloci che non attraversano le torri |
-| `b3World_Explode` | bombe e TNT (con reazioni a catena); con impulso negativo è il Vortice, che implode |
+| `b3World_Explode` | bombe e TNT (con reazioni a catena); con impulso negativo è il Vortice, che implode e risucchia anche attraverso vetro e barriere |
 | `explosionScale` per shape | i sacchi di sabbia ricevono solo un quarto della spinta delle esplosioni |
 | `restitution` dei materiali | la gomma restituisce circa il 90% della velocità: tiri di sponda |
 | Giunto `Weld` creato a runtime | la bomba adesiva si salda al corpo che colpisce |
@@ -180,6 +188,9 @@ la parabola facendo *ray cast* lungo la traiettoria per evitare gli ostacoli. La
 | Giunti sferici con molla | il ponte di corda |
 | Giunto rotoidale con motore | il mulino |
 | Giunto prismatico con molla e limiti | gli scudi mobili |
+| Corpi cinematici con `b3Body_SetTargetTransform` | tappeti volanti, ascensori e lastre di vetro che vanno e vengono, con pause e partenze dolci |
+| Corpi statici che diventano dinamici a runtime | l'albero tagliato: il corpo fisso sparisce, restano un ceppo statico e un albero che cade |
+| Filtri di collisione (categorie e maschere, `b3Shape_SetFilter`) | la barriera magica che lascia passare solo le sfere magiche; l'albero appena tagliato che per mezzo secondo lascia passare la catena |
 | Giunto di distanza rigido e "a corda" (molla a 0 Hz + limite) | pendolo, palla incatenata, funi delle mongolfiere, ormeggi |
 | `gravityScale` negativa, damping, forze | mongolfiere e vento sui proiettili |
 | Ray cast (`b3World_CastRayClosest`) | mira assistita e pianificazione della traiettoria dell'IA |
