@@ -11,8 +11,10 @@ riprendere lo sviluppo e che non si ricava dal codice.
   "Fatto (commit xxxxx): ...". Fino alla sessione 4 era un Claude Doc di un altro account, ora non più usato.
 - Il codice imita lo stile esistente: tab, graffe su riga propria, commenti in inglese, sobri.
 - Repository pubblico: https://github.com/cicciocappa/crollo (licenza MIT). Committa e pusha a fine sessione.
-- La versione web pubblicata come Artifact (https://claude.ai/artifact/HNRpbEuELhrBG6CQuAioQ5) si aggiorna solo
-  quando l'utente lo chiede: pagina `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm`.
+- La versione web pubblicata come Artifact (https://claude.ai/artifact/E19DY3LRznvgcrRwYuZpJY, da settembre 2026; il
+  vecchio HNRpbEuELhrBG6CQuAioQ5 era di un altro account) si aggiorna solo quando l'utente lo chiede: pagina
+  `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm` (pubblicati con `files`, il wasm come
+  `application/wasm`); da un'altra conversazione passa l'URL come `url`, o nasce un Artifact nuovo.
 
 ## Stato (fine sessione 6, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
