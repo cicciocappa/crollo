@@ -48,6 +48,8 @@ enum class Geo : uint8_t
 	Sphere,
 	Capsule,
 	Hull,
+	Cylinder, // localPos is the centre of the base; size: radius x, height y
+	Cone,	  // same as the cylinder, narrowing to a point
 };
 
 struct MatProps
@@ -97,6 +99,10 @@ struct Entity
 	bool breakQueued = false; // ice shatter
 	bool lethal = false;	  // heavy stones, snowballs, collapsing roofs: knock down any king they strike
 	bool reinforced = false;  // iron-banded masonry: fixed, and only the boulder breaks it
+	float tree = 0.0f;		  // > 0: a standing tree of this size, fixed until a chain shot fells it
+	bool pine = false;
+	Color leaf{};
+	float ghost = 0.0f;		  // seconds before a felled tree starts colliding with shots again
 	float flash = 0.0f;		  // hit flash for rendering
 
 	// king
@@ -271,6 +277,10 @@ public:
 	const b3HullData* Cylinder( float height, float radius, float yOffset, int sides );
 	const b3HullData* Cone( float height, float radiusBottom, float radiusTop, int slices );
 	const b3HullData* RockHull( float radius, uint32_t seed );
+
+	// Shapes and parts of a tree whose base is at the body origin, from height `cut` up
+	// (0 = the whole tree; above 0 the trunk starts at the origin, for a tree felled at that height).
+	void AddTree( Entity* e, float scale, bool pine, Color leaf, float cut, const ShapeOptions& opt );
 
 	// Joints and ropes
 	Rope& AddRope( b3BodyId a, Vector3 worldA, b3BodyId b, Vector3 worldB, float radius, Color color );

@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **27 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **28 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -41,12 +41,13 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   25. *Due Mulini*: due mulini che girano in versi opposti, vento variabile.
   26. *Sponda Magica*: una sfera magica da mandare sul re di sponda, su un pannello di gomma.
   27. *Il Palazzo di Ottavia*: il finale della Valle dei Mulini, con tutto quello che la valle ha insegnato.
+  28. *Il Boschetto*: tre re nascosti dietro i pini, sotto le chiome delle querce: gli **alberi** fermano palle ed esplosioni e solo la palla incatenata li taglia.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
   in ordine. Un prologo accoglie la prima visita, un epilogo chiude l'ultimo livello, e i sottotitoli dei livelli sono le
   provocazioni del re di turno.
-  - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 5, 8, 13, 14 e 10 come finale.
+  - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 28, 5, 8, 13, 14 e 10 come finale.
   - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 23, 25, 9, 26 e 27 come finale — tramonto, foglie al vento.
   - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
   - *Dune Sospese*, *Arcipelago delle Tempeste*, *Fucina del Vulcano*: in arrivo. I biomi sono già pronti e si vedono
@@ -54,7 +55,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
   il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
-- **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).
+- **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano, l'unica che taglia gli alberi), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).
 - **Replay del colpo decisivo**: dopo ogni vittoria il colpo viene *ri-simulato* dalla registrazione deterministica di Box3D e mostrato al rallentatore con una telecamera cinematografica (vedi sotto).
 - Stelle in base ai colpi usati, bonus per le munizioni avanzate, progressi salvati.
 - Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong) con vento ambientale: ogni regno ha accordi, scala e tempo suoi

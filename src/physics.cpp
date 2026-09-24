@@ -395,6 +395,72 @@ const b3HullData* Scene::RockHull( float radius, uint32_t seed )
 	return h;
 }
 
+void Scene::AddTree( Entity* e, float scale, bool pine, Color leaf, float cut, const ShapeOptions& opt )
+{
+	float s = scale;
+	float height = ( pine ? 0.8f : 1.6f ) * s;
+	float radius = ( pine ? 0.12f : 0.14f ) * s;
+	auto at = [&]( float x, float y, float z ) { return Vector3{ x * s, y * s - cut, z * s }; };
+
+	// the trunk: a capsule inside, a cylinder to look at
+	float length = height - cut;
+	if ( length > 0.05f )
+	{
+		ShapeOptions trunk = opt;
+		trunk.visible = false;
+		float half = std::max( 0.0f, length * 0.5f - radius );
+		AddCapsule( e, { 0, length * 0.5f, 0 }, radius, half, Mat::Wood, trunk );
+		Part p;
+		p.geo = Geo::Cylinder;
+		p.size = { radius, length, radius };
+		p.mat = Mat::Wood;
+		p.tint = pine ? Color{ 100, 70, 45, 255 } : Color{ 110, 76, 48, 255 };
+		AddVisual( e, p );
+		if ( cut > 0.0f )
+		{
+			// the fresh cut at the bottom
+			p.localPos = { 0, -0.01f, 0 };
+			p.size = { radius * 0.8f, 0.01f, radius * 0.8f };
+			p.mat = Mat::Plain;
+			p.tint = Color{ 222, 190, 140, 255 };
+			AddVisual( e, p );
+		}
+	}
+
+	// the leaves are light
+	ShapeOptions leaves = opt;
+	leaves.densityScale = opt.densityScale * 0.12f;
+	if ( pine )
+	{
+		leaves.visible = false;
+		Vector3 base = at( 0, 0.6f, 0 );
+		AddHull( e, base, b3Quat_identity, Cone( 2.4f * s, 0.95f * s, 0.06f * s, 10 ), Mat::Plain, leaves );
+		for ( int i = 0; i < 3; ++i )
+		{
+			float r = ( 0.95f - i * 0.25f ) * s;
+			Part p;
+			p.geo = Geo::Cone;
+			p.localPos = at( 0, 0.6f + i * 0.65f, 0 );
+			p.size = { r, 1.1f * s, r };
+			p.mat = Mat::Plain;
+			p.tint = ColorBrightness( leaf, -0.08f * i );
+			AddVisual( e, p );
+		}
+	}
+	else
+	{
+		AddSphere( e, at( 0, 2.0f, 0 ), 0.9f * s, Mat::Plain, leaves );
+		e->parts.back().tint = leaf;
+		AddSphere( e, at( 0.55f, 1.65f, 0.2f ), 0.6f * s, Mat::Plain, leaves );
+		e->parts.back().tint = ColorBrightness( leaf, -0.1f );
+		AddSphere( e, at( -0.45f, 1.75f, -0.3f ), 0.62f * s, Mat::Plain, leaves );
+		e->parts.back().tint = ColorBrightness( leaf, 0.08f );
+	}
+	e->tree = scale;
+	e->pine = pine;
+	e->leaf = leaf;
+}
+
 Rope& Scene::AddRope( b3BodyId a, Vector3 worldA, b3BodyId b, Vector3 worldB, float radius, Color color )
 {
 	Rope r;

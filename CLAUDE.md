@@ -14,15 +14,17 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - La versione web pubblicata come Artifact (https://claude.ai/artifact/HNRpbEuELhrBG6CQuAioQ5) si aggiorna solo
   quando l'utente lo chiede: pagina `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm`.
 
-## Stato (fine sessione 5, settembre 2026)
+## Stato (fine sessione 5c, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 27 livelli. Campagne: Prati Alti 8, Valle dei Mulini 8, Picchi Gelati 11; Dune Sospese, Arcipelago delle Tempeste e
+- 28 livelli. Campagne: Prati Alti 9, Valle dei Mulini 8, Picchi Gelati 11; Dune Sospese, Arcipelago delle Tempeste e
   Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
-- Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche. Prossima: sessione 6 (Dune Sospese).
-  Poi versione mobile (10); multiplayer alla fine (11+).
+- Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche.
+- Sessione 5c fatta: alberi solidi che solo la palla incatenata taglia (prima la catena era un doppione della palla),
+  livello Il Boschetto nei Prati Alti; la telecamera che segue la catena oscilla sempre meno.
+- Prossima: sessione 6 (Dune Sospese). Poi versione mobile (10); multiplayer alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
@@ -30,7 +32,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 27/27); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 28/28); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18)
 ./build/crollo --autotest-challenge     # 30/30
 ./build/crollo --test-shields           # 16/16
@@ -75,6 +77,13 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - Nei test (headless) `FxRng` riparte dallo stesso seme a ogni livello: un livello dà lo stesso esito da solo
   (`--autotest 12 N`) o nella serie completa. L'IA sceglie il re a caso con `FxRng`: i boss (Reggia) sono al limite.
 - Stabilità: il livello deve stare in piedi da solo (l'autotest controlla i primi 5 s); lascialo anche 15 s con `--shot`.
+- **Alberi**: tutti quelli del Builder (`Tree`, `Trees`, isola del cannone) sono corpi statici (`Entity::tree` > 0): fermano
+  palle, macigni ed esplosioni; solo la catena li taglia (`Game::FellTree`: ceppo statico + albero dinamico, letale, che
+  per 0,5 s lascia passare i colpi). `Builder::Tree` non crea l'albero se toccherebbe blocchi o re (restituisce nullptr:
+  controllalo prima di `AimHint`). Cactus e palme delle Dune andranno fatti allo stesso modo, per coerenza.
+- Riparo per un re a terra (`GroveKing` nel Boschetto): pino davanti a 1,85 m (i rami bassi sporgono 1,4 m a 0,9 m
+  d'altezza), chioma di quercia sopra la testa contro i pallonetti, catasta sotto i rami. Contro la palla regge in una
+  griglia di 33.000 tiri; lo 0,3% abbatte un re *diverso* di rimbalzo, rotolando sull'isola.
 - Web: `EXPORTED_RUNTIME_METHODS=HEAPF32`; nei test di input via browser tieni premuti tasti e click ~120 ms.
 
 ## Nuovo PC

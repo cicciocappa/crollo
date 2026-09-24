@@ -103,7 +103,14 @@ void Builder::PlayerIsland( Vector3 pos, float yaw )
 		d.scale = scale;
 		d.rot = rng.Range( 0.0f, 6.28f );
 		d.color = c;
-		game.AddDecoration( d );
+		if ( t == Decoration::Tree || t == Decoration::Pine )
+		{
+			Tree( d.pos, d.scale, t == Decoration::Pine, d.color, d.rot );
+		}
+		else
+		{
+			game.AddDecoration( d );
+		}
 	};
 	// keep the trees out of the aiming camera's view: far to the sides or behind it
 	const Biome& look = Look();
@@ -990,16 +997,72 @@ void Builder::Trees( Vector3 center, float radius, int count, float minR )
 	{
 		float a = rng.Range( 0.0f, 2.0f * PI );
 		float r = rng.Range( minR, radius - 0.8f );
-		Decoration d;
 		// draw the same random numbers in every realm so a level's layout never depends on its look
 		bool pine = rng.Float() < 0.5f;
-		d.type = pine || Look().pinesOnly ? Decoration::Pine : Decoration::Tree;
-		d.pos = { center.x + cosf( a ) * r, center.y, center.z + sinf( a ) * r };
-		d.scale = rng.Range( 0.7f, 1.2f );
-		d.rot = rng.Range( 0.0f, 6.28f );
-		d.color = ColorMix( Look().leafA, Look().leafB, rng.Float() );
-		game.AddDecoration( d );
+		Vector3 base = { center.x + cosf( a ) * r, center.y, center.z + sinf( a ) * r };
+		float scale = rng.Range( 0.7f, 1.2f );
+		float yaw = rng.Range( 0.0f, 6.28f );
+		Tree( base, scale, pine || Look().pinesOnly, ColorMix( Look().leafA, Look().leafB, rng.Float() ), yaw );
 	}
+}
+
+static bool TreeOverlapFound( b3ShapeId shapeId, void* context )
+{
+	(void)shapeId;
+	*(bool*)context = true;
+	return false;
+}
+
+Entity* Builder::Tree( Vector3 base, float scale, bool pine, Color leaf, float yaw )
+{
+	// a fixed tree grown into a tower would shove it over: leave that one out
+	float s = scale;
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.categoryBits = CatStatic;
+	filter.maskBits = CatBlock | CatKing;
+	bool found = false;
+	auto probe = [&]( std::initializer_list<Vector3> points, float radius ) {
+		b3Vec3 p[12];
+		int n = 0;
+		for ( Vector3 v : points )
+		{
+			p[n++] = ToB3( v );
+		}
+		b3ShapeProxy proxy{ p, n, radius };
+		b3World_OverlapShape( scene.World(), ToB3( base ), &proxy, filter, TreeOverlapFound, &found );
+	};
+	if ( pine )
+	{
+		probe( { { 0, 0.2f * s, 0 }, { 0, 0.8f * s, 0 } }, 0.12f * s );
+		float r = 0.95f * s, y = 0.6f * s;
+		probe( { { r, y, 0 }, { -r, y, 0 }, { 0, y, r }, { 0, y, -r }, { r * 0.7f, y, r * 0.7f }, { -r * 0.7f, y, r * 0.7f },
+				 { r * 0.7f, y, -r * 0.7f }, { -r * 0.7f, y, -r * 0.7f }, { 0, 3.0f * s, 0 } },
+			   0.0f );
+	}
+	else
+	{
+		Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
+		probe( { { 0, 0.2f * s, 0 }, { 0, 1.6f * s, 0 } }, 0.14f * s );
+		probe( { { 0, 2.0f * s, 0 } }, 0.9f * s );
+		probe( { Vector3RotateByQuaternion( { 0.55f * s, 1.65f * s, 0.2f * s }, q ) }, 0.6f * s );
+		probe( { Vector3RotateByQuaternion( { -0.45f * s, 1.75f * s, -0.3f * s }, q ) }, 0.62f * s );
+	}
+	if ( found )
+	{
+		if ( getenv( "CROLLO_DEBUG" ) )
+			fprintf( stderr, "albero tolto a %.1f %.1f %.1f: toccherebbe una costruzione\n", base.x, base.y, base.z );
+		return nullptr;
+	}
+
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Static, Mat::Wood, base, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatStatic;
+	so.hitEvents = true;
+	scene.AddTree( e, scale, pine, leaf, 0.0f, so );
+	scene.FinalizeEntity( e );
+	return e;
 }
 
 void Builder::Flag( Vector3 base, Color color, float scale )
@@ -1070,6 +1133,58 @@ static void Level03( Builder& b )
 	b.Flag( { -8.5f, 0, 32.0f }, kGreen );
 	b.Flag( { 8.5f, 0, 32.0f }, kOrange );
 	b.Fortress( { 0, 2, 34 }, 13.0f );
+}
+
+// A king hidden in the woods: a pine in front of him, the crown of an oak over his head against lobs, and a
+// woodpile under the pine's low branches. Only the chain shot cuts the pine down, and it falls on him.
+static void GroveKing( Builder& b, Vector3 feet, Color robe )
+{
+	Vector3 toCannon = Vector3Normalize( { -feet.x, 0.0f, -feet.z } );
+	float yaw = atan2f( toCannon.x, toCannon.z );
+	auto ahead = [&]( float d ) { return Vector3Add( feet, Vector3Scale( toCannon, d ) ); };
+	const Biome& look = b.Look();
+	Entity* king = b.King( feet, robe );
+	b.Tree( ahead( -0.75f ), 1.7f, false, ColorMix( look.leafA, look.leafB, 0.3f ), yaw );
+	// the pine's lowest branches spread 1.4 m and hang 0.9 m up: the king stands just clear of them, and the
+	// woodpile closes the gap underneath
+	Entity* pine = b.Tree( ahead( 1.85f ), 1.5f, true, ColorMix( look.leafA, look.leafB, 0.8f ), yaw );
+	Vector3 pile = ahead( 3.6f );
+	Entity* logs = b.Ledge( { pile.x, pile.y + 0.5f, pile.z }, { 1.3f, 0.5f, 0.3f }, Mat::Wood, QuaternionFromAxisAngle( { 0, 1, 0 }, yaw ) );
+	// drawn as logs stacked three high and two deep
+	logs->parts.back().visible = false;
+	for ( int row = 0; row < 3; ++row )
+	{
+		for ( int k = 0; k < 2; ++k )
+		{
+			Part log;
+			log.geo = Geo::Cylinder;
+			float r = 0.165f;
+			log.localPos = { -1.3f + b.rng.Range( -0.08f, 0.08f ), -0.5f + r + row * 2.0f * r, ( k == 0 ? -0.15f : 0.15f ) };
+			log.localRot = QuaternionFromAxisAngle( { 0, 0, 1 }, -PI * 0.5f );
+			log.size = { r, 2.6f, r };
+			log.mat = Mat::Wood;
+			log.tint = ColorBrightness( Color{ 140, 98, 60, 255 }, b.rng.Range( -0.12f, 0.08f ) );
+			b.scene.AddVisual( logs, log );
+		}
+	}
+	b.scene.FinalizeEntity( logs );
+	if ( pine )
+	{
+		b.AimHint( king, pine, { 0, 2.0f, 0 } );
+	}
+}
+
+static void LevelBoschetto( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	GroveKing( b, { -4.2f, 0, 37.5f }, kGreen );
+	GroveKing( b, { 0.6f, 0, 40.0f }, kPurple );
+	GroveKing( b, { 5.0f, 0, 37.0f }, kOrange );
+	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.2f );
+	b.Flag( { 1.5f, 0, 43.0f }, kPurple );
+	b.Fortress( { 0.5f, 2, 38 }, 11.0f );
 }
 
 static void Level04( Builder& b )
@@ -1809,7 +1924,7 @@ static const LevelDef s_levels[] = {
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01, "prati_primo_colpo" },
 	{ "Mura di Pietra", "Tre re, due in vista. Il terzo? Segreto di stato.", "Conta le corone: un re si nasconde. Premi TAB per guardare dietro le mura. La BOMBA (2) esplode all'impatto.",
 	  { 5, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02, "prati_mura" },
-	{ "Il Ponte", "Il mio ponte regge un re. Anche due, se stanno fermi.", "La PALLA INCATENATA (tasto 4) spazza tutto. Le corde si spezzano!",
+	{ "Il Ponte", "Il mio ponte regge un re. Anche due, se stanno fermi.", "La PALLA INCATENATA (tasto 4) spazza tutto: spezza le corde e taglia gli alberi!",
 	  { 3, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03, "prati_ponte" },
 	{ "Palazzo di Ghiaccio", "Le mie torri di ghiaccio non si sciolgono, figuriamoci sotto le tue palle di ferro.", "Il ghiaccio si frantuma. Il GRAPPOLO (tasto 3) si divide con SPAZIO.",
 	  { 3, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, Level04, "gelo_palazzo" },
@@ -1874,6 +1989,9 @@ static const LevelDef s_levels[] = {
 	{ "Il Palazzo di Ottavia", "Mulini, magie, ferro e vento: il mio palazzo ha tutto. Tranne una porta per te.",
 	  "La regina è dietro il portone di ferro: serve il MACIGNO (5), nel varco del muro che scorre. Il vento cambia a ogni colpo.",
 	  { 4, 0, 0, 0, 2, 0, 0 }, 5, { 0.8f, 0, 0 }, LevelPalazzoOttavia, "mulini_palazzo" },
+	{ "Il Boschetto", "Nel mio boschetto nessuno mi trova. Nemmeno le tue palle di ferro.",
+	  "Le palle rimbalzano sui tronchi: solo la PALLA INCATENATA (4) taglia gli alberi. Premi TAB per trovare i re nascosti.",
+	  { 2, 0, 0, 4, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelBoschetto, "prati_boschetto" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -1890,7 +2008,7 @@ static std::vector<Campaign> BuildCampaigns()
 				   "Mastra Bombarda carica il cannone. Si parte dai Prati Alti, dove regna Re Bernardo il Tondo.",
 				   "Re Bernardo rotola gi\u00f9 dalla sua cittadella e il primo frammento della Corona torna a brillare. "
 				   "L'isola di Mastra Bombarda risale di qualche metro. Verso ovest, il vento porta il cigolio di cento mulini.",
-				   { idx( "prati_primo_colpo" ), idx( "prati_mura" ), idx( "prati_ponte" ), idx( "prati_mongolfiere" ),
+				   { idx( "prati_primo_colpo" ), idx( "prati_mura" ), idx( "prati_ponte" ), idx( "prati_boschetto" ), idx( "prati_mongolfiere" ),
 					 idx( "prati_polveriera" ), idx( "prati_gomma" ), idx( "prati_bunker" ), idx( "prati_cittadella" ) } } );
 	c.push_back( { "Valle dei Mulini", "Regina Ottavia", kOrange, 1,
 				   "Nella Valle dei Mulini il tramonto non finisce mai. La Regina Ottavia ha costruito difese che si muovono: "

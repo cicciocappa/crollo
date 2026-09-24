@@ -907,6 +907,12 @@ void Renderer::AddParts( const std::vector<Part>& parts, Vector3 pos, Quaternion
 				item.scale = { 1, 1, 1 };
 				item.model = ComposeTRS( wp, wr, { 1, 1, 1 } );
 				break;
+			case Geo::Cylinder:
+			case Geo::Cone:
+				item.mesh = part.geo == Geo::Cylinder ? &m_cylinder : &m_cone;
+				item.scale = part.size;
+				item.model = ComposeTRS( wp, wr, part.size );
+				break;
 		}
 		m_items.push_back( item );
 	}

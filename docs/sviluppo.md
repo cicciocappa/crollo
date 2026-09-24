@@ -68,7 +68,9 @@ Tutte le misure sono in metri, con l'asse Y verso l'alto. Il cannone sta nell'or
 | `Windmill(base, altezza, pale, velocità)` | mulino con motore | entità (pale) |
 | `Slider(centro, mezze_misure, asse, ampiezza, velocità, fase, materiale)` | lastra che scorre su guide | entità |
 | `BalloonBasket(centro, colore, veste)` | re in un cesto sotto un pallone | entità (pallone) |
-| `Trees(...)`, `Flag(...)` | decorazioni senza fisica | — |
+| `Tree(base, scala, pino, colore, yaw)` | albero fisso: ferma colpi ed esplosioni, solo la catena lo taglia (non nasce dove toccherebbe una costruzione) | entità (o nulla) |
+| `Trees(...)` | alberi sparsi su un anello attorno all'isola | — |
+| `Flag(...)` | decorazione senza fisica | — |
 | `Fortress(centro, raggio)` | dove guardano telecamere e ombre (obbligatorio) | — |
 
 Materiali disponibili per i blocchi: `Wood`, `Stone`, `Ice` (si frantuma), `Tnt` (esplode), `Metal`.

@@ -291,6 +291,7 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	m_winStep = -1;
 	m_impactStep = -1;
 	m_shotSerials.clear();
+	m_shotPartner = 0;
 	m_replayEvents.clear();
 
 	// the previous level's hulls are freed with its world, so their cached meshes must go too
@@ -843,13 +844,20 @@ void Game::TestCampaigns()
 	check( ContinueLevel() == c0.levels[0], "CONTINUA parte dal primo livello" );
 	m_progress.stars[c0.levels[0]] = 1;
 	check( LevelUnlocked( c0.levels[1] ) && ContinueLevel() == c0.levels[1], "vincere apre il livello dopo" );
-	for ( int i = 0; i < (int)c0.levels.size(); ++i )
-	{
-		m_progress.stars[c0.levels[i]] = i < 5 ? 2 : 0; // 10 stars
-	}
-	check( CampaignUnlocked( 1 ) == false, "10 stelle su 24 non bastano" );
-	m_progress.stars[c0.levels[5]] = 2; // 12 stars
-	check( CampaignUnlocked( 1 ) && StarsToUnlock( 1 ) == 12, "12 stelle su 24 aprono la Valle dei Mulini" );
+	// half the stars of the Prati Alti, rounded up, open the next realm
+	int need = StarsToUnlock( 1 );
+	auto spread = [&]( int total ) {
+		for ( int l : c0.levels )
+		{
+			m_progress.stars[l] = std::min( 2, total );
+			total -= m_progress.stars[l];
+		}
+	};
+	spread( need - 1 );
+	check( CampaignUnlocked( 1 ) == false, TextFormat( "%d stelle su %d non bastano", need - 1, CampaignMaxStars( 0 ) ) );
+	spread( need );
+	check( CampaignUnlocked( 1 ) && need == ( CampaignMaxStars( 0 ) + 1 ) / 2,
+		   TextFormat( "%d stelle su %d aprono la Valle dei Mulini", need, CampaignMaxStars( 0 ) ) );
 	check( CampaignUnlocked( 3 ) == false, "le campagne senza livelli restano chiuse" );
 	check( CampaignUnlocked( 2 ) == false, "i Picchi Gelati chiusi senza stelle nella Valle dei Mulini" );
 	m_progress.stars[GetCampaign( 2 ).levels[0]] = 1;
@@ -1014,6 +1022,7 @@ void Game::Fire()
 	RestartRecording();
 	FireProjectile( type, Muzzle(), AimDir(), LaunchSpeed() );
 	m_shotSerials.clear();
+	m_shotPartner = m_focus && m_focus->partner ? m_focus->partner->serial : 0;
 	if ( m_focus )
 	{
 		m_shotSerials.push_back( m_focus->serial );
@@ -1586,6 +1595,82 @@ void Game::Crumble( Entity* e )
 	AddScore( 500, pos, false );
 }
 
+void Game::FellTree( Entity* e )
+{
+	if ( e == nullptr || e->alive == false )
+	{
+		return;
+	}
+	Vector3 base = e->pos;
+	Quaternion rot = e->rot;
+	float scale = e->tree;
+	bool pine = e->pine;
+	Color leaf = e->leaf;
+	Vector3 blow = ToRl( e->lastVel );
+	Kill( e );
+
+	// the stump stays where it was
+	float cut = 0.3f * scale;
+	BodyOptions sb;
+	sb.type = b3_staticBody;
+	Entity* stump = m_scene.CreateEntity( Kind::Static, Mat::Wood, base, ToB3( rot ), sb );
+	float radius = ( pine ? 0.12f : 0.14f ) * scale;
+	ShapeOptions so;
+	so.category = CatStatic;
+	so.visible = false;
+	m_scene.AddBox( stump, { 0, cut * 0.5f - 0.02f, 0 }, b3Quat_identity, { radius * 0.9f, cut * 0.5f - 0.02f, radius * 0.9f }, Mat::Wood, so );
+	Part p;
+	p.geo = Geo::Cylinder;
+	p.size = { radius, cut, radius };
+	p.mat = Mat::Wood;
+	p.tint = pine ? Color{ 100, 70, 45, 255 } : Color{ 110, 76, 48, 255 };
+	m_scene.AddVisual( stump, p );
+	Part ring = p;
+	ring.localPos = { 0, cut, 0 };
+	ring.size = { radius * 0.8f, 0.01f, radius * 0.8f };
+	ring.mat = Mat::Plain;
+	ring.tint = Color{ 222, 190, 140, 255 };
+	m_scene.AddVisual( stump, ring );
+	m_scene.FinalizeEntity( stump );
+
+	// the rest topples over the way the chain was going, pivoting on the stump. It lets the shot that
+	// cut it through for a moment, then it is solid again, and heavy enough to knock a king down.
+	Vector3 dir = { blow.x, 0.0f, blow.z };
+	dir = Vector3Length( dir ) > 0.1f ? Vector3Normalize( dir ) : Vector3{ 0, 0, 1 };
+	Vector3 cutPoint = Vector3Add( base, Vector3RotateByQuaternion( { 0, cut, 0 }, rot ) );
+	BodyOptions bo;
+	bo.angularDamping = 0.3f;
+	Entity* t = m_scene.CreateEntity( Kind::Block, Mat::Wood, cutPoint, ToB3( rot ), bo );
+	ShapeOptions to;
+	to.category = CatBlock;
+	to.mask = CatAll & ~(uint64_t)CatProjectile;
+	m_scene.AddTree( t, scale, pine, leaf, cut, to );
+	t->tree = 0.0f;
+	t->lethal = true;
+	t->ghost = 0.5f;
+	t->homeY = -1000.0f;
+	m_scene.FinalizeEntity( t );
+	Vector3 omega = Vector3Scale( Vector3CrossProduct( { 0, 1, 0 }, dir ), 1.3f );
+	Vector3 arm = Vector3Subtract( ToRl( b3Body_GetWorldCenter( t->body ) ), cutPoint );
+	b3Body_SetAngularVelocity( t->body, ToB3( omega ) );
+	b3Body_SetLinearVelocity( t->body, ToB3( Vector3Add( Vector3CrossProduct( omega, arm ), Vector3Scale( dir, 0.6f ) ) ) );
+
+	AddReplayEvent( ReplayEvent::Fell, cutPoint, { leaf.r / 255.0f, leaf.g / 255.0f, leaf.b / 255.0f }, scale );
+	TreeFallEffects( cutPoint, leaf, scale );
+	AddScore( 300, cutPoint, false );
+}
+
+void Game::TreeFallEffects( Vector3 cutPoint, Color leaf, float scale )
+{
+	m_particles.Debris( cutPoint, Color{ 186, 140, 90, 255 }, 14, 4.0f, 0.07f );
+	m_particles.Debris( Vector3Add( cutPoint, { 0, 1.6f * scale, 0 } ), leaf, 18, 3.0f, 0.1f );
+	if ( m_audio )
+	{
+		m_audio->PlayAt( Sfx::WoodHit, cutPoint, 1.0f, 0.6f );
+		m_audio->PlayAt( Sfx::RopeSnap, cutPoint, 0.8f, 0.65f );
+	}
+}
+
 void Game::BreakBlades( Entity* blades )
 {
 	for ( Mechanism& m : m_scene.mechanisms )
@@ -1750,6 +1835,22 @@ void Game::FixedStep()
 			continue;
 		}
 		e->age += dt;
+		if ( e->ghost > 0.0f )
+		{
+			// a felled tree has let the chain through: from now on it stops shots again
+			e->ghost -= dt;
+			if ( e->ghost <= 0.0f )
+			{
+				b3ShapeId shapes[8];
+				int n = b3Body_GetShapes( e->body, shapes, 8 );
+				for ( int k = 0; k < n; ++k )
+				{
+					b3Filter f = b3Shape_GetFilter( shapes[k] );
+					f.maskBits = CatAll;
+					b3Shape_SetFilter( shapes[k], f, true );
+				}
+			}
+		}
 
 		if ( e->pos.y < -45.0f )
 		{
@@ -1906,7 +2007,7 @@ void Game::HandleEvents()
 			if ( struck->isStatic && other->kind == Kind::Projectile )
 			{
 				bool keeps = struck->mat == Mat::Shield || struck->mat == Mat::Rubber || struck->mat == Mat::Sand || struck->mat == Mat::Magic;
-				m = keeps ? struck->mat : Mat::Rock;
+				m = keeps || struck->tree > 0.0f ? struck->mat : Mat::Rock;
 			}
 			HitEffects( h.point, h.speed, m, std::max( a->mass, b->mass ), true );
 		}
@@ -1930,7 +2031,9 @@ void Game::HandleEvents()
 					{
 						m_focusLast = h.point;
 					}
-					if ( m_impactStep < 0 && std::find( m_shotSerials.begin(), m_shotSerials.end(), x->serial ) != m_shotSerials.end() )
+					bool shot = std::find( m_shotSerials.begin(), m_shotSerials.end(), x->serial ) != m_shotSerials.end() ||
+								( m_shotPartner > 0 && x->serial == m_shotPartner );
+					if ( m_impactStep < 0 && shot )
 					{
 						m_impactStep = m_scene.stepCount;
 						m_impactPoint = h.point;
@@ -1977,6 +2080,15 @@ void Game::HandleEvents()
 				{
 					BreakBlades( x );
 				}
+			}
+
+			// only the chain shot cuts down a tree, and it swings on through
+			bool chain = other->kind == Kind::Projectile && other->ammo == (int)Ammo::Chain && h.speed > 5.0f;
+			if ( chain && x->tree > 0.0f && x->isStatic && x->breakQueued == false )
+			{
+				x->breakQueued = true;
+				x->lastVel = other->lastVel;
+				b3Body_SetLinearVelocity( other->body, b3MulSV( 0.75f, other->lastVel ) );
 			}
 
 			if ( x->kind == Kind::Block && x->mat == Mat::Tnt && h.speed > 4.5f && x->fuse < 0.0f )
@@ -2065,6 +2177,10 @@ void Game::HandleEvents()
 			if ( e->reinforced )
 			{
 				Crumble( e );
+			}
+			else if ( e->tree > 0.0f )
+			{
+				FellTree( e );
 			}
 			else
 			{
@@ -2817,20 +2933,40 @@ bool Game::AutoFireAtKing()
 		{
 			ironWalls += e->alive && e->reinforced ? 1 : 0;
 		}
-		if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
+		// and only the chain shot fells the trees the kings hide behind
+		int shelters = 0;
+		for ( const AimHintRecord& h : m_aimHints )
 		{
-			type = Ammo::Boulder;
+			for ( const Entity* e : m_scene.entities )
+			{
+				shelters += e->serial == h.via && e->alive && e->tree > 0.0f && e->isStatic ? 1 : 0;
+			}
 		}
-		else if ( type == Ammo::Boulder && m_ammo[(int)Ammo::Boulder] <= ironWalls )
-		{
+		auto spare = [&]( Ammo keep ) {
 			for ( int i = 0; i < (int)Ammo::Count; ++i )
 			{
-				if ( i != (int)Ammo::Boulder && m_ammo[i] > 0 )
+				if ( i != (int)keep && m_ammo[i] > 0 )
 				{
 					type = (Ammo)i;
 					break;
 				}
 			}
+		};
+		if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
+		{
+			type = Ammo::Boulder;
+		}
+		else if ( goal->tree > 0.0f && m_ammo[(int)Ammo::Chain] > 0 )
+		{
+			type = Ammo::Chain;
+		}
+		else if ( type == Ammo::Boulder && m_ammo[(int)Ammo::Boulder] <= ironWalls )
+		{
+			spare( Ammo::Boulder );
+		}
+		else if ( type == Ammo::Chain && m_ammo[(int)Ammo::Chain] <= shelters )
+		{
+			spare( Ammo::Chain );
 		}
 	}
 
@@ -3009,6 +3145,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	if ( m_attract == false )
 	{
 		m_shotSerials.clear();
+		m_shotPartner = m_focus && m_focus->partner ? m_focus->partner->serial : 0;
 		if ( m_focus )
 		{
 			m_shotSerials.push_back( m_focus->serial );
@@ -3205,6 +3342,13 @@ void Game::UpdatePlaying( float dt )
 	UpdateCamera( dt );
 }
 
+// How much a camera riding a chain shot still swings with the ball it follows: all of it at the start,
+// fading to nothing within a couple of seconds.
+static float ChainSwing( float t )
+{
+	return expf( -1.1f * std::max( 0.0f, t ) );
+}
+
 void Game::UpdateCamera( float dt )
 {
 	Vector3 up{ 0, 1, 0 };
@@ -3262,6 +3406,16 @@ void Game::UpdateCamera( float dt )
 			{
 				Vector3 p = m_focus->pos;
 				Vector3 v = ToRl( b3Body_GetLinearVelocity( m_focus->body ) );
+				if ( m_focus->partner != nullptr && m_focus->partner->alive )
+				{
+					// a chain shot: riding one ball makes the view swing with the spin. Keep the swing at the
+					// start, then settle on the middle of the chain.
+					float w = ChainSwing( m_followTime );
+					Vector3 mid = Vector3Lerp( p, m_focus->partner->pos, 0.5f );
+					Vector3 vMid = Vector3Lerp( v, ToRl( b3Body_GetLinearVelocity( m_focus->partner->body ) ), 0.5f );
+					p = Vector3Lerp( mid, p, w );
+					v = Vector3Lerp( vMid, v, w );
+				}
 				Vector3 vf = Vector3Normalize( { v.x, 0.0f, v.z } );
 				desiredPos = Vector3Add( Vector3Add( p, Vector3Scale( vf, -7.5f ) ), { 0, 2.6f, 0 } );
 				desiredTarget = Vector3Add( p, Vector3Scale( v, 0.12f ) );
@@ -3721,6 +3875,44 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Portone rinforzato: palla -> %s, macigno -> %s e la regina %s -> %s\n", ball.first ? "regge" : "crolla",
 				boulder.first ? "regge" : "crolla", boulder.second ? "cade" : "resta in piedi",
 				ball.first && boulder.first == false && boulder.second ? "ok" : "FALLITO" );
+	}
+
+	// 7b. trees: a ball bounces off the pine in front of the middle king of Il Boschetto, the chain cuts it down
+	// and the king behind it falls
+	{
+		auto shootPine = [&]( Ammo type ) {
+			LoadLevel( FindLevelById( "prati_boschetto" ), false );
+			SkipIntro();
+			settle( 60 );
+			Entity* king = nullptr;
+			for ( Entity* e : m_kings )
+			{
+				king = king == nullptr || fabsf( e->pos.x ) < fabsf( king->pos.x ) ? e : king;
+			}
+			Entity* pine = nullptr;
+			for ( Entity* e : m_scene.entities )
+			{
+				if ( e->tree > 0.0f && e->pine && ( pine == nullptr || Vector3Distance( e->pos, king->pos ) < Vector3Distance( pine->pos, king->pos ) ) )
+				{
+					pine = e;
+				}
+			}
+			int serial = pine->serial;
+			Vector3 dir = Vector3Normalize( { king->pos.x - pine->pos.x, 0.0f, king->pos.z - pine->pos.z } );
+			FireProjectile( type, Vector3Add( pine->pos, Vector3Add( { 0, 2.0f, 0 }, Vector3Scale( dir, -4.0f ) ) ), dir, 18.0f );
+			settle( 240 );
+			bool standing = false;
+			for ( Entity* e : m_scene.entities )
+			{
+				standing = standing || ( e->alive && e->serial == serial );
+			}
+			return std::make_pair( standing, king->defeated );
+		};
+		auto ball = shootPine( Ammo::Ball );
+		auto chain = shootPine( Ammo::Chain );
+		printf( "Alberi: palla -> %s e il re %s, catena -> %s e il re %s -> %s\n", ball.first ? "regge" : "cade",
+				ball.second ? "cade" : "resta in piedi", chain.first ? "regge" : "cade", chain.second ? "cade" : "resta in piedi",
+				ball.first && ball.second == false && chain.first == false && chain.second ? "ok" : "FALLITO" );
 	}
 
 	// 8. windmill blades: a ball bounces off, the boulder snaps them off the axle
@@ -5216,6 +5408,12 @@ void Game::UpdateReplay( float dt )
 					if ( m_audio )
 						m_audio->PlayAt( Sfx::IceBreak, ev.pos, 0.9f, 0.8f );
 					break;
+				case ReplayEvent::Fell:
+				{
+					Color c{ (unsigned char)( ev.dir.x * 255 ), (unsigned char)( ev.dir.y * 255 ), (unsigned char)( ev.dir.z * 255 ), 255 };
+					TreeFallEffects( ev.pos, c, ev.radius );
+					break;
+				}
 				case ReplayEvent::BalloonPop:
 				{
 					Color c{ (unsigned char)( ev.dir.x * 255 ), (unsigned char)( ev.dir.y * 255 ), (unsigned char)( ev.dir.z * 255 ), 255 };
@@ -5274,15 +5472,24 @@ void Game::UpdateReplay( float dt )
 	Vector3 side = Vector3CrossProduct( flat, up );
 	Vector3 proj{};
 	bool haveProj = false;
+	auto replayed = [&]( int serial, Vector3& out ) {
+		if ( serial <= 0 || serial >= (int)m_rpSerialToOrd.size() || m_rpSerialToOrd[serial] < 0 )
+		{
+			return false;
+		}
+		int ord = m_rpSerialToOrd[serial];
+		out = Vector3Lerp( m_rpPrevPos[ord], m_rpPos[ord], m_rpAlpha );
+		return true;
+	};
 	for ( int k = (int)m_shotSerials.size() - 1; k >= 0 && haveProj == false; --k )
 	{
-		int serial = m_shotSerials[k];
-		if ( serial > 0 && serial < (int)m_rpSerialToOrd.size() && m_rpSerialToOrd[serial] >= 0 )
-		{
-			int ord = m_rpSerialToOrd[serial];
-			proj = Vector3Lerp( m_rpPrevPos[ord], m_rpPos[ord], m_rpAlpha );
-			haveProj = true;
-		}
+		haveProj = replayed( m_shotSerials[k], proj );
+	}
+	Vector3 other;
+	if ( haveProj && m_shotPartner > 0 && replayed( m_shotPartner, other ) )
+	{
+		float w = ChainSwing( ( m_rpGlobalStep - m_recordStartStep ) * kFixedDt );
+		proj = Vector3Lerp( Vector3Lerp( proj, other, 0.5f ), proj, w );
 	}
 
 	bool beforeImpact = m_impactStep < 0 || m_rpGlobalStep < m_impactStep;

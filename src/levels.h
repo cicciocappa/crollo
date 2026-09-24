@@ -137,8 +137,12 @@ public:
 	// The wind turns and changes strength after every shot, up to `strength` (the level's wind is the first one).
 	void ShiftingWind( float strength );
 
-	// decoration
+	// A tree (a pine if `pine`): fixed, it stops every shot and every blast, but a chain shot fells it.
+	Entity* Tree( Vector3 base, float scale, bool pine, Color leaf, float yaw = 0.0f );
+	// Trees scattered on a ring around `center`, between `minR` and `radius`.
 	void Trees( Vector3 center, float radius, int count, float minR );
+
+	// decoration
 	void Flag( Vector3 base, Color color, float scale = 1.0f );
 	void Fortress( Vector3 center, float radius );
 };

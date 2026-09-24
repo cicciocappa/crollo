@@ -84,6 +84,7 @@ struct ReplayEvent
 		Snap,
 		Implosion,
 		Stick,
+		Fell, // a tree cut down; dir holds the colour of its leaves
 	};
 	Type type;
 	int step;
@@ -241,6 +242,8 @@ private:
 	void Crumble( Entity* e );
 	// The boulder snaps windmill blades off their axle.
 	void BreakBlades( Entity* blades );
+	void FellTree( Entity* e );
+	void TreeFallEffects( Vector3 cutPoint, Color leaf, float scale );
 	void DefeatKing( Entity* king, const char* reason );
 	void PopBalloon( Entity* balloon );
 	void Kill( Entity* e );
@@ -420,6 +423,7 @@ private:
 	Vector3 m_impactPoint{};
 	Vector3 m_shotDir{ 0, 0, 1 };
 	std::vector<int> m_shotSerials;
+	int m_shotPartner = 0; // chain shot: the second ball, so the replay can watch the pair
 	std::vector<ReplayEvent> m_replayEvents;
 	b3RecPlayer* m_player = nullptr;
 	bool m_replayAvailable = false;
