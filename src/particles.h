@@ -58,6 +58,8 @@ public:
 	void Stars( Vector3 pos, int count );
 	void Sparkle( Vector3 pos, Color color, int count );
 	void Trail( Vector3 pos, Color color, float size );
+	// A wisp of air flowing with a current (fans, updrafts).
+	void Gust( Vector3 pos, Vector3 vel, float life );
 	// Keeps a realm's weather falling around the point the camera looks at.
 	void Weather( Ambient kind, Vector3 focus, float dt, Vector3 wind, Color a, Color b );
 

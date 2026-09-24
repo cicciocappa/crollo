@@ -84,6 +84,7 @@ void Scene::Destroy()
 	m_dead.clear();
 	ropes.clear();
 	mechanisms.clear();
+	currents.clear();
 	visuals.clear();
 	hits.clear();
 	touches.clear();
@@ -396,10 +397,16 @@ const b3HullData* Scene::RockHull( float radius, uint32_t seed )
 	return h;
 }
 
-Vector3 MoverPosAt( const Mechanism& m, float t )
+// How far along its run a mover is at time t: 0 at home, 1 at the far end, eased at both ends so whatever
+// rides on it does not slide off.
+static float MoverProgress( const Mechanism& m, float t )
 {
-	// out, rest, back, rest: eased at both ends so whatever rides on it does not slide off
+	// out, rest, back, rest
 	float cycle = 2.0f * ( m.travel + m.pause );
+	if ( cycle <= 0.0f )
+	{
+		return 0.0f;
+	}
 	float u = fmodf( t + m.phase, cycle );
 	if ( u < 0.0f )
 	{
@@ -422,8 +429,22 @@ Vector3 MoverPosAt( const Mechanism& m, float t )
 	{
 		f = 1.0f - ( u - 2.0f * m.pause - m.travel ) / m.travel;
 	}
-	f = f * f * ( 3.0f - 2.0f * f );
-	return Vector3Add( m.home, Vector3Scale( m.axis, m.amplitude * f ) );
+	return f * f * ( 3.0f - 2.0f * f );
+}
+
+Vector3 MoverPosAt( const Mechanism& m, float t )
+{
+	return Vector3Add( m.home, Vector3Scale( m.axis, m.amplitude * MoverProgress( m, t ) ) );
+}
+
+Quaternion MoverRotAt( const Mechanism& m, float t )
+{
+	if ( m.turn == 0.0f && m.spin == 0.0f )
+	{
+		return m.baseRot;
+	}
+	float angle = m.turn * MoverProgress( m, t ) + m.spin * ( t + m.phase );
+	return QuaternionNormalize( QuaternionMultiply( QuaternionFromAxisAngle( m.spinAxis, angle ), m.baseRot ) );
 }
 
 float TreeTrunkRadius( TreeKind kind, float scale )

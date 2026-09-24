@@ -16,11 +16,11 @@ riprendere lo sviluppo e che non si ricava dal codice.
   `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm` (pubblicati con `files`, il wasm come
   `application/wasm`); da un'altra conversazione passa l'URL come `url`, o nasce un Artifact nuovo.
 
-## Stato (fine sessione 6, settembre 2026)
+## Stato (fine sessione 7, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 40 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10; Arcipelago delle Tempeste e
-  Fucina del Vulcano sono "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
+- 50 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10, Arcipelago delle Tempeste 10;
+  Fucina del Vulcano è "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
 - Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche.
@@ -32,8 +32,10 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - Sessione 6d fatta: re sparsi estesi a Prati Alti, Valle dei Mulini e Picchi Gelati.
 - Sessione 6c fatta (riscontro sulle Dune): granelli di sabbia al posto delle foglie, vento fisso in tutte le Dune (niente
   più vento variabile nemmeno in Tappeti e Tempesta), re sparsi a caso a ogni tentativo e munizioni più generose.
-- Prossima: prova delle Dune da parte dell'utente, poi sessione 7 (Arcipelago). Poi versione mobile (10); multiplayer
-  alla fine (11+).
+- Sessione 7 fatta: Arcipelago delle Tempeste a 10 livelli (Il Faro ... La Rocca di Re Fulmine): gomma che scorre e
+  gira, ventole, soffioni, isole che fluttuano, giostra; mira assistita che segue rimbalzi e correnti; lampi e tuoni.
+- Prossima: prova dell'Arcipelago da parte dell'utente, poi sessione 8 (Fucina del Vulcano). Poi versione mobile (10);
+  multiplayer alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
@@ -41,7 +43,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 40/40); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 50/50); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18; oggi lo
                                         # scanner trova solo il 7, ma la Valanga si vince comunque con un colpo)
 ./build/crollo --autotest-challenge     # 30/30
@@ -115,15 +117,34 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Re sparsi** (`b.Scatter(p, rx, rz)`): il seme della disposizione cambia a ogni tentativo (`Game::m_layoutSeed`, 0 nei
   test e nelle demo = disposizione disegnata). Sposta insieme il re e ciò che lo regge. L'autotest prova ogni livello
   sparso anche in 5 disposizioni (`CROLLO_DEBUG=1` stampa dove stanno i re). Idea dell'utente: così il pallonetto si
-  cerca sempre un po' per tentativi e le munizioni possono essere generose. Oggi in 31 livelli su 40 (una palla in più
-  a ciascuno); fissi solo quelli a colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera, re centrale
-  delle Sponde e del Granaio, torri davanti al pendolo). Sulle isole piccole tieni il perimetro stretto: un re spostato
-  può finire dietro un albero dell'anello di `Trees` (Mongolfiere).
+  cerca sempre un po' per tentativi e le munizioni possono essere generose (una palla in più a ciascuno). Oggi in 39
+  livelli su 50; fissi solo quelli a colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera, re centrale
+  delle Sponde e del Granaio, torri davanti al pendolo) e i re presi di sponda. Sulle isole piccole tieni il perimetro
+  stretto: un re spostato può finire dietro un albero dell'anello di `Trees` (Mongolfiere).
 - Vento delle Dune: fisso, verso +x (a sinistra dal cannone); i granelli (`PType::Grain`) seguono il vento vero.
 - IA: il fondo della palla si controlla perpendicolare alla traiettoria (sui pallonetti ripidi tocca lo spigolo con la
   parte davanti); per i bersagli mobili conta solo colpire il re, non "qualcosa entro 1,2 m" (era il muro del Montacarichi).
 - `BackTrees(b, centro, raggio)`: alberi solo dietro e ai lati, quando quelli a caso di `Trees` finirebbero sulla linea di tiro.
 - Web: `EXPORTED_RUNTIME_METHODS=HEAPF32`; nei test di input via browser tieni premuti tasti e click ~120 ms.
+- **Previsione del volo** (`Game::PredictArc`): gravità, vento, correnti e rimbalzi sulla gomma, anche mobile. Box3D ferma
+  la palla sul muro nei sub-step e aggiunge il rimbalzo solo a fine passo: la previsione fa lo stesso (scarto < 20 cm,
+  controllato da `--test-ammo`). Il rimbalzo sulla gomma non conta come impatto (`hasHit`): vento e correnti continuano.
+- **Tiri di sponda**: `b.BankHint(re)` fa cercare all'IA (`FireBank`) archi puntati su una griglia delle facce di gomma
+  entro 13 m dal re, poi affina yaw, alzo e potenza. La faccia va giudicata rivolta al cannone *all'arrivo* della palla,
+  non allo sparo: con la pala che gira in un solo verso una garitta restava sempre esclusa. Cerca ogni 4 frame (5-25 ms a
+  ricerca); nella demo del titolo non cerca, per non far scattare il browser.
+- Garitte e vetrine aperte su un lato (`Booth`, `ShopWindow`): statiche, quindi fermano anche le esplosioni; sopra le
+  garitte e i pozzi una bandierina del colore del re, se no il giocatore non sa che lì dentro c'è qualcuno.
+- **Correnti** (`Scene::currents`, `Fan`, `Updraft`): forza sui proiettili in volo dentro una scatola, anche a intermittenza
+  (soffioni). Vanno azzerate in `Scene::Destroy` (prima passavano al livello dopo e l'autotest rallentava). Con correnti
+  `FireAt` segue il volo passo per passo e corregge la mira; se nessuna mira funziona (soffione acceso) aspetta.
+- **Isole che fluttuano e giostre** (`Mechanism::carry`, `reach`): `MoverUnder` riconosce anche i re sulle torri sopra;
+  `LoadDef` fa partire torri e re alla velocità di ciò che li porta (se l'isola parte a metà corsa, la torre ferma crolla).
+  Un'isola mobile non deve passare dentro una fissa: la barca del Porto sbatteva la torre contro il bordo dell'isola.
+  L'IA prevede dove saranno i muri fissati sulla giostra (`CarouselWall`).
+- Debug: `printf` finisce in un buffer quando l'uscita va in una pipe, e un blocco sembrava nel livello 29 mentre era
+  nel 44: per capire dove si ferma usa `stderr` (`CROLLO_DEBUG`) o gdb con `kill -INT`.
+- `Progress::kMaxLevels` è 64: allargalo prima di superarlo (il file salva per id).
 
 ## Nuovo PC
 - Build desktop: vedi README (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`, poi `cmake --build build -j`).

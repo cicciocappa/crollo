@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <string>
 #include <thread>
 
@@ -176,9 +177,9 @@ void Game::SetCannon( Vector3 pos, float yaw )
 	m_cannonBaseYaw = yaw;
 }
 
-void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob )
+void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob, bool bank )
 {
-	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob } );
+	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob, bank } );
 }
 
 void Game::SetFortressCenter( Vector3 c, float radius )
@@ -337,6 +338,24 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	b.plan = plan;
 	b.biome = &GetBiome( m_biome );
 	m_level->build( b );
+
+	// whatever stands on a floating island or a turntable sets off already carried along with it
+	for ( const Mechanism& m : m_scene.mechanisms )
+	{
+		if ( m.type != MechType::Mover || m.carry.x <= 0.0f || m.entity == nullptr )
+		{
+			continue;
+		}
+		for ( Entity* e : m_scene.entities )
+		{
+			if ( e->isStatic || e == m.entity || ( e->kind != Kind::Block && e->kind != Kind::King ) || MoverUnder( e ) != &m )
+			{
+				continue;
+			}
+			Vector3 v = Vector3Scale( Vector3Subtract( RiderAt( m, e->pos, 0.01f ), e->pos ), 100.0f );
+			b3Body_SetLinearVelocity( e->body, ToB3( v ) );
+		}
+	}
 
 	// Let the structures settle before the player sees them.
 	for ( int i = 0; i < 30; ++i )
@@ -1781,6 +1800,20 @@ void Game::PopBalloon( Entity* balloon )
 // Simulation
 // ---------------------------------------------------------------------------------------------
 
+Vector3 Game::CurrentAt( Vector3 p, float t ) const
+{
+	Vector3 a{ 0, 0, 0 };
+	for ( const AirCurrent& c : m_scene.currents )
+	{
+		Vector3 d = Vector3Subtract( p, c.center );
+		if ( fabsf( d.x ) < c.half.x && fabsf( d.y ) < c.half.y && fabsf( d.z ) < c.half.z && c.BlowsAt( t ) )
+		{
+			a = Vector3Add( a, c.accel );
+		}
+	}
+	return a;
+}
+
 void Game::FixedStep()
 {
 	const float dt = kFixedDt;
@@ -1794,7 +1827,7 @@ void Game::FixedStep()
 		}
 		if ( e->kind == Kind::Projectile && e->hasHit == false )
 		{
-			b3Body_ApplyForceToCenter( e->body, ToB3( Vector3Scale( m_wind, e->mass ) ), false );
+			b3Body_ApplyForceToCenter( e->body, ToB3( Vector3Scale( Vector3Add( m_wind, CurrentAt( e->pos, m_scene.time ) ), e->mass ) ), false );
 		}
 		else if ( e->kind == Kind::Balloon )
 		{
@@ -2034,7 +2067,8 @@ void Game::HandleEvents()
 
 			if ( x->kind == Kind::Projectile )
 			{
-				if ( x->hasHit == false && other->kind != Kind::Projectile )
+				// a bounce off rubber is part of the flight: the wind and the currents still carry the shot
+				if ( x->hasHit == false && other->kind != Kind::Projectile && other->mat != Mat::Rubber )
 				{
 					x->hasHit = true;
 					if ( x == m_focus )
@@ -2631,6 +2665,33 @@ void Game::UpdateWorld( float dt )
 		Vector3 fwd = Vector3Normalize( Vector3Subtract( m_camera.target, m_camera.position ) );
 		Vector3 focus = Vector3Add( m_camera.position, Vector3Scale( fwd, 14.0f ) );
 		m_particles.Weather( bi.ambient, focus, dt * m_timeScale, m_wind, a, b );
+
+		UpdateStorm( dt );
+
+		// the air currents show as wisps flowing through them
+		Rng& r = FxRng();
+		for ( const AirCurrent& c : m_scene.currents )
+		{
+			if ( c.BlowsAt( m_scene.time ) == false )
+			{
+				continue;
+			}
+			Vector3 dir = Vector3Normalize( c.accel );
+			float flow = 9.0f;
+			// wisps start on the upwind face and cross the whole current
+			float across = fabsf( Vector3DotProduct( c.half, { fabsf( dir.x ), fabsf( dir.y ), fabsf( dir.z ) } ) ) * 2.0f;
+			float rate = ( c.half.x * c.half.y * c.half.z * 8.0f / std::max( 0.5f, across ) ) * 1.6f;
+			float n = rate * dt * m_timeScale;
+			int count = (int)n + ( r.Float() < n - floorf( n ) ? 1 : 0 );
+			for ( int i = 0; i < count; ++i )
+			{
+				Vector3 p{ c.center.x + r.Range( -c.half.x, c.half.x ), c.center.y + r.Range( -c.half.y, c.half.y ),
+						   c.center.z + r.Range( -c.half.z, c.half.z ) };
+				Vector3 d = Vector3Subtract( p, c.center );
+				p = Vector3Subtract( p, Vector3Scale( dir, Vector3DotProduct( d, dir ) + across * 0.5f ) );
+				m_particles.Gust( p, Vector3Scale( dir, flow * r.Range( 0.8f, 1.2f ) ), across / flow );
+			}
+		}
 	}
 	for ( FloatText& t : m_texts )
 	{
@@ -2890,11 +2951,18 @@ bool Game::AutoFireAtKing()
 	// some kings are brought down indirectly: go for the stone, gate or pillar while it is still in place
 	const Entity* goal = target;
 	float lob = 0.0f;
+	bool bank = false;
 	for ( const AimHintRecord& h : m_aimHints )
 	{
 		if ( h.king != target->serial )
 		{
 			continue;
+		}
+		if ( h.bank )
+		{
+			// rubber never moves off its track: the bounce is searched for, not aimed
+			bank = true;
+			break;
 		}
 		for ( Entity* e : m_scene.entities )
 		{
@@ -2986,6 +3054,16 @@ bool Game::AutoFireAtKing()
 		}
 	}
 
+	if ( bank && m_attract == false )
+	{
+		// searching is slow: while no bounce works, look again every few frames (and never in the demo on the
+		// title screen, where it would make the browser stutter)
+		if ( m_scene.stepCount % 4 != 0 )
+		{
+			return false;
+		}
+		return FireBank( target, type );
+	}
 	return FireAt( aimPoint, type, goal, lob );
 }
 
@@ -3007,10 +3085,17 @@ void Game::DriveMovers( float dt )
 		if ( m.type == MechType::Mover && m.entity != nullptr && m.entity->alive )
 		{
 			// kinematic: it reaches the next point of its run exactly at the end of the step
-			b3WorldTransform xf{ ToB3( MoverPosAt( m, m_scene.time + dt ) ), b3Body_GetRotation( m.entity->body ) };
+			b3WorldTransform xf{ ToB3( MoverPosAt( m, m_scene.time + dt ) ), ToB3( MoverRotAt( m, m_scene.time + dt ) ) };
 			b3Body_SetTargetTransform( m.entity->body, xf, dt, true );
 		}
 	}
+}
+
+Vector3 Game::RiderAt( const Mechanism& m, Vector3 p, float dt ) const
+{
+	Vector3 now = MoverPosAt( m, m_scene.time );
+	Quaternion turn = QuaternionMultiply( MoverRotAt( m, m_scene.time + dt ), QuaternionInvert( MoverRotAt( m, m_scene.time ) ) );
+	return Vector3Add( MoverPosAt( m, m_scene.time + dt ), Vector3RotateByQuaternion( Vector3Subtract( p, now ), turn ) );
 }
 
 const Mechanism* Game::MoverUnder( const Entity* e ) const
@@ -3025,16 +3110,238 @@ const Mechanism* Game::MoverUnder( const Entity* e ) const
 		{
 			return &m;
 		}
-		// standing on it (or, for a lift, about to be)
+		// standing on it (or, for a lift, about to be); on a floating island, anywhere on the towers it carries
 		Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( e->pos, m.entity->pos ), QuaternionInvert( m.entity->rot ) );
-		Vector3 h = m.entity->parts[0].size;
-		if ( fabsf( local.x ) < h.x + 0.2f && fabsf( local.z ) < h.z + 0.2f && local.y > 0.0f && local.y < h.y + 0.6f )
+		Vector3 h = m.carry.x > 0.0f ? Vector3{ m.carry.x, 0.0f, m.carry.z } : m.entity->parts[0].size;
+		// (an island's or a turntable's origin is the middle of its top, where the feet are)
+		float floor = m.carry.x > 0.0f ? -0.3f : 0.0f;
+		if ( fabsf( local.x ) < h.x + 0.2f && fabsf( local.z ) < h.z + 0.2f && local.y > floor && local.y < h.y + m.reach )
 		{
 			return &m;
 		}
 	}
 	return nullptr;
 }
+
+// Radius of a shot, for predictions (the chain: one of its two balls; the boulder: roughly).
+static float ShotRadius( Ammo type )
+{
+	switch ( type )
+	{
+		case Ammo::Ball:
+			return 0.3f;
+		case Ammo::Chain:
+			return 0.24f;
+		case Ammo::Boulder:
+			return 0.55f;
+		case Ammo::Cluster:
+			return 0.33f;
+		default:
+			return 0.34f;
+	}
+}
+
+void Game::PredictArc( Vector3 p0, Vector3 v, float radius, float maxT, int maxBounces, std::vector<ArcPoint>& out, float bounceBy ) const
+{
+	// the rubber and where each piece will be: fixed, or driven by a mover
+	struct Rubber
+	{
+		const Entity* e;
+		const Mechanism* m;
+		Vector3 half;
+	};
+	std::vector<Rubber> rubber;
+	for ( const Entity* e : m_scene.entities )
+	{
+		if ( e->alive && e->mat == Mat::Rubber && e->parts.empty() == false && e->parts[0].geo == Geo::Box )
+		{
+			const Mechanism* mover = nullptr;
+			for ( const Mechanism& m : m_scene.mechanisms )
+			{
+				mover = m.type == MechType::Mover && m.entity == e ? &m : mover;
+			}
+			rubber.push_back( { e, mover, e->parts[0].size } );
+		}
+	}
+	auto pose = [&]( const Rubber& r, float t, Vector3& c, Quaternion& q ) {
+		if ( r.m != nullptr )
+		{
+			c = MoverPosAt( *r.m, m_scene.time + t );
+			q = MoverRotAt( *r.m, m_scene.time + t );
+		}
+		else
+		{
+			c = r.e->pos;
+			q = r.e->rot;
+		}
+	};
+
+	// Box3D: gravity and forces act on the velocity at every sub-step, then the position follows. Rubber and
+	// metal bounce back with the larger restitution; friction takes up to mu times the normal push off the
+	// sliding speed, and no more than a rolling ball would lose (2/7 of it).
+	const MatProps& rub = GetMatProps( Mat::Rubber );
+	const float restitution = rub.restitution;
+	const float friction = sqrtf( rub.friction * GetMatProps( Mat::Metal ).friction );
+	const float h = kFixedDt / kSubSteps;
+	float floor = m_fortressCenter.y;
+	for ( const Entity* k : m_kings )
+	{
+		floor = std::min( floor, k->pos.y );
+	}
+	floor -= 4.0f;
+	float firstBounce = -1.0f;
+	Vector3 p = p0;
+	int bounces = 0;
+	out.clear();
+	out.push_back( { p, 0.0f, 0 } );
+	for ( float t = 0.0f; t < maxT; )
+	{
+		Vector3 a = Vector3Add( Vector3Add( { 0, -kGravity, 0 }, m_wind ), CurrentAt( p, m_scene.time + t ) );
+		// the sub-steps only stop the ball at the wall; Box3D adds the bounce once the whole step is solved
+		Vector3 kick{ 0, 0, 0 };
+		for ( int k = 0; k < kSubSteps; ++k )
+		{
+			v = Vector3Add( v, Vector3Scale( a, h ) );
+			p = Vector3Add( p, Vector3Scale( v, h ) );
+			t += h;
+			for ( const Rubber& r : rubber )
+			{
+				// most of the flight is nowhere near it: a quick look at the distance first (the panel moves at
+				// most a few metres a second)
+				Vector3 far = Vector3Subtract( p, r.m ? MoverPosAt( *r.m, m_scene.time + t ) : r.e->pos );
+				float reach = Vector3Length( r.half ) + radius + 0.1f;
+				if ( Vector3DotProduct( far, far ) > reach * reach )
+				{
+					continue;
+				}
+				Vector3 c;
+				Quaternion q;
+				pose( r, t, c, q );
+				Quaternion inv = QuaternionInvert( q );
+				Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( p, c ), inv );
+				Vector3 near{ Clamp( local.x, -r.half.x, r.half.x ), Clamp( local.y, -r.half.y, r.half.y ), Clamp( local.z, -r.half.z, r.half.z ) };
+				Vector3 d = Vector3Subtract( local, near );
+				float dist = Vector3Length( d );
+				if ( dist >= radius )
+				{
+					continue;
+				}
+				if ( bounces >= maxBounces )
+				{
+					out.push_back( { p, t, bounces } );
+					return;
+				}
+				Vector3 n;
+				if ( dist > 1e-4f )
+				{
+					n = Vector3Scale( d, 1.0f / dist );
+				}
+				else
+				{
+					// the centre got inside: out through the nearest face
+					float gap[3] = { r.half.x - fabsf( local.x ), r.half.y - fabsf( local.y ), r.half.z - fabsf( local.z ) };
+					int i = gap[0] < gap[1] && gap[0] < gap[2] ? 0 : ( gap[1] < gap[2] ? 1 : 2 );
+					n = { i == 0 ? copysignf( 1.0f, local.x ) : 0.0f, i == 1 ? copysignf( 1.0f, local.y ) : 0.0f, i == 2 ? copysignf( 1.0f, local.z ) : 0.0f };
+					near = local;
+				}
+				// the surface's own speed where it is struck: a moving or turning panel throws the ball
+				Vector3 surface{ 0, 0, 0 };
+				if ( r.m != nullptr )
+				{
+					Vector3 c2;
+					Quaternion q2;
+					pose( r, t + kFixedDt, c2, q2 );
+					Vector3 now = Vector3Add( c, Vector3RotateByQuaternion( near, q ) );
+					Vector3 then = Vector3Add( c2, Vector3RotateByQuaternion( near, q2 ) );
+					surface = Vector3Scale( Vector3Subtract( then, now ), 1.0f / kFixedDt );
+				}
+				Vector3 nw = Vector3RotateByQuaternion( n, q );
+				Vector3 rel = Vector3Subtract( v, surface );
+				float vn = Vector3DotProduct( rel, nw );
+				if ( vn < 0.0f )
+				{
+					Vector3 tangent = Vector3Subtract( rel, Vector3Scale( nw, vn ) );
+					float vt = Vector3Length( tangent );
+					float loss = std::min( friction * -vn, vt * 2.0f / 7.0f );
+					if ( vt > 1e-4f )
+					{
+						tangent = Vector3Scale( tangent, ( vt - loss ) / vt );
+					}
+					v = Vector3Add( surface, tangent );
+					if ( -vn > 1.0f )
+					{
+						kick = Vector3Add( kick, Vector3Scale( nw, -vn * restitution ) );
+					}
+					bounces += 1;
+				}
+				// back out to the surface
+				p = Vector3Add( c, Vector3RotateByQuaternion( Vector3Add( near, Vector3Scale( n, radius ) ), q ) );
+			}
+		}
+		v = Vector3Add( v, kick );
+		out.push_back( { p, t, bounces } );
+		if ( p.y < floor && v.y < 0.0f )
+		{
+			return; // gone down past every king, into the island or the clouds
+		}
+		if ( bounceBy > 0.0f && bounces == 0 && t > bounceBy )
+		{
+			return; // it was meant for the rubber and missed it
+		}
+		if ( bounceBy > 0.0f && bounces > 0 && firstBounce < 0.0f )
+		{
+			firstBounce = t;
+		}
+		if ( firstBounce > 0.0f && t > firstBounce + 1.5f )
+		{
+			return; // long gone from where it bounced
+		}
+	}
+}
+
+struct RubberCastContext
+{
+	Entity* entity = nullptr;
+	b3Pos point{};
+	b3Vec3 normal{};
+};
+
+static float SkipRubberCast( b3ShapeId shapeId, b3Pos point, b3Vec3 normal, float fraction, uint64_t userMaterialId, int triangleIndex,
+							 int childIndex, void* context )
+{
+	(void)userMaterialId;
+	(void)triangleIndex;
+	(void)childIndex;
+	Entity* e = EntityFromShape( shapeId );
+	if ( e == nullptr || e->mat == Mat::Rubber )
+	{
+		return -1.0f;
+	}
+	RubberCastContext* ctx = (RubberCastContext*)context;
+	ctx->entity = e;
+	ctx->point = point;
+	ctx->normal = normal;
+	return fraction; // keep looking for anything closer
+}
+
+Entity* Game::CastSkippingRubber( Vector3 from, Vector3 to, b3QueryFilter filter, Vector3* point, Vector3* normal ) const
+{
+	RubberCastContext ctx;
+	b3World_CastRay( m_scene.World(), ToB3( from ), ToB3( Vector3Subtract( to, from ) ), filter, SkipRubberCast, &ctx );
+	if ( ctx.entity != nullptr )
+	{
+		if ( point )
+		{
+			*point = ToRl( ctx.point );
+		}
+		if ( normal )
+		{
+			*normal = ToRl( ctx.normal );
+		}
+	}
+	return ctx.entity;
+}
+
 
 bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob )
 {
@@ -3050,26 +3357,68 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	const Mechanism* ride = target != nullptr ? MoverUnder( target ) : nullptr;
 	const Vector3 aimNow = aimPoint;
 	auto lead = [&]( float t ) {
-		return ride ? Vector3Subtract( MoverPosAt( *ride, m_scene.time + t ), MoverPosAt( *ride, m_scene.time ) ) : Vector3{ 0, 0, 0 };
+		return ride ? Vector3Subtract( RiderAt( *ride, aimNow, t ), aimNow ) : Vector3{ 0, 0, 0 };
 	};
 
+	// air currents bend the arc: then it is followed step by step, and the aim corrected until it meets the target
+	const bool numeric = m_scene.currents.empty() == false;
+	const float radius = ShotRadius( type );
+	std::vector<ArcPoint> arc;
+
 	// Solve an arc for a chosen horizontal speed. Iterate because the muzzle moves with the aim.
+	bool waitForCurrent = false;
 	auto solve = [&]( float hs, Vector3& v, float& flight ) {
 		flight = 0.0f;
-		for ( int iter = 0; iter < 5; ++iter )
+		Vector3 fix{ 0, 0, 0 };
+		float best = 0.0f;
+		for ( int round = 0; round < ( numeric ? 8 : 1 ); ++round )
 		{
+			for ( int iter = 0; iter < 5; ++iter )
+			{
+				aimPoint = Vector3Add( aimNow, lead( flight ) );
+				Vector3 d = Vector3Subtract( Vector3Add( aimPoint, fix ), Muzzle() );
+				float hd = sqrtf( d.x * d.x + d.z * d.z );
+				flight = std::max( 0.5f, hd / hs );
+				v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
+				float speed = Vector3Length( v ) / scale;
+				Vector3 dir = Vector3Normalize( v );
+				m_yaw = atan2f( dir.x, dir.z );
+				m_pitch = asinf( Clamp( dir.y, -1.0f, 1.0f ) );
+				m_power = Clamp01( ( speed - kMinSpeed ) / ( kMaxSpeed - kMinSpeed ) );
+			}
+			if ( numeric == false )
+			{
+				break;
+			}
+			// where does the bent arc pass closest to the target?
+			PredictArc( Muzzle(), v, radius, flight + 1.5f, 0, arc );
+			best = FLT_MAX;
+			Vector3 miss{};
+			for ( const ArcPoint& a : arc )
+			{
+				Vector3 d = Vector3Subtract( a.p, Vector3Add( aimNow, lead( a.t ) ) );
+				float dist = Vector3Length( d );
+				if ( dist < best )
+				{
+					best = dist;
+					miss = d;
+					flight = std::max( 0.5f, a.t );
+				}
+			}
+			if ( best < 0.05f )
+			{
+				break;
+			}
+			fix = Vector3Subtract( fix, miss );
 			aimPoint = Vector3Add( aimNow, lead( flight ) );
-			Vector3 d = Vector3Subtract( aimPoint, Muzzle() );
-			float hd = sqrtf( d.x * d.x + d.z * d.z );
-			flight = std::max( 0.5f, hd / hs );
-			v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
-			float speed = Vector3Length( v ) / scale;
-			Vector3 dir = Vector3Normalize( v );
-			m_yaw = atan2f( dir.x, dir.z );
-			m_pitch = asinf( Clamp( dir.y, -1.0f, 1.0f ) );
-			m_power = Clamp01( ( speed - kMinSpeed ) / ( kMaxSpeed - kMinSpeed ) );
 		}
 		float speed = Vector3Length( v ) / scale;
+		if ( numeric && best > 0.5f )
+		{
+			// the air throws it off whatever the aim (a blowhole blowing): it may calm down later
+			waitForCurrent = true;
+			return false;
+		}
 		return speed >= kMinSpeed && speed <= kMaxSpeed;
 	};
 
@@ -3095,9 +3444,26 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	auto pathClear = [&]( Vector3 v, float flight ) {
 		Vector3 p0 = Muzzle();
 		Vector3 prev = p0;
+		if ( numeric )
+		{
+			PredictArc( p0, v, radius, flight + 0.3f, 0, arc );
+			if ( arc.back().t < flight - 0.05f )
+			{
+				return false; // it meets rubber first and bounces away
+			}
+		}
+		auto at = [&]( float t ) {
+			if ( numeric == false || arc.size() < 2 )
+			{
+				return Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( accel, 0.5f * t * t ) ) );
+			}
+			float f = t / kFixedDt;
+			size_t i = std::min( (size_t)f, arc.size() - 2 );
+			return Vector3Lerp( arc[i].p, arc[i + 1].p, Clamp01( f - (float)i ) );
+		};
 		for ( float t = 0.05f; t < flight + 0.2f; t += 0.05f )
 		{
-			Vector3 p = Vector3Add( p0, Vector3Add( Vector3Scale( v, t ), Vector3Scale( accel, 0.5f * t * t ) ) );
+			Vector3 p = at( t );
 			// sliding walls: where will the wall be when the shot crosses its rail?
 			for ( const Mechanism& m : m_scene.mechanisms )
 			{
@@ -3125,22 +3491,57 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 			for ( const Mechanism& m : m_scene.mechanisms )
 			{
 				// the target's own carpet or lift sits right under it: nothing to avoid there
-				if ( m.type != MechType::Mover || m.entity == nullptr || m.entity->alive == false || &m == ride )
+				if ( m.type != MechType::Mover || m.entity == nullptr || m.entity->alive == false || ( &m == ride && m.carry.x <= 0.0f ) )
 				{
 					continue;
 				}
 				Vector3 shift = Vector3Subtract( MoverPosAt( m, m_scene.time + t ), MoverPosAt( m, m_scene.time ) );
 				Vector3 c = Vector3Add( m.entity->pos, shift );
-				Vector3 h = m.entity->parts[0].size;
+				Quaternion rot = MoverRotAt( m, m_scene.time + t );
 				float pad = 0.35f + edgeReach;
-				for ( int k = 1; k <= 4; ++k )
+				// the boxes it is made of, where they will be: a panel or a carpet is its first part; an island or a
+				// turntable is its body (from its top down to the tip of its rock, as a box) and any walls on it
+				struct Solid
 				{
-					Vector3 q = Vector3Lerp( prev, p, k * 0.25f );
-					Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( q, c ), QuaternionInvert( m.entity->rot ) );
-					if ( fabsf( local.x ) < h.x + pad && fabsf( local.y ) < h.y + pad && fabsf( local.z ) < h.z + pad )
+					Vector3 centre, half;
+					Quaternion rot;
+				};
+				Solid solids[16];
+				int count = 0;
+				if ( m.carry.x > 0.0f )
+				{
+					solids[count++] = { { 0, -m.carry.y * 0.5f, 0 }, { m.carry.x, m.carry.y * 0.5f, m.carry.z }, { 0, 0, 0, 1 } };
+					for ( const Part& part : m.entity->parts )
 					{
-						sliderBlocked = true;
-						return false;
+						if ( part.geo == Geo::Box && part.size.y > 0.2f && count < 16 )
+						{
+							solids[count++] = { part.localPos, part.size, part.localRot };
+						}
+					}
+				}
+				else
+				{
+					solids[count++] = { { 0, 0, 0 }, m.entity->parts[0].size, { 0, 0, 0, 1 } };
+				}
+				for ( int i = 0; i < count; ++i )
+				{
+					// what the target stands on is no obstacle, but the walls going round with him are
+					if ( &m == ride && i == 0 )
+					{
+						continue;
+					}
+					Quaternion q = QuaternionMultiply( rot, solids[i].rot );
+					Vector3 centre = Vector3Add( c, Vector3RotateByQuaternion( solids[i].centre, rot ) );
+					Vector3 h = solids[i].half;
+					for ( int k = 1; k <= 4; ++k )
+					{
+						Vector3 at = Vector3Lerp( prev, p, k * 0.25f );
+						Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( at, centre ), QuaternionInvert( q ) );
+						if ( fabsf( local.x ) < h.x + pad && fabsf( local.y ) < h.y + pad && fabsf( local.z ) < h.z + pad )
+						{
+							sliderBlocked = true;
+							return false;
+						}
 					}
 				}
 			}
@@ -3248,7 +3649,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 			break;
 		}
 	}
-	if ( found == false && ( waitForShield || waitForSlider || ride ) )
+	if ( found == false && ( waitForShield || waitForSlider || waitForCurrent || ride ) )
 	{
 		return false; // a window will open, or the target will come out: try again on a later frame
 	}
@@ -3283,6 +3684,261 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 		AddReplayEvent( ReplayEvent::CannonFire, Muzzle(), dir );
 	}
 	return true;
+}
+
+bool Game::FireBank( const Entity* king, Ammo type )
+{
+	// only solid shots bounce: bombs go off against the rubber and sticky ones cling to it. The plain ball
+	// goes where it is sent; the cluster would split on the way
+	if ( type != Ammo::Ball && m_ammo[(int)Ammo::Ball] > 0 )
+	{
+		type = Ammo::Ball;
+	}
+	if ( type != Ammo::Ball && type != Ammo::Boulder && type != Ammo::Cluster )
+	{
+		const Ammo order[] = { Ammo::Ball, Ammo::Boulder, Ammo::Cluster };
+		for ( Ammo a : order )
+		{
+			if ( m_ammo[(int)a] > 0 )
+			{
+				type = a;
+				break;
+			}
+		}
+		if ( type != Ammo::Ball && type != Ammo::Boulder && type != Ammo::Cluster )
+		{
+			return false;
+		}
+	}
+	const float scale = type == Ammo::Boulder ? 0.82f : 1.0f;
+	const float radius = ShotRadius( type );
+	const Mechanism* ride = MoverUnder( king );
+	auto kingAt = [&]( float t ) {
+		Vector3 k = Vector3Add( king->pos, { 0, 0.6f, 0 } );
+		return ride ? RiderAt( *ride, k, t ) : k;
+	};
+	// how close the flight comes to the king after its first bounce, and when
+	std::vector<ArcPoint> arc;
+	auto judge = [&]( float& when, float bounceBy ) {
+		PredictArc( Muzzle(), Vector3Scale( AimDir(), LaunchSpeed() * scale ), radius, 4.5f, 2, arc, bounceBy );
+		float best = FLT_MAX;
+		for ( const ArcPoint& a : arc )
+		{
+			if ( a.bounces > 0 )
+			{
+				float d = Vector3Distance( a.p, kingAt( a.t ) );
+				if ( d < best )
+				{
+					best = d;
+					when = a.t;
+				}
+			}
+		}
+		return best;
+	};
+	const float yaw0 = m_yaw, pitch0 = m_pitch, power0 = m_power;
+	auto setAim = [&]( float yaw, float pitch, float power ) {
+		m_yaw = yaw;
+		m_pitch = Clamp( pitch, -0.4f, 1.45f );
+		m_power = Clamp01( power );
+	};
+
+	// 1. coarse: arcs aimed at a grid of points over the faces of the rubber that look towards the cannon
+	struct Candidate
+	{
+		float yaw, pitch, power, miss, flight;
+	};
+	std::vector<Candidate> seeds;
+	Vector3 accel = Vector3Add( { 0, -kGravity, 0 }, m_wind );
+	const float speeds[] = { 25.0f, 22.0f, 19.0f, 16.5f, 14.0f, 12.0f, 10.0f };
+	for ( const Entity* e : m_scene.entities )
+	{
+		// rubber far from the king will not send anything his way
+		if ( e->alive == false || e->mat != Mat::Rubber || e->parts.empty() || e->parts[0].geo != Geo::Box ||
+			 Vector3Distance( e->pos, king->pos ) > 13.0f )
+		{
+			continue;
+		}
+		const Mechanism* mover = nullptr;
+		for ( const Mechanism& m : m_scene.mechanisms )
+		{
+			mover = m.type == MechType::Mover && m.entity == e ? &m : mover;
+		}
+		Vector3 half = e->parts[0].size;
+		for ( int axis = 0; axis < 3; ++axis )
+		{
+			for ( int sgn = -1; sgn <= 1; sgn += 2 )
+			{
+				Vector3 n{ axis == 0 ? (float)sgn : 0.0f, axis == 1 ? (float)sgn : 0.0f, axis == 2 ? (float)sgn : 0.0f };
+				float h[3] = { half.x, half.y, half.z };
+				int ua = ( axis + 1 ) % 3, va = ( axis + 2 ) % 3;
+				if ( h[ua] < 0.3f || h[va] < 0.3f )
+				{
+					continue; // an edge, not a face
+				}
+				if ( mover == nullptr && Vector3DotProduct( Vector3RotateByQuaternion( n, e->rot ), Vector3Subtract( m_cannonPos, e->pos ) ) <= 0.0f )
+				{
+					continue; // fixed, and turned away from the cannon
+				}
+				for ( int iu = 0; iu < 6; ++iu )
+				{
+					for ( int iv = 0; iv < 4; ++iv )
+					{
+						float local[3];
+						local[axis] = h[axis] * sgn + radius * sgn;
+						local[ua] = h[ua] * ( -0.85f + 1.7f * iu / 5.0f );
+						local[va] = h[va] * ( -0.85f + 1.7f * iv / 3.0f );
+						Vector3 lp{ local[0], local[1], local[2] };
+						for ( float hs : speeds )
+						{
+							float flight = 0.0f;
+							Vector3 v{};
+							bool facing = true;
+							for ( int iter = 0; iter < 4; ++iter )
+							{
+								Vector3 c = mover ? MoverPosAt( *mover, m_scene.time + flight ) : e->pos;
+								Quaternion q = mover ? MoverRotAt( *mover, m_scene.time + flight ) : e->rot;
+								// only faces turned towards the cannon when the shot gets there
+								facing = Vector3DotProduct( Vector3RotateByQuaternion( n, q ), Vector3Subtract( m_cannonPos, c ) ) > 0.0f;
+								Vector3 target = Vector3Add( c, Vector3RotateByQuaternion( lp, q ) );
+								Vector3 d = Vector3Subtract( target, Muzzle() );
+								flight = std::max( 0.4f, sqrtf( d.x * d.x + d.z * d.z ) / hs );
+								v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
+								Vector3 dir = Vector3Normalize( v );
+								setAim( atan2f( dir.x, dir.z ), asinf( Clamp( dir.y, -1.0f, 1.0f ) ),
+										( Vector3Length( v ) / scale - kMinSpeed ) / ( kMaxSpeed - kMinSpeed ) );
+							}
+							float speed = Vector3Length( v ) / scale;
+							if ( facing == false || speed < kMinSpeed || speed > kMaxSpeed )
+							{
+								continue;
+							}
+							float when = 0.0f;
+							float miss = judge( when, flight + 0.4f );
+							if ( miss < 2.5f )
+							{
+								seeds.push_back( { m_yaw, m_pitch, m_power, miss, flight } );
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	std::sort( seeds.begin(), seeds.end(), []( const Candidate& a, const Candidate& b ) { return a.miss < b.miss; } );
+
+	if ( seeds.size() > 8 )
+	{
+		seeds.resize( 8 );
+	}
+
+	// 2. fine: nudge yaw, pitch and power of the best ones until the ball runs into the king
+	b3QueryFilter filter = b3DefaultQueryFilter();
+	filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
+	for ( Candidate c : seeds )
+	{
+		float step = 0.004f;
+		setAim( c.yaw, c.pitch, c.power );
+		float when = 0.0f;
+		const float bounceBy = c.flight + 0.6f;
+		float miss = judge( when, bounceBy );
+		for ( int round = 0; round < 40 && miss > 0.12f && step > 0.0004f; ++round )
+		{
+			bool better = false;
+			const float moves[6][3] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 1, 0 }, { 0, -1, 0 }, { 0, 0, 1 }, { 0, 0, -1 } };
+			for ( const auto& mv : moves )
+			{
+				setAim( c.yaw + mv[0] * step, c.pitch + mv[1] * step, c.power + mv[2] * step );
+				float w = 0.0f;
+				float m = judge( w, bounceBy );
+				if ( m < miss )
+				{
+					miss = m;
+					when = w;
+					c = { m_yaw, m_pitch, m_power, m, c.flight };
+					better = true;
+				}
+			}
+			if ( better == false )
+			{
+				step *= 0.5f;
+			}
+			if ( round == 8 && miss > 0.8f )
+			{
+				break; // not getting there
+			}
+		}
+		if ( miss > 0.3f )
+		{
+			continue;
+		}
+		// the real thing, with the ball's size: nothing else may be in the way before the king
+		setAim( c.yaw, c.pitch, c.power );
+		judge( when, 0.0f );
+		bool clear = true;
+		bool reached = false;
+		for ( size_t i = 1; i < arc.size() && clear && reached == false; ++i )
+		{
+			Vector3 a = arc[i - 1].p, b = arc[i].p;
+			Vector3 dir = Vector3Subtract( b, a );
+			if ( Vector3Length( dir ) < 1e-4f )
+			{
+				continue;
+			}
+			dir = Vector3Normalize( dir );
+			Vector3 side = Vector3CrossProduct( dir, { 0, 1, 0 } );
+			side = Vector3Length( side ) > 0.1f ? Vector3Normalize( side ) : Vector3{ 1, 0, 0 };
+			Vector3 up = Vector3CrossProduct( side, dir );
+			const Vector3 offsets[5] = { { 0, 0, 0 }, Vector3Scale( side, radius * 0.9f ), Vector3Scale( side, -radius * 0.9f ),
+										 Vector3Scale( up, radius * 0.9f ), Vector3Scale( up, -radius * 0.9f ) };
+			for ( const Vector3& o : offsets )
+			{
+				Entity* hit = CastSkippingRubber( Vector3Add( a, o ), Vector3Add( b, o ), filter );
+				if ( hit == king )
+				{
+					reached = true;
+				}
+				else if ( hit != nullptr && hit->kind != Kind::Mechanism )
+				{
+					clear = false;
+					break;
+				}
+			}
+			reached = reached || arc[i].t >= when;
+		}
+		if ( clear == false )
+		{
+			continue;
+		}
+		if ( m_attract == false )
+		{
+			m_ammo[(int)type] -= 1;
+			m_shots += 1;
+		}
+		m_aiAim = kingAt( when );
+		m_aiAimed = true;
+		Vector3 dir = AimDir();
+		RestartRecording();
+		FireProjectile( type, Muzzle(), dir, LaunchSpeed() );
+		if ( m_attract == false )
+		{
+			m_shotSerials.clear();
+			m_shotPartner = 0;
+			if ( m_focus )
+			{
+				m_shotSerials.push_back( m_focus->serial );
+			}
+			m_shotDir = dir;
+			AddReplayEvent( ReplayEvent::CannonFire, Muzzle(), dir );
+		}
+		if ( getenv( "CROLLO_DEBUG" ) )
+		{
+			fprintf( stderr, "  sponda: mancato di %.2f m previsto, re raggiunto a %.2f s\n", miss, when );
+		}
+		return true;
+	}
+	setAim( yaw0, pitch0, power0 );
+	return false;
 }
 
 void Game::UpdatePlaying( float dt )
@@ -4202,6 +4858,134 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Barriera magica: palla di cannone -> %s, sfera magica -> %s -> %s\n", byBall ? "passa" : "respinta",
 				byOrb ? "passa" : "respinta", byBall == false && byOrb ? "ok" : "FALLITO" );
 	}
+
+	// bank shots: the predicted flight after a bounce off the rubber must follow the real one
+	{
+		float worst = 0.0f;
+		int bounced = 0, trials = 0;
+		struct Case
+		{
+			int level;
+			Vector3 aim;
+			float hs;
+		};
+		const Case cases[] = {
+			{ 13, { 6.2f, 2.0f, 36.2f }, 22.0f }, { 13, { 7.8f, 3.2f, 36.2f }, 19.0f }, { 13, { 6.0f, 3.5f, 36.2f }, 14.0f },
+			{ 13, { 8.2f, 1.6f, 36.2f }, 24.0f }, { 12, { 0.0f, 2.6f, 36.5f }, 9.0f },	 { 12, { 1.0f, 2.2f, 36.4f }, 10.0f },
+		};
+		for ( const Case& c : cases )
+		{
+			LoadLevel( c.level, false );
+			SkipIntro();
+			settle( 30 );
+			Vector3 d = Vector3Subtract( c.aim, Muzzle() );
+			float flight = sqrtf( d.x * d.x + d.z * d.z ) / c.hs;
+			Vector3 accel = Vector3Add( { 0, -kGravity, 0 }, m_wind );
+			Vector3 v = Vector3Scale( Vector3Subtract( d, Vector3Scale( accel, 0.5f * flight * flight ) ), 1.0f / flight );
+			std::vector<ArcPoint> arc;
+			PredictArc( Muzzle(), v, 0.3f, 5.0f, 2, arc );
+			FireProjectile( Ammo::Ball, Muzzle(), Vector3Normalize( v ), Vector3Length( v ) );
+			Entity* ball = m_focus;
+			int bounceStep = -1;
+			float err = 0.0f;
+			std::vector<Vector3> real{ ball ? ball->pos : Vector3{} };
+			for ( size_t i = 1; i < arc.size() && ball && ball->alive; ++i )
+			{
+				int before = m_scene.stepCount;
+				while ( m_scene.stepCount == before )
+				{
+					StepSimulation( kFixedDt * 0.5f );
+				}
+				real.push_back( ball->pos );
+				if ( arc[i].bounces > 0 && bounceStep < 0 )
+				{
+					bounceStep = (int)i;
+				}
+				// until a quarter of a second after the bounce, or the first thing it meets after it
+				if ( bounceStep >= 0 && ( (int)i > bounceStep + 15 || ball->hasHit ) )
+				{
+					break;
+				}
+				// right at the wall Box3D and the prediction may be a step apart: judge the flight on either side
+				if ( bounceStep < 0 || (int)i > bounceStep + 1 )
+				{
+					err = std::max( err, Vector3Distance( ball->pos, arc[i].p ) );
+				}
+			}
+			trials += 1;
+			bounced += bounceStep >= 0 ? 1 : 0;
+			worst = std::max( worst, err );
+			if ( getenv( "CROLLO_DEBUG" ) )
+			{
+				fprintf( stderr, "  sponda liv %d: rimbalzo %s, scarto massimo %.2f m\n", c.level + 1, bounceStep >= 0 ? "si" : "no", err );
+			}
+		}
+		printf( "Tiri di sponda: %d rimbalzi previsti su %d, scarto massimo fra previsione e volo %.2f m -> %s\n", bounced, trials, worst,
+				bounced == trials && worst < 0.2f ? "ok" : "FALLITO" );
+	}
+
+	// fans: a flat shot through the stream is carried sideways, the way the prediction says
+	{
+		LoadLevel( FindLevelById( "arcipelago_ventole" ), false );
+		SkipIntro();
+		settle( 30 );
+		Vector3 aim{ 0.5f, 4.0f, 39.0f };
+		Vector3 d = Vector3Subtract( aim, Muzzle() );
+		float flight = sqrtf( d.x * d.x + d.z * d.z ) / 22.0f;
+		Vector3 v = Vector3Scale( Vector3Subtract( d, Vector3Scale( { 0, -kGravity, 0 }, 0.5f * flight * flight ) ), 1.0f / flight );
+		std::vector<ArcPoint> arc;
+		PredictArc( Muzzle(), v, 0.3f, flight, 0, arc );
+		FireProjectile( Ammo::Ball, Muzzle(), Vector3Normalize( v ), Vector3Length( v ) );
+		Entity* ball = m_focus;
+		float err = 0.0f;
+		Vector3 last = ball->pos;
+		for ( size_t i = 1; i < arc.size() && ball->alive && ball->hasHit == false; ++i )
+		{
+			int before = m_scene.stepCount;
+			while ( m_scene.stepCount == before )
+			{
+				StepSimulation( kFixedDt * 0.5f );
+			}
+			if ( ball->hasHit == false )
+			{
+				err = std::max( err, Vector3Distance( ball->pos, arc[i].p ) );
+				last = ball->pos;
+			}
+		}
+		// where it would be without the fans, at the same depth
+		float straight = Muzzle().x + v.x * ( last.z - Muzzle().z ) / v.z;
+		float drift = last.x - straight;
+		printf( "Ventole: la palla va di lato di %.1f m, scarto dalla previsione %.2f m -> %s\n", drift, err,
+				fabsf( drift ) > 1.0f && err < 0.05f ? "ok" : "FALLITO" );
+	}
+
+	// blowholes: a ball dropped over a pit flies back up while it blows, and falls on the king when it stops
+	{
+		auto drop = [&]( bool blowing ) {
+			LoadLevel( FindLevelById( "arcipelago_soffioni" ), false );
+			SkipIntro();
+			const AirCurrent& c = m_scene.currents[0];
+			int guard = 0;
+			// wait for the moment it starts (or stops) blowing
+			while ( ( c.BlowsAt( m_scene.time ) != blowing || c.BlowsAt( m_scene.time - 0.1f ) == blowing ) && guard++ < 1200 )
+			{
+				StepSimulation( kFixedDt );
+			}
+			Entity* king = m_kings[0];
+			Vector3 top{ king->pos.x, 6.0f, king->pos.z };
+			FireProjectile( Ammo::Ball, top, { 0, -1, 0 }, 0.5f );
+			Entity* ball = m_focus;
+			settle( 60 );
+			float y = ball->alive ? ball->pos.y : -100.0f;
+			settle( 60 );
+			return std::make_pair( y, king->defeated );
+		};
+		auto on = drop( true );
+		auto off = drop( false );
+		printf( "Soffioni: mentre soffia la palla risale a %.1f m e il re %s, quando tace il re %s -> %s\n", on.first,
+				on.second ? "cade" : "resta in piedi", off.second ? "cade" : "resta in piedi",
+				on.first > 6.0f && on.second == false && off.second ? "ok" : "FALLITO" );
+	}
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
@@ -4398,6 +5182,7 @@ void Game::DrawWorld()
 
 	DrawShieldGhosts();
 	m_particles.Draw( r, m_camera );
+	DrawBolt();
 	EndMode3D();
 	r.EndScene();
 
@@ -4406,6 +5191,86 @@ void Game::DrawWorld()
 	{
 		DrawRectangle( 0, 0, GetScreenWidth(), GetScreenHeight(), WithAlpha( Color{ 255, 240, 210, 255 }, m_screenFlash ) );
 	}
+	if ( m_lightning > 0.0f )
+	{
+		DrawRectangle( 0, 0, GetScreenWidth(), GetScreenHeight(), WithAlpha( Color{ 215, 225, 255, 255 }, m_lightning * 0.28f ) );
+	}
+}
+
+void Game::UpdateStorm( float dt )
+{
+	if ( GetBiome( m_biome ).ambient != Ambient::Rain )
+	{
+		m_lightning = 0.0f;
+		m_thunderIn = -1.0f;
+		return;
+	}
+	Rng& r = FxRng();
+	// the flash flickers once or twice as it dies away
+	float before = m_lightning;
+	m_lightning = std::max( 0.0f, m_lightning - dt * 2.6f );
+	if ( before > 0.55f && m_lightning <= 0.55f && r.Float() < 0.6f )
+	{
+		m_lightning = 0.85f;
+	}
+	if ( m_thunderIn >= 0.0f )
+	{
+		m_thunderIn -= dt;
+		if ( m_thunderIn < 0.0f && m_audio )
+		{
+			m_audio->Play( Sfx::Thunder, r.Range( 0.45f, 0.75f ), r.Range( 0.85f, 1.1f ), r.Range( 0.3f, 0.7f ) );
+		}
+	}
+	m_nextLightning -= dt;
+	if ( m_nextLightning <= 0.0f )
+	{
+		m_nextLightning = r.Range( 7.0f, 16.0f );
+		m_lightning = 1.0f;
+		m_boltSeed = r.Next();
+		// far behind the fortress, off to one side
+		Vector3 away = Vector3Subtract( m_fortressCenter, m_cannonPos );
+		away.y = 0.0f;
+		away = Vector3Normalize( away );
+		Vector3 side{ away.z, 0.0f, -away.x };
+		float dist = r.Range( 70.0f, 120.0f );
+		m_bolt = Vector3Add( m_fortressCenter, Vector3Add( Vector3Scale( away, dist ), Vector3Scale( side, r.Range( -60.0f, 60.0f ) ) ) );
+		m_thunderIn = dist / 90.0f + r.Range( 0.1f, 0.5f );
+	}
+}
+
+void Game::DrawBolt()
+{
+	if ( m_lightning <= 0.3f )
+	{
+		return;
+	}
+	// a jagged bolt from the clouds above down into the sea of clouds, with a branch or two
+	Rng r( m_boltSeed );
+	Color c = WithAlpha( Color{ 235, 240, 255, 255 }, Clamp01( ( m_lightning - 0.3f ) * 2.0f ) );
+	std::function<void( Vector3, Vector3, int, float )> segment = [&]( Vector3 a, Vector3 b, int depth, float spread ) {
+		if ( depth == 0 )
+		{
+			for ( int k = 0; k < 3; ++k )
+			{
+				Vector3 o{ k * 0.25f, 0, k * 0.25f };
+				DrawLine3D( Vector3Add( a, o ), Vector3Add( b, o ), c );
+			}
+			return;
+		}
+		Vector3 mid = Vector3Lerp( a, b, 0.5f );
+		mid.x += r.Range( -spread, spread );
+		mid.z += r.Range( -spread, spread );
+		segment( a, mid, depth - 1, spread * 0.55f );
+		segment( mid, b, depth - 1, spread * 0.55f );
+		if ( depth == 3 && r.Float() < 0.7f )
+		{
+			Vector3 end = Vector3Add( mid, { r.Range( -14.0f, 14.0f ), -r.Range( 12.0f, 22.0f ), r.Range( -8.0f, 8.0f ) } );
+			segment( mid, end, 2, spread * 0.4f );
+		}
+	};
+	Vector3 top{ m_bolt.x, 55.0f, m_bolt.z };
+	Vector3 bottom{ m_bolt.x + r.Range( -10.0f, 10.0f ), -24.0f, m_bolt.z + r.Range( -6.0f, 6.0f ) };
+	segment( top, bottom, 5, 16.0f );
 }
 
 void Game::DrawTrajectory()
@@ -4421,6 +5286,47 @@ void Game::DrawTrajectory()
 	if ( m_progress.aimAssist )
 	{
 		g = Vector3Add( g, m_wind );
+	}
+
+	if ( m_progress.aimAssist )
+	{
+		// the whole flight, as it will go: bent by the air currents, bouncing off rubber, up to what it hits
+		std::vector<ArcPoint> arc;
+		PredictArc( p0, v, ShotRadius( (Ammo)m_selected ), 6.0f, 3, arc );
+		float shieldT = PathShieldBlock( p0, v, Vector3Add( g, m_wind ), 6.0f, m_scene.time );
+		b3QueryFilter filter = b3DefaultQueryFilter();
+		filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
+		for ( size_t i = 1; i < arc.size(); ++i )
+		{
+			Vector3 a = arc[i - 1].p, b = arc[i].p;
+			if ( shieldT >= 0.0f && arc[i].t >= shieldT && arc[i].bounces == 0 )
+			{
+				Color c{ 110, 215, 255, 255 };
+				DrawSphereEx( b, 0.2f, 8, 8, c );
+				DrawLine3D( Vector3Add( b, { -0.5f, -0.5f, 0 } ), Vector3Add( b, { 0.5f, 0.5f, 0 } ), c );
+				DrawLine3D( Vector3Add( b, { -0.5f, 0.5f, 0 } ), Vector3Add( b, { 0.5f, -0.5f, 0 } ), c );
+				break;
+			}
+			Vector3 hp{}, hn{};
+			if ( CastSkippingRubber( a, b, filter, &hp, &hn ) != nullptr )
+			{
+				DrawSphereEx( hp, 0.22f, 8, 8, Color{ 255, 80, 60, 230 } );
+				DrawCircle3D( Vector3Add( hp, Vector3Scale( hn, 0.03f ) ), 0.5f, Vector3CrossProduct( { 0, 1, 0 }, hn ), acosf( Clamp( hn.y, -1.0f, 1.0f ) ) * RAD2DEG,
+							  Color{ 255, 80, 60, 255 } );
+				break;
+			}
+			if ( arc[i].bounces > arc[i - 1].bounces )
+			{
+				// a bounce off the rubber: a ring where it strikes
+				DrawSphereEx( b, 0.16f, 8, 8, Color{ 255, 170, 60, 230 } );
+			}
+			if ( i % 3 == 0 )
+			{
+				// after a bounce the dots turn the colour of the rubber
+				DrawSphereEx( b, 0.1f, 6, 6, arc[i].bounces > 0 ? Color{ 255, 190, 130, 255 } : Color{ 255, 250, 235, 255 } );
+			}
+		}
+		return;
 	}
 
 	float maxT = m_progress.aimAssist ? 6.0f : 0.8f;

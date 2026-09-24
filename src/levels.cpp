@@ -851,6 +851,7 @@ Entity* Builder::Mover( Entity* e, Vector3 axis, float distance, float travel, f
 	m.travel = travel;
 	m.pause = pause;
 	m.phase = phase;
+	m.baseRot = e->rot;
 	scene.mechanisms.push_back( m );
 	// start where the cycle puts it at time 0
 	Vector3 start = MoverPosAt( m, 0.0f );
@@ -912,16 +913,249 @@ Entity* Builder::MagicOrb( Vector3 center, float radius )
 	return e;
 }
 
-Entity* Builder::Bumper( Vector3 center, Vector3 half, float yaw )
+Entity* Builder::Bumper( Vector3 center, Vector3 half, float yaw, bool moving )
 {
 	BodyOptions bo;
-	bo.type = b3_staticBody;
-	Entity* e = scene.CreateEntity( Kind::Static, Mat::Rubber, center, QuatYaw( yaw ), bo );
+	bo.type = moving ? b3_kinematicBody : b3_staticBody;
+	Entity* e = scene.CreateEntity( moving ? Kind::Mechanism : Kind::Static, Mat::Rubber, center, QuatYaw( yaw ), bo );
 	ShapeOptions so;
-	so.category = CatStatic;
+	so.category = moving ? CatBlock : CatStatic;
 	so.hitEvents = false;
 	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, half, Mat::Rubber, so );
+	if ( moving )
+	{
+		// a frame of dark iron round the edges, so a panel that moves is told apart from the fixed ones
+		const Color iron{ 52, 54, 62, 255 };
+		const float bar = 0.06f;
+		for ( int k = -1; k <= 1; k += 2 )
+		{
+			Part edge;
+			edge.localPos = { 0, k * ( half.y - bar ), 0 };
+			edge.size = { half.x + 0.02f, bar, half.z + 0.03f };
+			edge.mat = Mat::Metal;
+			edge.tint = iron;
+			scene.AddVisual( e, edge );
+			Part post;
+			post.localPos = { k * ( half.x - bar ), 0, 0 };
+			post.size = { bar, half.y + 0.02f, half.z + 0.03f };
+			post.mat = Mat::Metal;
+			post.tint = iron;
+			scene.AddVisual( e, post );
+		}
+		e->homeY = -1000.0f;
+	}
 	scene.FinalizeEntity( e );
+	return e;
+}
+
+Entity* Builder::Turn( Entity* e, float angle, float travel, float pause, float phase )
+{
+	Mover( e, { 1, 0, 0 }, 0.0f, travel, pause, phase );
+	Mechanism& m = scene.mechanisms.back();
+	m.turn = angle;
+	Quaternion q = MoverRotAt( m, 0.0f );
+	b3Body_SetTransform( e->body, ToB3( e->pos ), ToB3( q ) );
+	e->rot = e->prevRot = q;
+	return e;
+}
+
+Entity* Builder::Spin( Entity* e, float rate, float phase )
+{
+	Mover( e, { 1, 0, 0 }, 0.0f, 0.0f, 0.0f, phase );
+	Mechanism& m = scene.mechanisms.back();
+	m.spin = rate;
+	Quaternion q = MoverRotAt( m, 0.0f );
+	b3Body_SetTransform( e->body, ToB3( e->pos ), ToB3( q ) );
+	e->rot = e->prevRot = q;
+	return e;
+}
+
+Entity* Builder::FloatingIsland( Vector3 top, float radius, float depth, Vector3 axis, float distance, float travel, float pause, float phase )
+{
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Grass, top, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.hitEvents = false;
+	so.friction = 1.0f; // towers ride on it
+	const float slab = 1.0f;
+	scene.AddHull( e, { 0, 0, 0 }, b3Quat_identity, scene.Cylinder( slab, radius, -slab, 24 ), Mat::Grass, so );
+	scene.AddHull( e, { 0, -slab - depth, 0 }, b3Quat_identity, scene.Cone( depth, radius * 0.18f, radius * 0.94f, 14 ), Mat::Rock, so );
+	e->parts.back().tint = Look().rock;
+	// hanging lumps of rock and a few stones on top, carried along (decorations would stay behind)
+	for ( int i = 0; i < 3; ++i )
+	{
+		float a = rng.Range( 0.0f, 2.0f * PI );
+		float r = radius * rng.Range( 0.3f, 0.55f );
+		float h = depth * rng.Range( 0.35f, 0.6f );
+		Part lump;
+		lump.geo = Geo::Hull;
+		lump.hull = scene.Cone( h, radius * 0.08f, radius * rng.Range( 0.3f, 0.45f ), 10 );
+		lump.localPos = { cosf( a ) * r, -slab - h, sinf( a ) * r };
+		lump.mat = Mat::Rock;
+		lump.tint = Look().rock;
+		scene.AddVisual( e, lump );
+	}
+	for ( int i = 0; i < (int)( radius * 1.2f ); ++i )
+	{
+		float a = rng.Range( 0.0f, 2.0f * PI );
+		float r = radius * rng.Range( 0.7f, 0.92f );
+		Part stone;
+		stone.geo = Geo::Sphere;
+		float sz = rng.Range( 0.12f, 0.25f );
+		stone.localPos = { cosf( a ) * r, 0.0f, sinf( a ) * r };
+		stone.size = { sz, sz * 0.6f, sz };
+		stone.mat = Mat::Rock;
+		stone.tint = ColorBrightness( Look().rock, 0.15f );
+		scene.AddVisual( e, stone );
+	}
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	Mover( e, axis, distance, travel, pause, phase );
+	Mechanism& m = scene.mechanisms.back();
+	m.carry = { radius * 0.95f, slab + depth, radius * 0.95f };
+	m.reach = 14.0f;
+	return e;
+}
+
+void Builder::Fan( Vector3 base, float yaw, float length, float width, float height, float strength )
+{
+	Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
+	Vector3 fwd = Vector3RotateByQuaternion( { 0, 0, 1 }, q );
+	const float hubY = height * 0.5f + 0.4f;
+	const float ring = std::min( width, height ) * 0.5f;
+	// the stand: a wooden trestle holding an iron ring
+	Entity* stand = Ledge( { base.x, base.y + hubY * 0.5f, base.z }, { 0.18f, hubY * 0.5f, 0.3f }, Mat::Wood, q, Color{ 120, 84, 52, 255 } );
+	const Color iron{ 60, 62, 70, 255 };
+	for ( int i = 0; i < 12; ++i )
+	{
+		float a = i * PI / 6.0f;
+		Part seg;
+		seg.localPos = { cosf( a ) * ring, hubY * 0.5f + sinf( a ) * ring, 0.0f };
+		seg.localRot = QuaternionFromAxisAngle( { 0, 0, 1 }, a );
+		seg.size = { 0.08f, ring * 0.27f, 0.1f };
+		seg.mat = Mat::Metal;
+		seg.tint = iron;
+		scene.AddVisual( stand, seg );
+	}
+	scene.FinalizeEntity( stand );
+	// the blades turn (a kinematic body without shapes: nothing collides with them)
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Vector3 hub{ base.x, base.y + hubY, base.z };
+	Entity* blades = scene.CreateEntity( Kind::Mechanism, Mat::Wood, hub, ToB3( q ), bo );
+	Part cap;
+	cap.geo = Geo::Sphere;
+	cap.size = { 0.22f, 0.22f, 0.22f };
+	cap.mat = Mat::Metal;
+	cap.tint = iron;
+	scene.AddVisual( blades, cap );
+	for ( int i = 0; i < 4; ++i )
+	{
+		float a = i * PI * 0.5f;
+		Part blade;
+		blade.localPos = { cosf( a ) * ring * 0.5f, sinf( a ) * ring * 0.5f, 0.0f };
+		blade.localRot = QuaternionMultiply( QuaternionFromAxisAngle( { 0, 0, 1 }, a ), QuaternionFromAxisAngle( { 1, 0, 0 }, 0.35f ) );
+		blade.size = { ring * 0.45f, 0.16f, 0.03f };
+		blade.mat = Mat::Wood;
+		blade.tint = Color{ 170, 120, 70, 255 };
+		scene.AddVisual( blades, blade );
+	}
+	blades->homeY = -1000.0f;
+	scene.FinalizeEntity( blades );
+	Mover( blades, { 1, 0, 0 }, 0.0f, 0.0f, 0.0f );
+	Mechanism& m = scene.mechanisms.back();
+	m.spinAxis = fwd;
+	m.spin = 9.0f;
+
+	AirCurrent c;
+	c.center = Vector3Add( hub, Vector3Scale( fwd, length * 0.5f + 0.3f ) );
+	Vector3 ax = Vector3Scale( fwd, length * 0.5f );
+	c.half = { std::max( fabsf( ax.x ), width * 0.5f * fabsf( fwd.z ) ) + 0.01f, height * 0.5f,
+			   std::max( fabsf( ax.z ), width * 0.5f * fabsf( fwd.x ) ) + 0.01f };
+	c.accel = Vector3Scale( fwd, strength );
+	scene.currents.push_back( c );
+}
+
+void Builder::Updraft( Vector3 base, float halfX, float halfZ, float height, float strength, float period, float onTime, float phase )
+{
+	// an iron grate flush with the ground
+	Entity* grate = Ledge( { base.x, base.y + 0.03f, base.z }, { halfX, 0.03f, halfZ }, Mat::Metal, { 0, 0, 0, 1 }, Color{ 50, 52, 60, 255 } );
+	for ( float x = -halfX + 0.25f; x < halfX; x += 0.35f )
+	{
+		Part bar;
+		bar.localPos = { x, 0.03f, 0 };
+		bar.size = { 0.04f, 0.02f, halfZ };
+		bar.mat = Mat::Metal;
+		bar.tint = Color{ 95, 98, 110, 255 };
+		scene.AddVisual( grate, bar );
+	}
+	scene.FinalizeEntity( grate );
+	AirCurrent c;
+	c.center = { base.x, base.y + height * 0.5f, base.z };
+	c.half = { halfX, height * 0.5f, halfZ };
+	c.accel = { 0, strength, 0 };
+	c.period = period;
+	c.onTime = onTime;
+	c.phase = phase;
+	scene.currents.push_back( c );
+}
+
+void Builder::CarouselWall( Entity* carousel, Vector3 local, Vector3 half, float yaw, Mat mat, Color tint )
+{
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.hitEvents = false;
+	scene.AddBox( carousel, local, ToB3( QuaternionFromAxisAngle( { 0, 1, 0 }, yaw ) ), half, mat, so );
+	carousel->parts.back().tint = tint;
+	scene.FinalizeEntity( carousel );
+}
+
+Entity* Builder::Carousel( Vector3 top, float radius, float rate )
+{
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Wood, top, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.hitEvents = false;
+	so.friction = 1.0f;
+	const float thick = 0.35f;
+	scene.AddHull( e, { 0, 0, 0 }, b3Quat_identity, scene.Cylinder( thick, radius, -thick, 28 ), Mat::Wood, so );
+	e->parts.back().tint = Color{ 150, 108, 70, 255 };
+	// iron rim and spokes painted on top, so the turning shows
+	const Color iron{ 58, 60, 68, 255 };
+	for ( int i = 0; i < 6; ++i )
+	{
+		float a = i * PI / 3.0f;
+		Part spoke;
+		spoke.localPos = { cosf( a ) * radius * 0.5f, 0.005f, sinf( a ) * radius * 0.5f };
+		spoke.localRot = QuaternionFromAxisAngle( { 0, 1, 0 }, -a );
+		spoke.size = { radius * 0.5f, 0.02f, 0.06f };
+		spoke.mat = Mat::Metal;
+		spoke.tint = iron;
+		scene.AddVisual( e, spoke );
+	}
+	Part rim;
+	rim.geo = Geo::Hull;
+	rim.hull = scene.Cylinder( thick, radius + 0.06f, -thick - 0.03f, 28 ); // a band round the edge, below the top
+	rim.mat = Mat::Metal;
+	rim.tint = iron;
+	scene.AddVisual( e, rim );
+	// the axle it turns on, down into the island below
+	Part axle;
+	axle.geo = Geo::Hull;
+	axle.hull = scene.Cylinder( 3.0f, 0.35f, -3.0f - thick, 12 );
+	axle.mat = Mat::Metal;
+	axle.tint = iron;
+	scene.AddVisual( e, axle );
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	Spin( e, rate );
+	Mechanism& m = scene.mechanisms.back();
+	m.carry = { radius * 0.95f, thick, radius * 0.95f };
+	m.reach = 10.0f;
 	return e;
 }
 
@@ -1123,6 +1357,11 @@ Entity* Builder::SnowShelter( Vector3 base, float halfX, float halfZ, float heig
 void Builder::AimHint( Entity* king, Entity* via, Vector3 offset, float lob )
 {
 	game.AddAimHint( king, via, offset, lob );
+}
+
+void Builder::BankHint( Entity* king )
+{
+	game.AddAimHint( king, king, { 0, 0, 0 }, 0.0f, true );
 }
 
 void Builder::ShiftingWind( float strength )
@@ -1724,6 +1963,318 @@ static void LevelCupola( Builder& b )
 	b.Trees( { 0, 0, 36 }, 9.5f, 4, 7.8f );
 	b.Flag( { 6.0f, 0, 39.0f }, kOrange );
 	b.Fortress( { -1.0f, 2, 36 }, 11.0f );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Arcipelago delle Tempeste
+// ---------------------------------------------------------------------------------------------
+
+static const Color kStorm{ 40, 60, 140, 255 };
+static const Color kSlate{ 112, 118, 128, 255 };
+
+// A stone booth over a king, open on one side only (`open`: +1 towards +x, -1 towards -x) and roofed: no
+// shot from the cannon gets in except off the rubber. Returns the king.
+static Entity* Booth( Builder& b, Vector3 feet, int open, Color robe )
+{
+	const float hw = 1.1f, hd = 1.1f, h = 2.5f, t = 0.2f;
+	b.Ledge( { feet.x, feet.y + h * 0.5f, feet.z - hd - t }, { hw + t, h * 0.5f, t }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	b.Ledge( { feet.x, feet.y + h * 0.5f, feet.z + hd + t }, { hw + t, h * 0.5f, t }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	b.Ledge( { feet.x - open * ( hw + t ), feet.y + h * 0.5f, feet.z }, { t, h * 0.5f, hd }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	b.Ledge( { feet.x, feet.y + h + t, feet.z }, { hw + t, t, hd + 2.0f * t }, Mat::Stone, { 0, 0, 0, 1 }, ColorBrightness( kSlate, -0.2f ) );
+	// his banner on the roof, so the player knows someone is in there
+	b.Flag( { feet.x - open * hw * 0.6f, feet.y + h + 2.0f * t, feet.z + hd * 0.5f }, robe, 0.6f );
+	return b.King( feet, robe );
+}
+
+static void LevelFaro( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.5f );
+	// the keeper of the light, in a booth at the foot of the lighthouse that opens only to the right
+	Entity* keeper = Booth( b, { -1.8f, 0, 36.2f }, 1, kStorm );
+	b.Ledge( { -1.8f, 5.6f, 36.2f }, { 0.9f, 3.0f, 0.9f }, Mat::Stone, { 0, 0, 0, 1 }, Color{ 225, 225, 230, 255 } );
+	b.Ledge( { -1.8f, 8.9f, 36.2f }, { 0.65f, 0.35f, 0.65f }, Mat::Gold, { 0, 0, 0, 1 }, Color{ 255, 220, 120, 255 } );
+	// and the rubber sea wall on the right that sends a shot back into it
+	b.Bumper( { 3.6f, 1.4f, 36.4f }, { 1.6f, 1.4f, 0.18f }, 0.84f );
+	b.BankHint( keeper );
+	// two more in plain view
+	Vector3 p1 = b.Scatter( { -5.8f, 0, 33.5f }, 0.8f, 0.8f );
+	float t1 = b.Tower( p1, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kTeal );
+	Vector3 p2 = b.Scatter( { 5.4f, 0, 31.0f }, 0.7f, 0.7f );
+	float t2 = b.Tower( p2, 1, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kCrimson );
+	BackTrees( b, { 0, 0, 35 }, 8.4f );
+	b.Flag( { 3.0f, 0, 41.0f }, kStorm );
+	b.Fortress( { 0, 2.5f, 35 }, 11.0f );
+}
+
+static void LevelDeriva( Builder& b )
+{
+	b.PlayerIsland();
+	// three islands adrift: one bobs on the left, one slides across at the back, one sinks and rises on the right
+	struct Drift
+	{
+		Vector3 top;
+		float radius;
+		Vector3 axis;
+		float distance, travel, pause, phase;
+		Color robe;
+	};
+	const Drift drifts[3] = {
+		{ { -6.5f, 0.0f, 33.0f }, 3.0f, { 0, 1, 0 }, 1.4f, 2.6f, 0.8f, 0.0f, kTeal },
+		{ { -3.0f, 2.5f, 41.0f }, 3.2f, { 1, 0, 0 }, 6.0f, 4.5f, 1.0f, 1.0f, kStorm },
+		{ { 6.5f, 0.5f, 34.0f }, 3.0f, { 0, -1, 0 }, 1.4f, 3.0f, 0.6f, 2.0f, kCrimson },
+	};
+	for ( const Drift& d : drifts )
+	{
+		Entity* isle = b.FloatingIsland( d.top, d.radius, 5.0f, d.axis, d.distance, d.travel, d.pause, d.phase );
+		// the lowest the island goes: kings and blocks count as fallen only well below it
+		b.homeY = std::min( d.top.y, d.top.y + d.axis.y * d.distance );
+		Vector3 base = isle->pos;
+		float t = b.Tower( base, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+		b.King( { base.x, t, base.z }, d.robe );
+	}
+	b.homeY = 0.0f;
+	b.Fortress( { 0, 2.5f, 36 }, 12.0f );
+}
+
+// Two fans on rocks at the sides blow across the line of fire, one each way: aim upwind, or lob over them.
+static void LevelVentole( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.5f );
+	b.Island( { -13.0f, 0, 21.0f }, 2.4f, 5.0f );
+	b.Fan( { -13.0f, 0, 21.0f }, PI * 0.5f, 24.0f, 5.0f, 8.0f, 26.0f );
+	b.Island( { 13.5f, 0, 28.5f }, 2.4f, 5.0f );
+	b.Fan( { 13.5f, 0, 28.5f }, -PI * 0.5f, 24.0f, 4.0f, 7.0f, 22.0f );
+	Vector3 p1 = b.Scatter( { -4.2f, 0, 35.0f }, 1.0f, 1.0f );
+	float t1 = b.Tower( p1, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kTeal );
+	Vector3 p2 = b.Scatter( { 0.5f, 0, 39.5f }, 1.0f, 0.6f );
+	float t2 = b.Tower( p2, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kStorm );
+	Vector3 p3 = b.Scatter( { 4.8f, 0, 34.0f }, 1.0f, 1.0f );
+	float t3 = b.Tower( p3, 1, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p3.x, t3, p3.z }, kCrimson );
+	BackTrees( b, { 0, 0, 36 }, 8.4f );
+	b.Flag( { -2.5f, 0, 43.0f }, kStorm );
+	b.Fortress( { 0, 2.5f, 33 }, 13.0f );
+}
+
+// A booth that opens to the right, and a rubber panel gliding to and fro on that side: it only lines up with
+// the opening now and then.
+static void LevelSpondeMobili( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.5f );
+	Entity* keeper = Booth( b, { 2.4f, 0, 35.8f }, -1, kStorm );
+	Entity* panel = b.Bumper( { -3.8f, 1.3f, 32.0f }, { 1.3f, 1.3f, 0.16f }, -0.83f, true );
+	b.Mover( panel, { 0, 0, 1 }, 7.5f, 3.2f, 0.8f );
+	b.BankHint( keeper );
+	// a king on an island that drifts at the back, and one on a tower at the front
+	Entity* isle = b.FloatingIsland( { -2.0f, 3.5f, 44.0f }, 2.8f, 5.0f, { 1, 0, 0 }, 6.0f, 4.5f, 1.0f, 0.5f );
+	b.homeY = 3.5f;
+	float t = b.Tower( isle->pos, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { isle->pos.x, t, isle->pos.z }, kTeal );
+	b.homeY = 0.0f;
+	Vector3 p = b.Scatter( { 6.2f, 0, 31.8f }, 0.8f, 0.8f );
+	float tp = b.Tower( p, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p.x, tp, p.z }, kCrimson );
+	BackTrees( b, { 0, 0, 35 }, 8.4f );
+	b.Flag( { 6.0f, 0, 39.0f }, kStorm );
+	b.Fortress( { 0, 2.5f, 37 }, 12.0f );
+}
+
+// A rubber paddle turning in the middle; a booth on either side opens towards it, and a king on a tower waits
+// behind it for the moment the paddle turns edge on.
+static void LevelGirandola( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 9.5f );
+	Entity* paddle = b.Bumper( { 0, 1.4f, 33.0f }, { 1.6f, 1.2f, 0.18f }, 0.0f, true );
+	b.Spin( paddle, 0.9f );
+	Entity* left = Booth( b, { 5.3f, 0, 35.5f }, -1, kTeal );
+	Entity* right = Booth( b, { -5.3f, 0, 35.5f }, 1, kCrimson );
+	b.BankHint( left );
+	b.BankHint( right );
+	Vector3 p = b.Scatter( { 0, 0, 39.0f }, 0.8f, 0.5f );
+	float t = b.Tower( p, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p.x, t, p.z }, kStorm );
+	BackTrees( b, { 0, 0, 35 }, 8.4f );
+	b.Flag( { -3.0f, 0, 41.5f }, kStorm );
+	b.Fortress( { 0, 2.0f, 35 }, 11.0f );
+}
+
+// Kings in pits walled all round: only a lob drops in, and a blowhole in each floor throws it back up while it
+// blows.
+static void Blowpit( Builder& b, Vector3 c, float phase, Color robe )
+{
+	const float hw = 1.4f, h = 2.6f, t = 0.25f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { c.x, h * 0.5f, c.z + s * ( hw + t ) }, { hw + 2.0f * t, h * 0.5f, t }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+		b.Ledge( { c.x + s * ( hw + t ), h * 0.5f, c.z }, { t, h * 0.5f, hw }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	}
+	b.Updraft( { c.x, 0, c.z }, hw, hw, 14.0f, 34.0f, 5.0f, 2.6f, phase );
+	b.King( { c.x, 0.06f, c.z }, robe );
+	b.Flag( { c.x + hw * 0.6f, h, c.z + hw + t }, robe, 0.6f );
+}
+
+static void LevelSoffioni( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	Blowpit( b, b.Scatter( { -4.8f, 0, 35.0f }, 0.6f, 0.6f ), 0.0f, kTeal );
+	Blowpit( b, b.Scatter( { 0.4f, 0, 39.5f }, 0.6f, 0.5f ), 1.7f, kStorm );
+	Blowpit( b, b.Scatter( { 5.2f, 0, 34.0f }, 0.6f, 0.6f ), 3.4f, kCrimson );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { -1.0f, 0, 44.0f }, kStorm );
+	b.Fortress( { 0, 2.0f, 36 }, 11.0f );
+}
+
+// Three kings on a turntable, each with a wall on the outer side: a king is in the open only while the
+// turntable carries him round the back, and the tower in the middle hides the one right behind it.
+static void LevelGiostra( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 9.5f );
+	const float r = 5.2f;
+	Entity* disc = b.Carousel( { 0, 0.35f, 36.0f }, r, 0.35f );
+	b.CarouselWall( disc, { 0, 1.6f, 0 }, { 0.9f, 1.6f, 0.9f }, 0.0f, Mat::Stone, kSlate );
+	for ( int i = 0; i < 3; ++i )
+	{
+		float a = i * 2.0f * PI / 3.0f + 0.5f;
+		Vector3 out{ sinf( a ), 0, cosf( a ) };
+		b.CarouselWall( disc, Vector3Add( Vector3Scale( out, r - 0.45f ), { 0, 1.2f, 0 } ), { 1.1f, 1.2f, 0.2f }, a, Mat::Stone, kSlate );
+		const Color robes[3] = { kTeal, kStorm, kCrimson };
+		b.King( Vector3Add( { disc->pos.x, disc->pos.y, disc->pos.z }, Vector3Scale( out, 3.4f ) ), robes[i] );
+	}
+	// and one on a tower beyond the turntable, in plain view
+	Vector3 p = b.Scatter( { 6.8f, 0, 41.0f }, 0.6f, 0.6f );
+	float t = b.Tower( p, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p.x, t, p.z }, kOrange );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { -6.5f, 0, 41.0f }, kStorm );
+	b.Fortress( { 0, 2.0f, 36 }, 11.0f );
+}
+
+// A king in a shop window: glass in front and overhead, so he is in plain view, stone behind and on one side;
+// open only on the other side (`open`: +1 towards +x, -1 towards -x).
+static Entity* ShopWindow( Builder& b, Vector3 feet, int open, Color robe )
+{
+	const float hw = 1.1f, hd = 1.1f, h = 2.5f, t = 0.2f;
+	b.GlassPane( { feet.x, feet.y + h * 0.5f, feet.z - hd - 0.06f }, { hw + t, h * 0.5f, 0.06f } );
+	Entity* roof = b.GlassPane( { feet.x, feet.y + h + 0.06f, feet.z }, { hw + t, hd + 0.12f, 0.06f } );
+	b3Body_SetTransform( roof->body, b3Body_GetPosition( roof->body ), QuatAxisAngle( { 1, 0, 0 }, PI * 0.5f ) );
+	b.scene.FinalizeEntity( roof );
+	b.Ledge( { feet.x, feet.y + h * 0.5f, feet.z + hd + t }, { hw + t, h * 0.5f, t }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	b.Ledge( { feet.x - open * ( hw + t ), feet.y + h * 0.5f, feet.z }, { t, h * 0.5f, hd }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	return b.King( feet, robe );
+}
+
+// The harbour: two kings behind shop windows, each open towards a rubber pier that sends a shot back in, and
+// a boat drifting across in front.
+static void LevelPorto( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	Entity* a = ShopWindow( b, { -2.4f, 0, 36.0f }, -1, kTeal );
+	Entity* c = ShopWindow( b, { 2.4f, 0, 36.0f }, 1, kCrimson );
+	// the pier on the right swings to and fro, and serves its window only at one end of the swing
+	Entity* swing = b.Bumper( { -7.4f, 1.4f, 37.0f }, { 1.6f, 1.4f, 0.18f }, -0.45f, true );
+	b.Turn( swing, -0.5f, 2.2f, 1.2f );
+	b.Bumper( { 7.4f, 1.4f, 37.0f }, { 1.6f, 1.4f, 0.18f }, 0.79f );
+	b.BankHint( a );
+	b.BankHint( c );
+	// a harbour master's tower at the back, over the windows
+	Vector3 p = b.Scatter( { 0, 0, 41.0f }, 1.0f, 0.5f );
+	float t = b.Tower( p, 3, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p.x, t, p.z }, kStorm );
+	// the boat
+	Entity* boat = b.FloatingIsland( { -6.0f, -1.0f, 19.5f }, 2.0f, 3.5f, { 1, 0, 0 }, 12.0f, 6.0f, 1.0f, 2.0f );
+	b.homeY = -1.0f;
+	float tb = b.Tower( boat->pos, 1, 0.8f, 1.1f, Mat::Wood, Mat::Wood );
+	b.King( { boat->pos.x, tb, boat->pos.z }, kOrange );
+	b.homeY = 0.0f;
+	b.Flag( { 5.5f, 0, 41.5f }, kStorm );
+	b.Fortress( { 0, 2.0f, 34 }, 12.0f );
+}
+
+// The eye of the storm: a king on a pillar in a column of rising air that throws every lob back up, and three
+// on islands adrift round it, while the wind never blows the same way twice.
+static void LevelCiclone( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 38.0f }, 5.0f );
+	b.Ledge( { 0, 2.5f, 38.0f }, { 0.7f, 2.5f, 0.7f }, Mat::Stone, { 0, 0, 0, 1 }, kSlate );
+	b.homeY = 5.0f;
+	b.King( { 0, 5.0f, 38.0f }, kStorm );
+	b.homeY = 0.0f;
+	b.Updraft( { 0, 5.05f, 38.0f }, 2.4f, 2.4f, 14.0f, 26.0f );
+	struct Drift
+	{
+		Vector3 top;
+		Vector3 axis;
+		float distance, travel, pause, phase;
+		Color robe;
+	};
+	const Drift drifts[3] = {
+		{ { 7.5f, 0.0f, 33.0f }, { 0, 1, 0 }, 1.5f, 2.8f, 0.8f, 0.0f, kTeal },
+		{ { -8.0f, 1.0f, 35.0f }, { 0, 0, 1 }, 5.0f, 4.0f, 1.0f, 1.5f, kCrimson },
+		{ { 3.0f, 3.0f, 46.0f }, { -1, 0, 0 }, 6.0f, 4.5f, 1.0f, 3.0f, kPurple },
+	};
+	for ( const Drift& d : drifts )
+	{
+		Entity* isle = b.FloatingIsland( d.top, 2.8f, 4.5f, d.axis, d.distance, d.travel, d.pause, d.phase );
+		b.homeY = std::min( d.top.y, d.top.y + d.axis.y * d.distance );
+		float t = b.Tower( isle->pos, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+		b.King( { isle->pos.x, t, isle->pos.z }, d.robe );
+	}
+	b.homeY = 0.0f;
+	b.ShiftingWind( 2.0f );
+	b.Fortress( { 0, 3.0f, 38 }, 13.0f );
+}
+
+// Re Fulmine's stronghold: the king in a keep that opens only towards a turning paddle of rubber, a guard in a
+// blowhole pit, one in a shop window by the rubber pier, and one on an island adrift at the back.
+static void LevelRoccaFulmine( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 38.0f }, 11.0f );
+	// the keep, and the paddle turning in front of it
+	Entity* king = Booth( b, { -1.8f, 0, 38.2f }, -1, kStorm );
+	b.Ledge( { -1.8f, 4.4f, 38.2f }, { 1.5f, 1.6f, 1.5f }, Mat::Stone, { 0, 0, 0, 1 }, ColorBrightness( kSlate, -0.25f ) );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { -1.8f + s * 1.25f, 6.3f, 38.2f - 1.25f }, { 0.25f, 0.3f, 0.25f }, Mat::Stone, { 0, 0, 0, 1 }, ColorBrightness( kSlate, -0.25f ) );
+	}
+	Entity* paddle = b.Bumper( { -6.6f, 1.4f, 35.8f }, { 1.5f, 1.2f, 0.18f }, 0.0f, true );
+	b.Spin( paddle, -0.8f );
+	b.BankHint( king );
+	// a guard in a blowhole pit on the left
+	Blowpit( b, { 6.2f, 0, 35.5f }, 1.0f, kTeal );
+	// a guard behind a shop window at the back, and the pier that serves it
+	Entity* shop = ShopWindow( b, b.Scatter( { 3.2f, 0, 42.5f }, 0.5f, 0.3f ), 1, kCrimson );
+	b.Bumper( { 8.4f, 1.4f, 43.5f }, { 1.5f, 1.4f, 0.18f }, 0.72f );
+	b.BankHint( shop );
+	// and one on an island drifting behind it all
+	Entity* isle = b.FloatingIsland( { -7.0f, 3.5f, 49.0f }, 2.8f, 5.0f, { 1, 0, 0 }, 8.0f, 5.0f, 1.0f, 0.0f );
+	b.homeY = 3.5f;
+	float t = b.Tower( isle->pos, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { isle->pos.x, t, isle->pos.z }, kPurple );
+	b.homeY = 0.0f;
+	b.Flag( { -1.8f, 6.6f, 38.2f }, kStorm, 1.2f );
+	b.Fortress( { 0, 3.0f, 41 }, 14.0f );
 }
 
 static void Level04( Builder& b )
@@ -2592,6 +3143,36 @@ static const LevelDef s_levels[] = {
 	{ "La Cupola Stregata", "Sotto la mia cupola non entra niente. Nemmeno le tue sfere.",
 	  "La barriera ferma palle ed esplosioni, e qui non ci sono sfere magiche. Il VORTICE (6) invece la attraversa.",
 	  { 3, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
+	{ "Il Faro", "Benvenuto nel mio arcipelago. Qui niente arriva dritto, men che meno tu.",
+	  "Il guardiano del faro sta in una garitta aperta solo a sinistra: tira sulla GOMMA e il rimbalzo lo prender\u00e0. Con la mira assistita (T) vedi anche il rimbalzo.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelFaro, "arcipelago_faro" },
+	{ "Isole alla Deriva", "Le mie isole non stanno mai ferme. Come le tue speranze di prendermi.",
+	  "Le isole salgono, scendono e vanno alla deriva: mira dove saranno quando arriva la palla.",
+	  { 6, 1, 1, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelDeriva, "arcipelago_deriva" },
+	{ "Le Ventole", "Le mie ventole soffiano dove voglio io. E tu, dove soffierai?",
+	  "Le ventole spingono di lato le palle che passano nella loro corrente: guarda le scie dell'aria e mira controvento.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelVentole, "arcipelago_ventole" },
+	{ "Sponde Mobili", "La mia gomma va e viene. Aspettala, se hai pazienza.",
+	  "Il pannello di gomma scorre avanti e indietro: il rimbalzo entra nella garitta solo quando il pannello passa davanti.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelSpondeMobili, "arcipelago_sponde" },
+	{ "La Girandola", "Gira, gira la mia girandola. E gira anche la tua testa.",
+	  "La pala di gomma gira: a seconda dell'angolo manda il colpo in una garitta o nell'altra. Il re dietro si scopre quando la pala \u00e8 di taglio.",
+	  { 7, 0, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelGirandola, "arcipelago_girandola" },
+	{ "I Soffioni", "Sotto i miei piedi soffia la tempesta. Prova a scendere fin qui.",
+	  "I re stanno in pozzi murati: ci si arriva solo di pallonetto. Il soffione sul fondo ributta in alto le palle: tira quando tace.",
+	  { 7, 0, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelSoffioni, "arcipelago_soffioni" },
+	{ "La Giostra", "Tutti in giostra! Un giro per me, e nessuno per te.",
+	  "La giostra porta in giro i re, ognuno con il suo muro: spara quando un re passa dietro, allo scoperto. Mira dove sar\u00e0.",
+	  { 7, 1, 0, 0, 0, 0, 0 }, 5, { 0, 0, 0 }, LevelGiostra, "arcipelago_giostra" },
+	{ "Il Porto", "Guarda pure le mie vetrine. Toccare \u00e8 vietato.",
+	  "Il vetro non si rompe, ma ogni vetrina \u00e8 aperta su un lato: prendi di sponda il molo di GOMMA che le sta di fronte. Quello a destra oscilla. Il vento soffia verso sinistra.",
+	  { 7, 1, 0, 0, 0, 0, 0 }, 5, { 0.9f, 0, 0 }, LevelPorto, "arcipelago_porto" },
+	{ "L'Occhio del Ciclone", "Nell'occhio del ciclone si sta tranquilli. Fuori, un po' meno.",
+	  "La colonna d'aria ributta in alto i pallonetti: il re sul pilastro si prende solo di tiro teso. Il vento cambia a ogni colpo.",
+	  { 8, 1, 0, 0, 0, 0, 0 }, 5, { -1.2f, 0, 0.3f }, LevelCiclone, "arcipelago_ciclone" },
+	{ "La Rocca di Re Fulmine", "Tuoni, lampi e gomma. Vediamo se hai imparato qualcosa.",
+	  "Re Fulmine si prende solo di sponda sulla pala che gira; la guardia nel pozzo di pallonetto quando il soffione tace, quella in vetrina dal molo di gomma.",
+	  { 9, 1, 0, 0, 1, 0, 0 }, 7, { 0, 0, 0 }, LevelRoccaFulmine, "arcipelago_rocca" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -2634,8 +3215,13 @@ static std::vector<Campaign> BuildCampaigns()
 					 idx( "dune_tempesta" ), idx( "dune_palazzo" ) } } );
 	c.push_back( { "Arcipelago delle Tempeste", "Re Fulmine", { 40, 60, 140, 255 }, 4,
 				   "Nell'Arcipelago delle Tempeste le isole non stanno ferme un attimo, e Re Fulmine ama far piovere lampi sui "
-				   "suoi nemici.",
-				   "Le nuvole si aprono. Cinque frammenti su sei.", {} } );
+				   "suoi nemici. I suoi re si nascondono dove un colpo dritto non arriva: qui si gioca di sponda, sulla gomma "
+				   "e sul vento.",
+				   "Re Fulmine resta senza tuoni e le nuvole si aprono: cinque frammenti su sei. Laggi\u00f9, dove il cielo si fa "
+				   "rosso, un vulcano brontola.",
+				   { idx( "arcipelago_faro" ), idx( "arcipelago_deriva" ), idx( "arcipelago_ventole" ), idx( "arcipelago_sponde" ),
+					 idx( "arcipelago_girandola" ), idx( "arcipelago_soffioni" ), idx( "arcipelago_giostra" ), idx( "arcipelago_porto" ),
+					 idx( "arcipelago_ciclone" ), idx( "arcipelago_rocca" ) } } );
 	c.push_back( { "Fucina del Vulcano", "l'Imperatore di Ferro", { 190, 40, 30, 255 }, 5,
 				   "Sopra un mare di lava, l'Imperatore di Ferro ha forgiato l'ultima fortezza del Regno di Sopra. Custodisce "
 				   "l'ultimo frammento della Corona, e tutto quello che hai imparato ti servir\u00e0.",

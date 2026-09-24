@@ -111,6 +111,14 @@ struct Progress
 	int bestRound = 0;
 };
 
+// One step of a predicted flight.
+struct ArcPoint
+{
+	Vector3 p;
+	float t;
+	int bounces; // off rubber, so far
+};
+
 class Builder;
 struct LevelDef;
 struct ChallengePlan;
@@ -196,7 +204,7 @@ public:
 	void AddFlag( Vector3 base, Color color, float scale );
 	void SetCannon( Vector3 pos, float yaw );
 	void SetFortressCenter( Vector3 c, float radius );
-	void AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob = 0.0f );
+	void AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob = 0.0f, bool bank = false );
 	// The wind turns and changes strength (up to `strength`) once each shot has landed.
 	void SetShiftingWind( float strength )
 	{
@@ -252,6 +260,19 @@ private:
 	// The boulder snaps windmill blades off their axle.
 	void BreakBlades( Entity* blades );
 	void FellTree( Entity* e );
+	// The push of the air currents at a point at simulation time t (on top of gravity and wind).
+	Vector3 CurrentAt( Vector3 p, float t ) const;
+	// Where `e` will be `dt` seconds from now, carried by the mover `m` it rides (turning included).
+	Vector3 RiderAt( const Mechanism& m, Vector3 p, float dt ) const;
+	// Follows a shot of radius `radius` fired now from p0 at v through gravity, wind and air currents, bouncing
+	// off rubber (fixed or moving) up to `maxBounces` times the way Box3D does; one point per simulation step,
+	// until `maxT` seconds or until it stops at a rubber wall it may not bounce off.
+	// `bounceBy` > 0: give up if it has not met rubber by then.
+	void PredictArc( Vector3 p0, Vector3 v, float radius, float maxT, int maxBounces, std::vector<ArcPoint>& out, float bounceBy = 0.0f ) const;
+	// The first entity a ray meets, rubber left out (the prediction bounces off it); nullptr if none.
+	Entity* CastSkippingRubber( Vector3 from, Vector3 to, b3QueryFilter filter, Vector3* point = nullptr, Vector3* normal = nullptr ) const;
+	// Automatic play: a bank shot off the rubber at `king`; false if no shot works right now.
+	bool FireBank( const Entity* king, Ammo type );
 	// The kinematic mover `e` is, or rides on (nullptr if none).
 	const Mechanism* MoverUnder( const Entity* e ) const;
 	// Steers the kinematic movers to where they must be at the end of the next step.
@@ -297,6 +318,8 @@ private:
 	void DrawPause();
 	void DrawResult( bool won );
 	void DrawFloatTexts();
+	void UpdateStorm( float dt );
+	void DrawBolt();
 
 	// persistence
 	void LoadProgress();
@@ -350,6 +373,7 @@ private:
 		Vector3 home;
 		Vector3 offset;
 		float lob; // highest horizontal speed worth trying (a high lob), 0 = any arc
+		bool bank; // `via` is rubber: search for a shot that bounces off it into the king
 	};
 	std::vector<AimHintRecord> m_aimHints;
 
@@ -411,6 +435,12 @@ private:
 	float m_camFov = 50.0f;
 	float m_shake = 0.0f;
 	float m_screenFlash = 0.0f;
+	// storms: a flash of lightning far off now and then, and its thunder a moment later
+	float m_lightning = 0.0f;
+	float m_nextLightning = 6.0f;
+	float m_thunderIn = -1.0f;
+	Vector3 m_bolt{};
+	uint32_t m_boltSeed = 1;
 	float m_windShift = 0.0f;	   // shifting wind: the strongest it can blow, 0 = steady
 	bool m_windPending = false;	   // a shot is in the air: the wind turns once it lands
 	float m_windChanged = 0.0f;	   // seconds left of the "the wind has turned" notice

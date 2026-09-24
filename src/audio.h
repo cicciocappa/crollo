@@ -27,6 +27,7 @@ enum class Sfx : int
 	Implosion,
 	Beep,
 	Stick,
+	Thunder,
 	Count
 };
 

@@ -120,8 +120,31 @@ public:
 	// `pause` seconds at each end; `phase` (seconds) shifts it along the cycle. It is moved to where the cycle
 	// puts it at time 0: place riders after this call, on top of e->pos.
 	Entity* Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase = 0.0f );
-	// A fixed rubber wall: shots bounce off it, so it can be used for bank shots.
-	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f );
+	// A rubber wall: shots bounce off it, so it can be used for bank shots. `moving` makes it kinematic, for
+	// Mover(), Turn() and Spin().
+	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f, bool moving = false );
+	// Swings a kinematic entity `angle` radians about the vertical through its centre and back, `travel`
+	// seconds each way, resting `pause` seconds at each end.
+	Entity* Turn( Entity* e, float angle, float travel, float pause, float phase = 0.0f );
+	// Keeps a kinematic entity turning about the vertical through its centre at `rate` rad/s.
+	Entity* Spin( Entity* e, float rate, float phase = 0.0f );
+
+	// Arcipelago delle Tempeste
+	// An island that drifts `distance` metres along `axis` and back (Mover timing), carrying whatever is built
+	// on it. `top` is the centre of its surface at rest; build on the returned entity's pos, after the call.
+	Entity* FloatingIsland( Vector3 top, float radius, float depth, Vector3 axis, float distance, float travel, float pause, float phase = 0.0f );
+	// A big fan on a stand, blowing along its yaw (0 = towards +z): shots in the `length` x `width` x `height`
+	// stream ahead of it are pushed with `strength` m/s^2.
+	void Fan( Vector3 base, float yaw, float length, float width, float height, float strength );
+	// A grate that breathes a column of rising air: shots inside are lifted with `strength` m/s^2 (gravity is 10).
+	// With a `period` it is a blowhole: it blows `onTime` seconds out of every `period`, shifted by `phase`.
+	void Updraft( Vector3 base, float halfX, float halfZ, float height, float strength, float period = 0.0f, float onTime = 0.0f,
+				  float phase = 0.0f );
+	// A wooden turntable that keeps turning at `rate` rad/s, carrying what is built on it. `top` is the centre of
+	// its surface.
+	Entity* Carousel( Vector3 top, float radius, float rate );
+	// A wall fixed on the turntable, going round with it: `local` is its centre from the middle of the top.
+	void CarouselWall( Entity* carousel, Vector3 local, Vector3 half, float yaw, Mat mat, Color tint );
 
 	// A crystal wall that is solid for `onTime` seconds out of every `period`, shifted by `phase`.
 	Entity* Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase );
@@ -149,6 +172,8 @@ public:
 	// Tells the autotest AI (and the demo) to go for `via` instead of `king` while `via` has not moved.
 	// `lob` > 0 keeps it to high arcs: horizontal speeds up to `lob` m/s.
 	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 }, float lob = 0.0f );
+	// Tells the autotest AI that `king` is reached off the rubber: it searches for a bank shot.
+	void BankHint( Entity* king );
 	// The wind turns and changes strength after every shot, up to `strength` (the level's wind is the first one).
 	void ShiftingWind( float strength );
 

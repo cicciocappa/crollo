@@ -509,6 +509,27 @@ Buffer MakeBeep()
 	return b;
 }
 
+// A distant thunderclap: a crack, then a long rolling rumble that swells and fades a few times.
+Buffer MakeThunder()
+{
+	Buffer b( 4.5f );
+	Noise n( 4242 );
+	OnePole lp, lp2, crack;
+	float brown = 0.0f;
+	for ( int i = 0; i < b.N(); ++i )
+	{
+		float t = Buffer::T( i );
+		brown = ( brown + 0.02f * n() ) / 1.02f;
+		float roll = 0.55f + 0.45f * sinf( t * 5.3f + 1.4f * sinf( t * 1.7f ) );
+		float rumble = lp.Low( brown, 70.0f + 60.0f * expf( -t * 1.5f ) ) * Env( t, 0.12f, 0.75f ) * roll * 14.0f;
+		float hiss = lp2.Low( n(), 900.0f ) * Env( t, 0.01f, 3.5f ) * 0.5f;
+		float snap = t < 0.25f ? crack.Low( n(), 2500.0f ) * expf( -t * 18.0f ) * 1.2f : 0.0f;
+		b.s[i] += rumble + hiss + snap;
+	}
+	Normalize( b, 0.9f );
+	return b;
+}
+
 Buffer MakeStick()
 {
 	// a wet "splat" as the sticky bomb grabs hold
@@ -788,6 +809,7 @@ void Audio::Init()
 	load( Sfx::Implosion, MakeImplosion() );
 	load( Sfx::Beep, MakeBeep() );
 	load( Sfx::Stick, MakeStick() );
+	load( Sfx::Thunder, MakeThunder() );
 
 	SetAudioStreamBufferSizeDefault( 2048 );
 	m_stream = LoadAudioStream( kRate, 32, 1 );
@@ -886,7 +908,7 @@ void Audio::ExportAll( const char* dir, float musicSeconds )
 		{ "lose", MakeLose() },			   { "click", MakeClick() },		{ "whoosh", MakeWhoosh() },
 		{ "snap", MakeRopeSnap() },		   { "pop", MakePop() },			{ "star", MakeStar() },
 		{ "split", MakeSplit() },		   { "boing", MakeBoing() },		{ "sand", MakeSandHit() },
-		{ "implosion", MakeImplosion() }, { "beep", MakeBeep() },		{ "stick", MakeStick() },
+		{ "implosion", MakeImplosion() }, { "beep", MakeBeep() },		{ "stick", MakeStick() }, { "thunder", MakeThunder() },
 	};
 	for ( Item& it : items )
 	{

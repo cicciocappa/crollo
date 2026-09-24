@@ -1,6 +1,6 @@
 # Crollo — guida allo sviluppo futuro
 
-Aggiornato il 23 settembre 2026. Fino alla sessione 4 era un Claude Doc; da qui in avanti vive nel repository.
+Aggiornato il 24 settembre 2026. Fino alla sessione 4 era un Claude Doc; da qui in avanti vive nel repository.
 
 ## Punto di partenza
 
@@ -71,6 +71,13 @@ Tutte le misure sono in metri, con l'asse Y verso l'alto. Il cannone sta nell'or
 | `Mover(entità, asse, distanza, andata_s, pausa_s, fase)` | fa andare e tornare un corpo cinematico, con pause e partenze dolci; poi si posa il re su `e->pos` | entità |
 | `GlassPane(centro, mezze_misure, yaw, mobile)` | vetro infrangibile con cornice d'ottone: ferma colpi ed esplosioni | entità |
 | `BalloonBasket(centro, colore, veste)` | re in un cesto sotto un pallone | entità (pallone) |
+| `Bumper(centro, mezze_misure, yaw, mobile)` | parete di gomma per i tiri di sponda; `mobile` la rende cinematica (cornice di ferro) | entità |
+| `Turn(entità, angolo, andata_s, pausa_s, fase)` / `Spin(entità, rad_al_s, fase)` | fa oscillare o girare di continuo un corpo cinematico attorno alla verticale | entità |
+| `FloatingIsland(cima, raggio, profondità, asse, distanza, andata_s, pausa_s, fase)` | isola cinematica alla deriva che porta torri e re; costruire su `e->pos` dopo la chiamata | entità |
+| `Carousel(cima, raggio, rad_al_s)` / `CarouselWall(giostra, locale, mezze_misure, yaw, mat, tinta)` | piattaforma girevole e muri fissati sopra, che girano con lei | entità |
+| `Fan(base, yaw, lunghezza, larghezza, altezza, forza)` | ventola su cavalletto con la sua corrente d'aria (yaw solo a multipli di 90°) | — |
+| `Updraft(base, mezza_x, mezza_z, altezza, forza, periodo, acceso, fase)` | grata con colonna d'aria che sale; con un periodo è un soffione a intermittenza | — |
+| `BankHint(re)` | dice all'IA che quel re si prende solo di sponda: cerca il rimbalzo sulla gomma | — |
 | `Tree(base, scala, TreeKind, colore, yaw)` | albero fisso: ferma colpi ed esplosioni, solo la catena lo taglia (non nasce dove toccherebbe una costruzione) | entità (o nulla) |
 | `Trees(...)` | alberi sparsi su un anello attorno all'isola (querce e pini, o palme e cactus nel deserto) | — |
 | `Flag(...)` | decorazione senza fisica | — |
@@ -116,7 +123,7 @@ static void Level11( Builder& b )
 
 ### Limiti attuali da sapere
 
-- I progressi salvano al massimo 32 livelli (`Progress::stars[32]`): per andare oltre va allargato l'array.
+- I progressi tengono in memoria al massimo 64 livelli (`Progress::kMaxLevels`, oggi ne servono 50): prima di superarli va allargato l'array (il file salva per id, quindi non cambia).
 - La schermata Livelli è una griglia 5 × 2 pensata per 10 livelli. Dall'undicesimo serve una schermata a pagine, che conviene fare insieme alle campagne (più sotto).
 - I livelli sono scritti in C++. Un formato dati (per esempio JSON caricato all'avvio) permetterebbe un editor, ma oggi non serve: il Builder è già compatto e l'autotest fa da verifica.
 
@@ -153,9 +160,9 @@ Costo: S per lo scudo a scomparsa, M per le altre due varianti con le relative i
 | Bomba a implosione | risucchia i blocchi verso il centro invece di spingerli via | `b3World_Explode` con `impulsePerArea` negativo, già supportato | S |
 | Bomba adesiva | si attacca a ciò che colpisce ed esplode dopo 3 secondi | giunto `Weld` creato all'evento di contatto | S |
 | Arpione | una corda si aggancia a una torre; poi il cannone la tira giù | giunto di distanza con motore creato all'impatto (`b3DistanceJoint_EnableMotor`) | M |
-| Ventole e correnti | zone d'aria che deviano i proiettili, visibili con particelle | shape sensore + `b3Shape_ApplyWind` sui corpi dentro | M |
+| Ventole e correnti | zone d'aria che deviano i proiettili, visibili con particelle | fatte nella sessione 7 senza sensori: `AirCurrent` (scatola + accelerazione, anche a intermittenza) applicata come forza in `FixedStep` | M |
 | Leve e catapulte nemiche | colpendo un'estremità si lancia il re dall'altra | asse su giunto rotoidale con limiti | M |
-| Isole che fluttuano | isole nemiche che salgono e scendono lentamente | corpo cinematico con `b3Body_SetTargetTransform` | M |
+| Isole che fluttuano | isole nemiche che salgono e scendono lentamente | fatte nella sessione 7: `FloatingIsland`, corpo cinematico mosso da `Mover` | M |
 | Re che camminano | guardie e re che si spostano fra due punti e si riparano dietro i muri | il *character mover* di Box3D: `b3World_CastMover` e `b3World_CollideMover` | L |
 | Re snodati (ragdoll) | cadute più comiche e credibili | corpi collegati da giunti sferici con limiti di cono; Box3D ne ha un esempio in `shared/human.c` | L |
 | Pietra che si spacca | la pietra si rompe in frammenti irregolari come il ghiaccio | frammenti precalcolati con `b3CreateHull` su punti casuali | M |
@@ -176,7 +183,7 @@ Pezzi nuovi da aggiungere al Builder:
 
 - **Vetro infrangibile** (`Mat::Glass`): statico e trasparente, lascia vedere il re ma ferma i colpi. Deve sembrare diverso dal cristallo a tempo (cornice di metallo, riflessi), altrimenti il giocatore aspetta che si spenga.
 - **Piattaforma e nastro**: corpo cinematico con un percorso (andata e ritorno, con pause alle estremità).
-- **Gomma mobile**: `Bumper` che scorre o ruota.
+- **Gomma mobile** (fatta nella sessione 7): `Bumper( ..., true )` su `Mover`, `Turn` o `Spin`.
 - **Barriera magica e sfere magiche** (fatte nella sessione 5): una parete trasparente e scintillante che ferma i colpi di cannone, e sfere luminose che ci passano attraverso. Le sfere pesano abbastanza da abbattere un re (`lethal`), come le pietre da curling.
 - **Bersaglio-interruttore**: un piccolo bersaglio che, colpito, esegue un'azione: sgancia un giunto, accende un motore, fa partire una piattaforma, spegne uno scudo. È il pezzo che permette di comporre le catene.
 - **Parti di catena**: piattaforma girevole con fine corsa, guida incernierata su un perno, imbuto di pannelli.

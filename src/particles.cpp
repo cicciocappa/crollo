@@ -403,6 +403,23 @@ void Particles::Trail( Vector3 pos, Color color, float size )
 	Emit( p );
 }
 
+void Particles::Gust( Vector3 pos, Vector3 vel, float life )
+{
+	if ( m_items.size() > kMaxParticles * 3 / 4 )
+	{
+		return;
+	}
+	Particle p{};
+	p.type = PType::Streak;
+	p.pos = pos;
+	p.vel = vel;
+	p.rot = QuaternionIdentity();
+	p.size = 0.09f; // length of the streak in seconds of travel
+	p.maxLife = p.life = life;
+	p.color = { 235, 242, 255, 170 };
+	Emit( p );
+}
+
 void Particles::Weather( Ambient kind, Vector3 focus, float dt, Vector3 wind, Color a, Color b )
 {
 	float rate = 0.0f;

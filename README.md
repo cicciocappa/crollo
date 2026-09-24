@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **40 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **50 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -54,6 +54,16 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   38. *Le Teche*: re chiusi in teche di vetro, tetto compreso: solo il **Vortice** attraversa il vetro e li risucchia.
   39. *Il Frutteto*: cinque re, due coppie, quattro grappoli.
   40. *La Cupola Stregata*: due torri sotto una cupola di barriera magica senza sfere: ci vuole il Vortice.
+  41. *Il Faro*: il guardiano sta in una garitta di pietra aperta su un solo lato: si prende solo **di sponda**, su un pannello di gomma.
+  42. *Isole alla Deriva*: tre re su **isole che fluttuano** (corpi cinematici che salgono, scendono e vanno alla deriva, con le torri sopra).
+  43. *Le Ventole*: due **ventole** soffiano di traverso sulla linea di tiro: la corrente d'aria sposta di lato le palle.
+  44. *Sponde Mobili*: un pannello di gomma **che scorre** e si allinea con la garitta solo per un attimo.
+  45. *La Girandola*: una pala di gomma **che gira** manda il colpo in una garitta o nell'altra, secondo l'angolo.
+  46. *I Soffioni*: re in pozzi murati, raggiungibili solo di pallonetto; un **soffione** sul fondo ributta in alto le palle quando soffia.
+  47. *La Giostra*: una **piattaforma girevole** porta in giro tre re, ognuno con il suo muro.
+  48. *Il Porto*: re nelle vetrine di vetro aperte su un lato, davanti a moli di gomma; una barca alla deriva e vento di traverso.
+  49. *L'Occhio del Ciclone*: una colonna d'aria ascendente ferma i pallonetti sul re del pilastro; tre isole alla deriva e vento che cambia a ogni colpo.
+  50. *La Rocca di Re Fulmine*: il finale dell'Arcipelago: il re si prende di sponda sulla pala che gira, poi un soffione, una vetrina e un'isola alla deriva.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
@@ -63,11 +73,11 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 39, 23, 25, 9, 26, 40 e 27 come finale — tramonto, foglie al vento.
   - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
   - *Dune Sospese* (Sultana Zaira): 29, 30, 31, 32, 33, 37, 34, 38, 35 e 36 come finale — sabbia, palme e cactus.
-  - *Arcipelago delle Tempeste*, *Fucina del Vulcano*: in arrivo. I biomi sono già pronti e si vedono
-    nella sfida infinita.
+  - *Arcipelago delle Tempeste* (Re Fulmine): 41-49 e 50 come finale — pioggia, lampi e tuoni in lontananza.
+  - *Fucina del Vulcano*: in arrivo. Il bioma è già pronto e si vede nella sfida infinita.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
   il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
-- **Re sparsi**: in 31 livelli su 40 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
+- **Re sparsi**: in 39 livelli su 50 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
   tentativo entro un piccolo perimetro (`Builder::Scatter`): la mira non si impara a memoria, e le munizioni sono più
   generose. Restano fissi i livelli costruiti su un colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera,
   Pendolo) e i re legati a una sponda o a una sfera. I test usano la
@@ -81,6 +91,11 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 - Grafica: shadow mapping con PCF, materiali procedurali nello shader (venature del legno, pietra, ghiaccio con fresnel, TNT, reticolo della barriera magica), vetro trasparente disegnato in un passaggio a parte dopo gli oggetti opachi, cielo con mare di nuvole procedurale in cui gli oggetti "affondano", particelle, slow motion, screen shake.
 - **Alberi** solidi in ogni regno (querce e pini, palme e cactus nel deserto): fermano colpi ed esplosioni, e solo la palla incatenata li taglia: resta il ceppo e l'albero cade lontano dal cannone.
 - **Vento**: dove soffia è un'accelerazione costante sui proiettili, indicata da una freccia; nelle Dune è fisso e le particelle di sabbia lo seguono, in alcuni livelli di altri regni cambia a ogni colpo.
+- **Correnti d'aria**: ventole e colonne ascendenti spingono le palle solo dentro la loro zona, disegnata da scie d'aria; i
+  soffioni soffiano a intermittenza.
+- **Tiri di sponda**: la gomma può essere fissa, scorrere o girare (corpi cinematici); le palle rimbalzano e restano in
+  volo, vento e correnti compresi. Con la mira assistita (T) la traiettoria prevista segue i rimbalzi e le correnti.
+- **Isole che fluttuano e giostre**: corpi cinematici che portano con sé torri e re; tutto parte già in moto con loro.
 
 ## Comandi
 
@@ -138,7 +153,8 @@ scena lo riaggancia.
 ./build/crollo --autotest-challenge [round] [seed]  # lo stesso per le fortezze procedurali
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
 ./build/crollo --test-ammo                    # munizioni e materiali: gomma, sacchi, Vortice, adesiva, portoni, alberi,
-                                              # tappeto volante, vetro, teca di vetro... si comportano come previsto?
+                                              # tappeto volante, vetro, teca di vetro, rimbalzi previsti, ventole,
+                                              # soffioni... si comportano come previsto?
 ./build/crollo --test-campaigns               # campagne, sblocchi e migrazione dei vecchi salvataggi
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, map, select, story, outro, pause, howto, challenge)
@@ -166,7 +182,10 @@ L'autotest carica ogni livello senza finestra, lascia assestare le strutture per
 piattaforme mobili: nessun re deve cadere da solo) e poi fa giocare un'IA che risolve la balistica in modo esatto
 (gravità + vento come accelerazione costante) e sceglie la parabola facendo *ray cast* lungo la traiettoria, anche sul
 fondo e sui fianchi della palla, per evitare gli ostacoli. Contro i bersagli mobili mira dove saranno quando arriva il
-colpo e aspetta che si apra il varco; il grappolo lo apre a pochi metri dal bersaglio. Nei livelli con i re sparsi
+colpo e aspetta che si apra il varco; il grappolo lo apre a pochi metri dal bersaglio. Dove ci sono correnti d'aria
+segue il volo passo per passo e corregge la mira finché la palla arriva sul re; per i tiri di sponda (`Builder::BankHint`)
+cerca fra archi puntati su una griglia di punti delle facce di gomma e affina il migliore, con la stessa previsione
+dei rimbalzi della mira assistita (fedele a Box3D entro 20 cm, controllata da `--test-ammo`). Nei livelli con i re sparsi
 l'autotest gioca la disposizione disegnata e altre cinque a caso, e le deve vincere tutte. La stessa IA gioca la demo
 nel menu principale.
 
@@ -188,12 +207,12 @@ nel menu principale.
 | Giunti sferici con molla | il ponte di corda |
 | Giunto rotoidale con motore | il mulino |
 | Giunto prismatico con molla e limiti | gli scudi mobili |
-| Corpi cinematici con `b3Body_SetTargetTransform` | tappeti volanti, ascensori e lastre di vetro che vanno e vengono, con pause e partenze dolci |
+| Corpi cinematici con `b3Body_SetTargetTransform` | tappeti volanti, ascensori e lastre di vetro che vanno e vengono, con pause e partenze dolci; gomma che scorre e gira, isole che fluttuano, giostre |
 | Corpi statici che diventano dinamici a runtime | l'albero tagliato: il corpo fisso sparisce, restano un ceppo statico e un albero che cade |
 | Filtri di collisione (categorie e maschere, `b3Shape_SetFilter`) | la barriera magica che lascia passare solo le sfere magiche; l'albero appena tagliato che per mezzo secondo lascia passare la catena |
 | Giunto di distanza rigido e "a corda" (molla a 0 Hz + limite) | pendolo, palla incatenata, funi delle mongolfiere, ormeggi |
-| `gravityScale` negativa, damping, forze | mongolfiere e vento sui proiettili |
-| Ray cast (`b3World_CastRayClosest`) | mira assistita e pianificazione della traiettoria dell'IA |
+| `gravityScale` negativa, damping, forze | mongolfiere, vento e correnti d'aria sui proiettili |
+| Ray cast (`b3World_CastRayClosest`, `b3World_CastRay` con filtro) | mira assistita e pianificazione della traiettoria dell'IA |
 | `b3Body_Disable` / `b3Body_Enable`, `b3World_OverlapShape` | scudi di cristallo a tempo; uno scudo non si riaccende finché dentro c'è qualcosa |
 | Sleep delle isole, multithreading (`workerCount`) | scene con centinaia di corpi a costo basso |
 | **Recording & replay** (`b3World_StartRecording`, `b3CreatePlayer`, `b3RecPlayer_StepFrame`) | il replay del colpo decisivo |

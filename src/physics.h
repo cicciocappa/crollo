@@ -183,10 +183,43 @@ struct Mechanism
 	Vector3 home{};
 	float travel = 0.0f;
 	float pause = 0.0f;
+	// Mover: it may also turn `turn` radians about `spinAxis` over each run (eased like the travel), and spin
+	// steadily at `spin` rad/s, starting from the rotation `baseRot`
+	Vector3 spinAxis{ 0, 1, 0 };
+	float turn = 0.0f;
+	float spin = 0.0f;
+	Quaternion baseRot{ 0, 0, 0, 1 };
+	// Mover: the area that carries its riders (a floating island), half extents in its own frame: x and z
+	// across its top, y how far the body reaches down below its origin. Zero uses its first part.
+	Vector3 carry{ 0, 0, 0 };
+	float reach = 0.6f; // how far above its top a rider can stand (a king on a tower on the island)
 };
 
 // Where a mover is at simulation time t.
 Vector3 MoverPosAt( const Mechanism& m, float t );
+// How a mover is turned at simulation time t.
+Quaternion MoverRotAt( const Mechanism& m, float t );
+
+// A region of moving air (a fan, an updraft): shots in flight inside the box are pushed with `accel`.
+struct AirCurrent
+{
+	Vector3 center{};
+	Vector3 half{};
+	Vector3 accel{};
+	// a blowhole blows for `onTime` seconds out of every `period` (0: always), shifted by `phase`
+	float period = 0.0f;
+	float onTime = 0.0f;
+	float phase = 0.0f;
+	bool BlowsAt( float t ) const
+	{
+		if ( period <= 0.0f )
+		{
+			return true;
+		}
+		float c = fmodf( t + phase, period );
+		return ( c < 0.0f ? c + period : c ) < onTime;
+	}
+};
 
 // Where a blinking shield is in its cycle at simulation time t (ignores any delayed switch-on).
 inline bool BlinkerOnAt( const Mechanism& m, float t )
@@ -314,6 +347,7 @@ public:
 	std::vector<Entity*> entities;
 	std::vector<Rope> ropes;
 	std::vector<Mechanism> mechanisms;
+	std::vector<AirCurrent> currents;
 	std::vector<HitRecord> hits;
 	std::vector<BeginTouchRecord> touches;
 	std::vector<b3JointId> overloadedJoints;
