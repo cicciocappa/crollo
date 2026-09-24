@@ -85,6 +85,7 @@ void Scene::Destroy()
 	ropes.clear();
 	mechanisms.clear();
 	currents.clear();
+	triggers.clear();
 	visuals.clear();
 	hits.clear();
 	touches.clear();

@@ -78,6 +78,12 @@ Tutte le misure sono in metri, con l'asse Y verso l'alto. Il cannone sta nell'or
 | `Fan(base, yaw, lunghezza, larghezza, altezza, forza)` | ventola su cavalletto con la sua corrente d'aria (yaw solo a multipli di 90°) | — |
 | `Updraft(base, mezza_x, mezza_z, altezza, forza, periodo, acceso, fase)` | grata con colonna d'aria che sale; con un periodo è un soffione a intermittenza | — |
 | `BankHint(re)` | dice all'IA che quel re si prende solo di sponda: cerca il rimbalzo sulla gomma | — |
+| `Lever(fulcro, direzione, braccio_re, braccio_piastra, seat&, plate&)` | leva su fulcro con fine corsa: un peso sulla piastra lancia chi siede sul braccio lungo | entità (asse) |
+| `Quintain(base, altezza, braccio, yaw, specchio)` | fantoccio girevole: scudo d'ottone da una parte, mazza ferrata (passa la barriera magica, letale) dall'altra | entità (parte che gira) |
+| `Tether(palo, sfera, raggio)` | sfera magica legata a un palo con una corda: colpita, gira attorno al palo | entità (sfera) |
+| `Target(base, altezza)` / `Trigger(bersaglio, giunto)` | bersaglio d'ottone che, colpito, distrugge i giunti che gli sono stati affidati | entità |
+| `HangingWeight(suolo, altezza, bersaglio, di_traverso)` | peso di ferro appeso a un portale, la corda legata al bersaglio | entità (peso) |
+| `OrbitShields(centro, raggio, quanti, mezza_larghezza, altezza, rad_al_s, fase, tetto)` | scudi di ferro che girano attorno a un punto, con o senza tetto | entità |
 | `Tree(base, scala, TreeKind, colore, yaw)` | albero fisso: ferma colpi ed esplosioni, solo la catena lo taglia (non nasce dove toccherebbe una costruzione) | entità (o nulla) |
 | `Trees(...)` | alberi sparsi su un anello attorno all'isola (querce e pini, o palme e cactus nel deserto) | — |
 | `Flag(...)` | decorazione senza fisica | — |
@@ -123,7 +129,7 @@ static void Level11( Builder& b )
 
 ### Limiti attuali da sapere
 
-- I progressi tengono in memoria al massimo 64 livelli (`Progress::kMaxLevels`, oggi ne servono 50): prima di superarli va allargato l'array (il file salva per id, quindi non cambia).
+- I progressi tengono in memoria al massimo 128 livelli (`Progress::kMaxLevels`, oggi ne servono 60): prima di superarli va allargato l'array (il file salva per id, quindi non cambia).
 - La schermata Livelli è una griglia 5 × 2 pensata per 10 livelli. Dall'undicesimo serve una schermata a pagine, che conviene fare insieme alle campagne (più sotto).
 - I livelli sono scritti in C++. Un formato dati (per esempio JSON caricato all'avvio) permetterebbe un editor, ma oggi non serve: il Builder è già compatto e l'autotest fa da verifica.
 

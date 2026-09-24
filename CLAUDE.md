@@ -16,11 +16,11 @@ riprendere lo sviluppo e che non si ricava dal codice.
   `web/crollo.html` + `build-web/crollo.js` + `build-web/crollo.wasm` (pubblicati con `files`, il wasm come
   `application/wasm`); da un'altra conversazione passa l'URL come `url`, o nasce un Artifact nuovo.
 
-## Stato (fine sessione 7, settembre 2026)
+## Stato (fine sessione 8, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 50 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10, Arcipelago delle Tempeste 10;
-  Fucina del Vulcano è "in arrivo" (bioma, re e testi già pronti in `src/biomes.cpp` e `BuildCampaigns()`).
+- 60 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10, Arcipelago delle Tempeste 10,
+  Fucina del Vulcano 10. Tutte e sei le campagne sono giocabili.
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
 - Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche.
@@ -34,8 +34,10 @@ riprendere lo sviluppo e che non si ricava dal codice.
   più vento variabile nemmeno in Tappeti e Tempesta), re sparsi a caso a ogni tentativo e munizioni più generose.
 - Sessione 7 fatta: Arcipelago delle Tempeste a 10 livelli (Il Faro ... La Rocca di Re Fulmine): gomma che scorre e
   gira, ventole, soffioni, isole che fluttuano, giostra; mira assistita che segue rimbalzi e correnti; lampi e tuoni.
-- Prossima: prova dell'Arcipelago da parte dell'utente, poi sessione 8 (Fucina del Vulcano). Poi versione mobile (10);
-  multiplayer alla fine (11+).
+- Sessione 8 fatta: Fucina del Vulcano a 10 livelli con le idee dell'utente (leva, quintana, guinzaglio, carrello) più
+  bersagli d'ottone che sganciano pesi, scudi orbitanti e il trabocchetto Tre Corde. L'arpione è rimandato.
+- Prossima: prova della Fucina da parte dell'utente, poi sessione 9 (campagne a 10 livelli, livelli bonus; lì anche il
+  taglio delle munizioni in eccesso). Poi versione mobile (10); multiplayer alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
 - Decisioni già prese dall'utente: 6 campagne da **almeno** 8 livelli (più ce ne sono meglio è, poi si punta a 10); Duello prima solo scontro; il suo server può far girare
@@ -43,7 +45,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 50/50); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 60/60); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18; oggi lo
                                         # scanner trova solo il 7, ma la Valanga si vince comunque con un colpo)
 ./build/crollo --autotest-challenge     # 30/30
@@ -117,8 +119,8 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Re sparsi** (`b.Scatter(p, rx, rz)`): il seme della disposizione cambia a ogni tentativo (`Game::m_layoutSeed`, 0 nei
   test e nelle demo = disposizione disegnata). Sposta insieme il re e ciò che lo regge. L'autotest prova ogni livello
   sparso anche in 5 disposizioni (`CROLLO_DEBUG=1` stampa dove stanno i re). Idea dell'utente: così il pallonetto si
-  cerca sempre un po' per tentativi e le munizioni possono essere generose (una palla in più a ciascuno). Oggi in 39
-  livelli su 50; fissi solo quelli a colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera, re centrale
+  cerca sempre un po' per tentativi e le munizioni possono essere generose (una palla in più a ciascuno). Oggi in 46
+  livelli su 60; fissi solo quelli a colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera, re centrale
   delle Sponde e del Granaio, torri davanti al pendolo) e i re presi di sponda. Sulle isole piccole tieni il perimetro
   stretto: un re spostato può finire dietro un albero dell'anello di `Trees` (Mongolfiere).
 - Vento delle Dune: fisso, verso +x (a sinistra dal cannone); i granelli (`PType::Grain`) seguono il vento vero.
@@ -149,7 +151,20 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
   complanari c'è z-fighting (il vetro, disegnato dopo e senza scrivere la profondità, sfarfalla).
 - Debug: `printf` finisce in un buffer quando l'uscita va in una pipe, e un blocco sembrava nel livello 29 mentre era
   nel 44: per capire dove si ferma usa `stderr` (`CROLLO_DEBUG`) o gdb con `kill -INT`.
-- `Progress::kMaxLevels` è 64: allargalo prima di superarlo (il file salva per id).
+- `Progress::kMaxLevels` è 128: allargalo prima di superarlo (il file salva per id).
+- **Fucina, meccanismi**: ogni pezzo ha un fermo (limiti dei giunti; motore a velocità 0 con coppia/forza bassa come
+  attrito), così l'esito non dipende dalla forza del colpo. Le parti da colpire sono d'ottone. I re si proteggono con
+  gabbie di barriera magica (`Cage`): la mazza della quintana e le sfere le attraversano (maschera senza `CatBarrier`).
+- I suggerimenti di mira (`AimHint`) valgono finché il pezzo resta a meno di 0,6 m da dove stava, **nell'ordine in cui
+  sono dati**: così si scrive una sequenza (Carrello: prima il carrello, poi il fermo). Su un meccanismo che gira
+  (quintana) l'offset gira con lui; un bersaglio già scattato non vale più. Un pezzo che deve fare tutta la corsa con un
+  colpo solo va reso leggero (il carrello pesante si fermava a 0,8 m su 1,4 e l'IA passava oltre).
+- Bersagli (`Target`, `Scene::triggers`): colpiti da un proiettile sopra 3 m/s distruggono i giunti affidati con
+  `Trigger()`; con `shatter` il bersaglio stesso va in schegge (il fermo dello scivolo: se cadeva nello scivolo bloccava la
+  sfera). Il replay li riproduce senza divergenze.
+- Gli scudi orbitanti (`Mechanism::boxes`) non portano nessuno: `MoverUnder` li salta, se no l'IA crede che il re al
+  centro ci viaggi sopra e li ignora come ostacolo. Senza tetto l'IA li scavalca di pallonetto.
+- Uno scivolo va chiuso in cima: il colpo al fermo spingeva la sfera in salita e fuori.
 
 ## Nuovo PC
 - Build desktop: vedi README (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`, poi `cmake --build build -j`).

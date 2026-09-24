@@ -179,7 +179,7 @@ void Game::SetCannon( Vector3 pos, float yaw )
 
 void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob, bool bank )
 {
-	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob, bank } );
+	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob, bank, via->rot } );
 }
 
 void Game::SetFortressCenter( Vector3 c, float radius )
@@ -1499,6 +1499,52 @@ void Game::Explode( Vector3 pos, float radius, float impulse, bool big )
 	}
 }
 
+void Game::FireTrigger( Entity* target, Vector3 where )
+{
+	Trigger& t = m_scene.triggers[target->trigger];
+	if ( t.fired )
+	{
+		return;
+	}
+	t.fired = true;
+	for ( b3JointId j : t.joints )
+	{
+		if ( b3Joint_IsValid( j ) )
+		{
+			b3DestroyJoint( j, true );
+		}
+	}
+	if ( t.shatter )
+	{
+		// a wooden chock: splinters, and nothing left in the way
+		m_particles.Debris( target->pos, Color{ 150, 105, 60, 255 }, 18, 5.0f, 0.1f );
+		m_particles.Dust( target->pos, Color{ 170, 140, 110, 255 }, 6, 1.5f );
+		AddReplayEvent( ReplayEvent::Shatter, target->pos );
+		if ( m_audio )
+		{
+			m_audio->PlayAt( Sfx::WoodHit, where, 1.0f, 0.8f );
+		}
+		Kill( target );
+		return;
+	}
+	// the target drops back and goes dull
+	for ( Part& p : target->parts )
+	{
+		if ( p.mat == Mat::Gold )
+		{
+			p.tint = ColorBrightness( p.tint, -0.45f );
+		}
+	}
+	target->flash = 1.0f;
+	AddReplayEvent( ReplayEvent::Snap, where );
+	m_particles.Sparkle( where, Color{ 255, 210, 90, 255 }, 18 );
+	if ( m_audio )
+	{
+		m_audio->PlayAt( Sfx::MetalHit, where, 1.0f, 1.4f );
+		m_audio->PlayAt( Sfx::RopeSnap, where, 0.9f, 0.9f );
+	}
+}
+
 bool Game::BlastReaches( Vector3 pos, const Entity* e ) const
 {
 	b3QueryFilter filter = b3DefaultQueryFilter();
@@ -2157,6 +2203,11 @@ void Game::HandleEvents()
 						fprintf( stderr, "  re colpito da kind=%d mat=%d a %.1f m/s\n", (int)other->kind, (int)other->mat, h.speed );
 					DefeatKing( x, "hit" );
 				}
+			}
+
+			if ( x->trigger >= 0 && other->kind == Kind::Projectile && h.speed > 3.0f )
+			{
+				FireTrigger( x, h.point );
 			}
 
 			if ( x->kind == Kind::Balloon && h.speed > 1.0f )
@@ -2966,9 +3017,16 @@ bool Game::AutoFireAtKing()
 		}
 		for ( Entity* e : m_scene.entities )
 		{
-			if ( e->serial == h.via && e->alive && Vector3Distance( e->pos, h.home ) < 0.6f )
+			// a brass target already struck has done its work
+			bool spent = e->trigger >= 0 && m_scene.triggers[e->trigger].fired;
+			if ( e->serial == h.via && e->alive && Vector3Distance( e->pos, h.home ) < 0.6f && spent == false )
 			{
-				aimPoint = Vector3Add( e->pos, h.offset );
+				Vector3 offset = h.offset;
+				if ( e->kind == Kind::Mechanism )
+				{
+					offset = Vector3RotateByQuaternion( offset, QuaternionMultiply( e->rot, QuaternionInvert( h.homeRot ) ) );
+				}
+				aimPoint = Vector3Add( e->pos, offset );
 				goal = e;
 				lob = h.lob;
 				break;
@@ -3109,6 +3167,10 @@ const Mechanism* Game::MoverUnder( const Entity* e ) const
 		if ( m.entity == e )
 		{
 			return &m;
+		}
+		if ( m.boxes )
+		{
+			continue; // shields going round a king carry nobody
 		}
 		// standing on it (or, for a lift, about to be); on a floating island, anywhere on the towers it carries
 		Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( e->pos, m.entity->pos ), QuaternionInvert( m.entity->rot ) );
@@ -3508,12 +3570,15 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 				};
 				Solid solids[16];
 				int count = 0;
-				if ( m.carry.x > 0.0f )
+				if ( m.carry.x > 0.0f || m.boxes )
 				{
-					solids[count++] = { { 0, -m.carry.y * 0.5f, 0 }, { m.carry.x, m.carry.y * 0.5f, m.carry.z }, { 0, 0, 0, 1 } };
+					if ( m.carry.x > 0.0f )
+					{
+						solids[count++] = { { 0, -m.carry.y * 0.5f, 0 }, { m.carry.x, m.carry.y * 0.5f, m.carry.z }, { 0, 0, 0, 1 } };
+					}
 					for ( const Part& part : m.entity->parts )
 					{
-						if ( part.geo == Geo::Box && part.size.y > 0.2f && count < 16 )
+						if ( part.geo == Geo::Box && ( m.boxes || part.size.y > 0.2f ) && count < 16 )
 						{
 							solids[count++] = { part.localPos, part.size, part.localRot };
 						}
@@ -3526,7 +3591,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 				for ( int i = 0; i < count; ++i )
 				{
 					// what the target stands on is no obstacle, but the walls going round with him are
-					if ( &m == ride && i == 0 )
+					if ( &m == ride && i == 0 && m.carry.x > 0.0f )
 					{
 						continue;
 					}
@@ -5056,6 +5121,101 @@ void Game::TestMaterialsAndAmmo()
 			eye += lob( true, hs, "arcipelago_ciclone" ) ? 0 : 1;
 		}
 		printf( "Occhio del Ciclone: pallonetti respinti %d su 3 -> %s\n", eye, eye == 3 ? "ok" : "FALLITO" );
+	}
+
+	// the forge: every mechanism does its job when struck where it should be, and not otherwise
+	{
+		auto find = [&]( int serial ) -> Entity* {
+			for ( Entity* e : m_scene.entities )
+			{
+				if ( e->serial == serial && e->alive )
+				{
+					return e;
+				}
+			}
+			return nullptr;
+		};
+		// shoot at the thing a hint names, as the automatic player would, and let it play out
+		auto strike = [&]( const AimHintRecord& h ) {
+			Entity* via = find( h.via );
+			if ( via == nullptr )
+			{
+				return;
+			}
+			Vector3 offset = via->kind == Kind::Mechanism ? Vector3RotateByQuaternion( h.offset, QuaternionMultiply( via->rot, QuaternionInvert( h.homeRot ) ) )
+														  : h.offset;
+			int waited = 0;
+			while ( FireAt( Vector3Add( via->pos, offset ), Ammo::Ball, via, h.lob ) == false && waited++ < 600 )
+			{
+				StepSimulation( kFixedDt );
+			}
+			settle( 60 * 6 );
+		};
+		auto king = [&]( int serial ) { return find( serial ); };
+
+		// the lever throws its king high
+		LoadLevel( FindLevelById( "fucina_leva" ), false );
+		SkipIntro();
+		settle( 60 );
+		AimHintRecord lever = m_aimHints[0];
+		Entity* rider = king( lever.king );
+		float top = rider->pos.y;
+		Entity* via = find( lever.via );
+		Vector3 offset = lever.offset;
+		FireAt( Vector3Add( via->pos, offset ), Ammo::Ball, via, lever.lob );
+		for ( int i = 0; i < 60 * 6; ++i )
+		{
+			StepSimulation( kFixedDt );
+			top = std::max( top, rider->pos.y );
+		}
+		printf( "Leva: il re vola fino a %.1f m e %s -> %s\n", top, rider->defeated ? "cade" : "resta in piedi",
+				top > 5.0f && rider->defeated ? "ok" : "FALLITO" );
+
+		// the dummy's mace comes round into the cage
+		LoadLevel( FindLevelById( "fucina_quintana" ), false );
+		SkipIntro();
+		settle( 60 );
+		int caged = 0;
+		for ( const AimHintRecord& h : std::vector<AimHintRecord>( m_aimHints ) )
+		{
+			strike( h );
+			caged += king( h.king )->defeated ? 1 : 0;
+		}
+		printf( "Quintana: re nelle gabbie abbattuti dalla mazza %d su 2 -> %s\n", caged, caged == 2 ? "ok" : "FALLITO" );
+
+		// the chute: chock first and the orb is lost in the crucible; cart first, then chock, and it gets there
+		auto chute = [&]( bool cartFirst ) {
+			LoadLevel( FindLevelById( "fucina_carrello" ), false );
+			SkipIntro();
+			settle( 60 );
+			std::vector<AimHintRecord> hints = m_aimHints; // [0] the cart, [1] the chock
+			if ( cartFirst )
+			{
+				strike( hints[0] );
+			}
+			strike( hints[1] );
+			return king( hints[0].king )->defeated;
+		};
+		bool wrongWay = chute( false );
+		bool rightWay = chute( true );
+		printf( "Carrello: prima il fermo -> il re %s, prima il carrello -> il re %s -> %s\n", wrongWay ? "cade" : "resta in piedi",
+				rightWay ? "cade" : "resta in piedi", wrongWay == false && rightWay ? "ok" : "FALLITO" );
+
+		// three cords: the target on the right lets a weight fall on nobody
+		LoadLevel( FindLevelById( "fucina_tre_corde" ), false );
+		SkipIntro();
+		settle( 60 );
+		Entity* decoy = nullptr;
+		for ( Entity* e : m_scene.entities )
+		{
+			decoy = e->trigger == 2 ? e : decoy;
+		}
+		AimHintRecord fake = m_aimHints[0];
+		fake.via = decoy->serial;
+		fake.offset = { 0, 0, 0 };
+		strike( fake );
+		printf( "Tre Corde: il bersaglio sbagliato %s, re abbattuti %d -> %s\n", m_scene.triggers[2].fired ? "sgancia il suo peso" : "non scatta",
+				m_kingsDown, m_scene.triggers[2].fired && m_kingsDown == 0 ? "ok" : "FALLITO" );
 	}
 }
 

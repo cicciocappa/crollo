@@ -97,7 +97,7 @@ struct ReplayEvent
 // Indexed by level index in memory; saved by the level's stable id, so the level table can grow.
 struct Progress
 {
-	static const int kMaxLevels = 64;
+	static const int kMaxLevels = 128;
 	static const int kMaxCampaigns = 8;
 	int stars[kMaxLevels] = {};
 	int best[kMaxLevels] = {};
@@ -260,6 +260,8 @@ private:
 	// The boulder snaps windmill blades off their axle.
 	void BreakBlades( Entity* blades );
 	void FellTree( Entity* e );
+	// A brass target struck: it lets go of what it held.
+	void FireTrigger( Entity* target, Vector3 where );
 	// The push of the air currents at a point at simulation time t (on top of gravity and wind).
 	Vector3 CurrentAt( Vector3 p, float t ) const;
 	// Where `e` will be `dt` seconds from now, carried by the mover `m` it rides (turning included).
@@ -374,6 +376,7 @@ private:
 		Vector3 offset;
 		float lob; // highest horizontal speed worth trying (a high lob), 0 = any arc
 		bool bank; // `via` is rubber: search for a shot that bounces off it into the king
+		Quaternion homeRot; // a mechanism that turns (a quintain) carries the offset round with it
 	};
 	std::vector<AimHintRecord> m_aimHints;
 

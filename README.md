@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **50 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **60 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -64,6 +64,16 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   48. *Il Porto*: re nelle vetrine di vetro aperte su un lato, davanti a moli di gomma; una barca alla deriva e vento di traverso.
   49. *L'Occhio del Ciclone*: una colonna d'aria ascendente ferma i pallonetti sul re del pilastro; tre isole alla deriva e vento che cambia a ogni colpo.
   50. *La Rocca di Re Fulmine*: il finale dell'Arcipelago: il re si prende di sponda sulla pala che gira, poi un soffione, una vetrina e un'isola alla deriva.
+  51. *La Leva*: un re sul braccio lungo di una **leva** su **giunto rotoidale con fine corsa**: un pallonetto sulla piastra d'ottone lo lancia in aria.
+  52. *Il Maglio*: pesi di ferro appesi sopra i re; le corde sono legate a **bersagli d'ottone** che, colpiti, **distruggono il giunto** e sganciano il peso.
+  53. *La Quintana*: due **fantocci girevoli**: si colpisce lo scudo e la mazza ferrata gira, attraversa la gabbia magica e colpisce il re.
+  54. *Il Guinzaglio*: sfere magiche legate a un palo con una **corda** (giunto di distanza con limite): colpite, girano attorno al palo fino al re.
+  55. *Il Contrappeso*: una catena: bersaglio, peso che cade, leva che lancia il re.
+  56. *Scudi Orbitanti*: re dentro scudi di ferro (con il tetto) che girano: si spara quando passa il varco.
+  57. *Il Carrello*: uno scivolo in tre tratti; quello di mezzo sta su un **carrello** (giunto prismatico con fine corsa e attrito) spostato in avanti: prima lo si spinge al suo posto, poi si manda in schegge il fermo e la sfera rotola fino al re. Nell'ordine sbagliato la sfera cade nel crogiolo.
+  58. *Tre Corde*: un **trabocchetto**: tre pesi, tre bersagli e corde che si incrociano; uno dei pesi non sta sopra nessuno.
+  59. *La Fonderia*: un fantoccio, una sfera al guinzaglio e un re negli scudi orbitanti.
+  60. *La Forgia dell'Imperatore*: il finale: l'Imperatore di Ferro siede su una leva, e il bersaglio che sgancia il peso è protetto da scudi che girano.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
@@ -74,10 +84,10 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
   - *Dune Sospese* (Sultana Zaira): 29, 30, 31, 32, 33, 37, 34, 38, 35 e 36 come finale — sabbia, palme e cactus.
   - *Arcipelago delle Tempeste* (Re Fulmine): 41-49 e 50 come finale — pioggia, lampi e tuoni in lontananza.
-  - *Fucina del Vulcano*: in arrivo. Il bioma è già pronto e si vede nella sfida infinita.
+  - *Fucina del Vulcano* (l'Imperatore di Ferro): 51-59 e 60 come finale — basalto sopra un mare di lava, braci che salgono.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
   il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
-- **Re sparsi**: in 39 livelli su 50 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
+- **Re sparsi**: in 46 livelli su 60 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
   tentativo entro un piccolo perimetro (`Builder::Scatter`): la mira non si impara a memoria, e le munizioni sono più
   generose. Restano fissi i livelli costruiti su un colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera,
   Pendolo) e i re legati a una sponda o a una sfera. I test usano la
@@ -96,6 +106,8 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 - **Tiri di sponda**: la gomma può essere fissa, scorrere o girare (corpi cinematici); le palle rimbalzano e restano in
   volo, vento e correnti compresi. Con la mira assistita (T) la traiettoria prevista segue i rimbalzi e le correnti.
 - **Isole che fluttuano e giostre**: corpi cinematici che portano con sé torri e re; tutto parte già in moto con loro.
+- **Meccanismi della Fucina**: leve, fantocci girevoli, sfere legate, pesi appesi, carrelli su guide e scudi orbitanti.
+  Le parti da colpire sono d'ottone; ogni pezzo ha un fine corsa, così l'esito non dipende dalla forza del colpo.
 
 ## Comandi
 
@@ -155,7 +167,7 @@ scena lo riaggancia.
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
 ./build/crollo --test-ammo                    # munizioni e materiali: gomma, sacchi, Vortice, adesiva, portoni, alberi,
                                               # tappeto volante, vetro, teca di vetro, rimbalzi previsti, ventole,
-                                              # soffioni... si comportano come previsto?
+                                              # soffioni, leva, quintana, carrello... si comportano come previsto?
 ./build/crollo --test-campaigns               # campagne, sblocchi e migrazione dei vecchi salvataggi
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, map, select, story, outro, pause, howto, challenge)
@@ -207,7 +219,9 @@ nel menu principale.
 | Joint events + `forceThreshold` | le corde del ponte si spezzano quando vengono sovraccaricate |
 | Giunti sferici con molla | il ponte di corda |
 | Giunto rotoidale con motore | il mulino |
-| Giunto prismatico con molla e limiti | gli scudi mobili |
+| Giunto prismatico con molla e limiti | gli scudi mobili; il carrello dello scivolo (limiti e motore fermo come attrito) |
+| Giunto rotoidale con limiti o con motore fermo come attrito | la leva e i fantocci della Fucina |
+| `b3DestroyJoint` a comando | i bersagli d'ottone sganciano i pesi appesi |
 | Corpi cinematici con `b3Body_SetTargetTransform` | tappeti volanti, ascensori e lastre di vetro che vanno e vengono, con pause e partenze dolci; gomma che scorre e gira, isole che fluttuano, giostre |
 | Corpi statici che diventano dinamici a runtime | l'albero tagliato: il corpo fisso sparisce, restano un ceppo statico e un albero che cade |
 | Filtri di collisione (categorie e maschere, `b3Shape_SetFilter`) | la barriera magica che lascia passare solo le sfere magiche; l'albero appena tagliato che per mezzo secondo lascia passare la catena |

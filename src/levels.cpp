@@ -1197,6 +1197,308 @@ Entity* Builder::Shield( Vector3 center, Vector3 half, float yaw, float period, 
 	return e;
 }
 
+static const Color kBrass{ 196, 150, 62, 255 };
+static const Color kIronDark{ 58, 58, 64, 255 };
+
+Entity* Builder::Lever( Vector3 fulcrum, Vector3 along, float kingArm, float plateArm, Vector3& seat, Vector3& plate )
+{
+	along = Vector3Normalize( { along.x, 0, along.z } );
+	const float t = 0.12f, w = 0.5f;
+	const float base = homeY;
+	float yaw = atan2f( -along.z, along.x ); // turns local +x onto `along`
+	Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
+	// the fulcrum, and the post the long arm rests on
+	Ledge( { fulcrum.x, ( base + fulcrum.y - t ) * 0.5f, fulcrum.z }, { 0.35f, ( fulcrum.y - t - base ) * 0.5f, w + 0.1f }, Mat::Stone, q,
+		   Color{ 72, 64, 62, 255 } );
+	Vector3 rest = Vector3Add( fulcrum, Vector3Scale( along, kingArm - 0.5f ) );
+	Ledge( { rest.x, ( base + fulcrum.y - t ) * 0.5f, rest.z }, { 0.3f, ( fulcrum.y - t - base ) * 0.5f, 0.3f }, Mat::Stone, { 0, 0, 0, 1 },
+		   Color{ 72, 64, 62, 255 } );
+
+	// the plank, pivoting at the fulcrum; its body frame lies along x
+	BodyOptions bo;
+	bo.angularDamping = 0.1f;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Wood, fulcrum, ToB3( q ), bo );
+	ShapeOptions so;
+	so.densityScale = 0.6f;
+	float mid = ( kingArm - plateArm ) * 0.5f;
+	scene.AddBox( e, { mid, 0, 0 }, b3Quat_identity, { ( kingArm + plateArm ) * 0.5f, t, w }, Mat::Wood, so );
+	e->parts.back().tint = Color{ 120, 84, 52, 255 };
+	ShapeOptions ps;
+	ps.densityScale = 0.1f;
+	scene.AddBox( e, { -plateArm + 0.45f, t + 0.05f, 0 }, b3Quat_identity, { 0.45f, 0.05f, w }, Mat::Metal, ps );
+	e->parts.back().tint = kBrass;
+	// iron bands
+	for ( float x : { -plateArm + 0.95f, -0.3f, 0.3f, kingArm - 1.0f } )
+	{
+		Part band;
+		band.localPos = { x, 0, 0 };
+		band.size = { 0.06f, t + 0.012f, w + 0.012f };
+		band.mat = Mat::Metal;
+		band.tint = kIronDark;
+		scene.AddVisual( e, band );
+	}
+	e->homeY = homeY;
+	scene.FinalizeEntity( e );
+
+	// the hinge: the plank turns about the horizontal line across it. The long arm lies on its post; the short one
+	// can go down until the long one stands at about 35 degrees, and there it stops dead
+	Vector3 axis = Vector3CrossProduct( { 0, 1, 0 }, along ); // turning +: the long arm goes down
+	b3RevoluteJointDef rj = b3DefaultRevoluteJointDef();
+	rj.base.bodyIdA = scene.groundBody;
+	rj.base.bodyIdB = e->body;
+	rj.base.localFrameA.p = ToB3( fulcrum );
+	rj.base.localFrameA.q = b3ComputeQuatBetweenUnitVectors( b3Vec3_axisZ, ToB3( Vector3Normalize( axis ) ) );
+	rj.base.localFrameB.p = { 0, 0, 0 };
+	rj.base.localFrameB.q = b3InvMulQuat( ToB3( q ), rj.base.localFrameA.q );
+	rj.enableLimit = true;
+	rj.lowerAngle = -0.6f;
+	rj.upperAngle = 0.02f;
+	b3CreateRevoluteJoint( scene.World(), &rj );
+
+	seat = Vector3Add( fulcrum, Vector3Scale( along, kingArm - 0.5f ) );
+	seat.y += t;
+	plate = Vector3Add( fulcrum, Vector3Scale( along, -plateArm + 0.45f ) );
+	plate.y += t + 0.1f;
+	return e;
+}
+
+Entity* Builder::Quintain( Vector3 base, float height, float arm, float yaw, bool mirror )
+{
+	const float m = mirror ? -1.0f : 1.0f;
+	Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, yaw );
+	Vector3 pivot{ base.x, base.y + height, base.z };
+	// the post
+	BodyOptions sb;
+	sb.type = b3_staticBody;
+	Entity* post = scene.CreateEntity( Kind::Static, Mat::Wood, base, b3Quat_identity, sb );
+	ShapeOptions ss;
+	ss.category = CatStatic;
+	ss.hitEvents = false;
+	scene.AddHull( post, { 0, 0, 0 }, b3Quat_identity, scene.Cylinder( height - 0.22f, 0.16f, 0.0f, 10 ), Mat::Wood, ss );
+	post->parts.back().tint = Color{ 110, 78, 50, 255 };
+	scene.AddHull( post, { 0, 0, 0 }, b3Quat_identity, scene.Cylinder( 0.2f, 0.55f, 0.0f, 12 ), Mat::Stone, ss );
+	post->parts.back().tint = Color{ 72, 64, 62, 255 };
+	scene.FinalizeEntity( post );
+
+	BodyOptions bo;
+	bo.angularDamping = 0.6f;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Metal, pivot, ToB3( q ), bo );
+	ShapeOptions hub;
+	hub.densityScale = 0.1f;
+	scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, { 0.2f, 0.2f, 0.2f }, Mat::Wood, hub );
+	e->parts.back().tint = Color{ 110, 78, 50, 255 };
+	// the arm and the mace go through magic barriers, like the orbs
+	ShapeOptions through;
+	through.mask = CatAll & ~CatBarrier;
+	through.densityScale = 0.08f;
+	scene.AddBox( e, { -m * arm * 0.5f, 0, 0 }, b3Quat_identity, { arm * 0.5f, 0.06f, 0.06f }, Mat::Wood, through );
+	e->parts.back().tint = Color{ 110, 78, 50, 255 };
+	ShapeOptions mace = through;
+	mace.densityScale = 0.12f;
+	scene.AddSphere( e, { -m * arm, 0, 0 }, 0.34f, Mat::Metal, mace );
+	e->parts.back().tint = kIronDark;
+	for ( int i = 0; i < 6; ++i )
+	{
+		Vector3 d = i < 2 ? Vector3{ 0, i == 0 ? 1.0f : -1.0f, 0 } : i < 4 ? Vector3{ 0, 0, i == 2 ? 1.0f : -1.0f } : Vector3{ i == 4 ? 1.0f : -1.0f, 0, 0 };
+		Part spike;
+		spike.geo = Geo::Hull;
+		spike.hull = scene.Cone( 0.2f, 0.09f, 0.0f, 6 );
+		spike.localPos = Vector3Add( { -m * arm, 0, 0 }, Vector3Scale( d, 0.28f ) );
+		spike.localRot = QuaternionFromVector3ToVector3( { 0, 1, 0 }, d );
+		spike.mat = Mat::Metal;
+		spike.tint = kIronDark;
+		scene.AddVisual( e, spike );
+	}
+	ShapeOptions sh;
+	sh.densityScale = 0.03f;
+	scene.AddBox( e, { m * arm * 0.5f, 0, 0 }, b3Quat_identity, { arm * 0.5f, 0.06f, 0.06f }, Mat::Wood, sh );
+	e->parts.back().tint = Color{ 110, 78, 50, 255 };
+	scene.AddBox( e, { m * arm, 0, -0.08f }, b3Quat_identity, { 0.55f, 0.6f, 0.06f }, Mat::Metal, sh );
+	e->parts.back().tint = kBrass;
+	Part boss;
+	boss.geo = Geo::Sphere;
+	boss.localPos = { m * arm, 0, -0.16f };
+	boss.size = { 0.16f, 0.16f, 0.08f };
+	boss.mat = Mat::Metal;
+	boss.tint = Color{ 170, 40, 30, 255 };
+	scene.AddVisual( e, boss );
+	// the dummy himself, a turbaned wooden head on the hub
+	Part head;
+	head.geo = Geo::Sphere;
+	head.localPos = { 0, 0.45f, 0 };
+	head.size = { 0.26f, 0.3f, 0.26f };
+	head.mat = Mat::Wood;
+	head.tint = Color{ 150, 105, 65, 255 };
+	scene.AddVisual( e, head );
+	Part turban;
+	turban.geo = Geo::Sphere;
+	turban.localPos = { 0, 0.72f, 0 };
+	turban.size = { 0.3f, 0.18f, 0.3f };
+	turban.mat = Mat::Plain;
+	turban.tint = Color{ 200, 50, 40, 255 };
+	scene.AddVisual( e, turban );
+	e->lethal = true;
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+
+	// it turns freely about the post, a little stiffly
+	b3RevoluteJointDef rj = b3DefaultRevoluteJointDef();
+	rj.base.bodyIdA = scene.groundBody;
+	rj.base.bodyIdB = e->body;
+	rj.base.localFrameA.p = ToB3( pivot );
+	rj.base.localFrameA.q = b3ComputeQuatBetweenUnitVectors( b3Vec3_axisZ, b3Vec3_axisY );
+	rj.base.localFrameB.p = { 0, 0, 0 };
+	rj.base.localFrameB.q = b3InvMulQuat( ToB3( q ), rj.base.localFrameA.q );
+	rj.enableMotor = true;
+	rj.motorSpeed = 0.0f;
+	rj.maxMotorTorque = 150.0f;
+	b3CreateRevoluteJoint( scene.World(), &rj );
+	return e;
+}
+
+Entity* Builder::Tether( Vector3 post, Vector3 orb, float radius )
+{
+	Ledge( { post.x, post.y + 0.8f, post.z }, { 0.14f, 0.8f, 0.14f }, Mat::Wood, { 0, 0, 0, 1 }, Color{ 110, 78, 50, 255 } );
+	Ledge( { post.x, post.y + radius, post.z }, { 0.2f, 0.08f, 0.2f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	Entity* o = MagicOrb( { orb.x, orb.y + radius, orb.z }, radius );
+	Vector3 ring{ post.x, post.y + radius, post.z };
+	b3JointId j = MakeRopeJoint( scene.World(), scene.groundBody, ring, o->body, o->pos, 1.0f );
+	Rope& r = scene.AddRope( scene.groundBody, ring, o->body, o->pos, 0.05f, Color{ 150, 120, 80, 255 } );
+	r.joint = j;
+	r.ropeLength = Vector3Distance( ring, o->pos );
+	return o;
+}
+
+Entity* Builder::Target( Vector3 base, float height )
+{
+	Vector3 toCannon = Vector3Normalize( { faceTarget.x - base.x, 0, faceTarget.z - base.z } );
+	float yaw = atan2f( toCannon.x, toCannon.z );
+	BodyOptions bo;
+	bo.type = b3_staticBody;
+	Entity* e = scene.CreateEntity( Kind::Static, Mat::Gold, { base.x, base.y + height, base.z }, QuatYaw( yaw ), bo );
+	ShapeOptions so;
+	so.category = CatStatic;
+	so.hitEvents = true;
+	// a round brass target, rings painted on it, facing the cannon, on an iron post
+	scene.AddHull( e, { 0, 0, 0 }, QuatAxisAngle( { 1, 0, 0 }, PI * 0.5f ), scene.Cylinder( 0.12f, 0.55f, -0.06f, 20 ), Mat::Gold, so );
+	e->parts.back().tint = kBrass;
+	for ( int i = 0; i < 2; ++i )
+	{
+		Part ring;
+		ring.geo = Geo::Hull;
+		ring.hull = scene.Cylinder( 0.02f, i == 0 ? 0.36f : 0.16f, 0.0f, 20 );
+		ring.localPos = { 0, 0, 0.06f + 0.005f * i };
+		ring.localRot = QuaternionFromAxisAngle( { 1, 0, 0 }, PI * 0.5f );
+		ring.mat = Mat::Gold;
+		ring.tint = i == 0 ? Color{ 170, 40, 30, 255 } : Color{ 240, 220, 150, 255 };
+		scene.AddVisual( e, ring );
+	}
+	scene.AddBox( e, { 0, -height * 0.5f - 0.25f, -0.1f }, b3Quat_identity, { 0.07f, height * 0.5f - 0.25f, 0.07f }, Mat::Metal, so );
+	e->parts.back().tint = kIronDark;
+	scene.FinalizeEntity( e );
+	e->trigger = (int)scene.triggers.size();
+	scene.triggers.emplace_back();
+	return e;
+}
+
+void Builder::Trigger( Entity* target, b3JointId joint )
+{
+	scene.triggers[target->trigger].joints.push_back( joint );
+}
+
+Entity* Builder::HangingWeight( Vector3 ground, float drop, Entity* target, Vector3 across )
+{
+	// a gantry over the spot
+	const float top = drop + 1.6f;
+	across = Vector3Normalize( across );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 p = Vector3Add( ground, Vector3Scale( across, s * 1.3f ) );
+		Ledge( { p.x, ground.y + top * 0.5f, p.z }, { 0.14f, top * 0.5f, 0.14f }, Mat::Wood, { 0, 0, 0, 1 }, Color{ 110, 78, 50, 255 } );
+	}
+	Ledge( { ground.x, ground.y + top + 0.1f, ground.z }, { 1.5f, 0.12f, 0.16f }, Mat::Wood,
+		   QuaternionFromAxisAngle( { 0, 1, 0 }, atan2f( -across.z, across.x ) ), Color{ 110, 78, 50, 255 } );
+	// the weight: a block of iron with a ring on top
+	BodyOptions bo;
+	Vector3 c{ ground.x, ground.y + drop, ground.z };
+	Entity* w = scene.CreateEntity( Kind::Block, Mat::Metal, c, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.densityScale = 0.25f;
+	scene.AddHull( w, { 0, -0.35f, 0 }, b3Quat_identity, scene.Cone( 0.7f, 0.45f, 0.32f, 12 ), Mat::Metal, so );
+	w->parts.back().tint = kIronDark;
+	Part ring;
+	ring.geo = Geo::Sphere;
+	ring.localPos = { 0, 0.42f, 0 };
+	ring.size = { 0.1f, 0.1f, 0.1f };
+	ring.mat = Mat::Metal;
+	ring.tint = kBrass;
+	scene.AddVisual( w, ring );
+	w->lethal = true;
+	w->homeY = homeY;
+	scene.FinalizeEntity( w );
+	b3Body_EnableSleep( w->body, false );
+	// hung by a rope from the beam; the rope runs on to the target, which holds the end
+	Vector3 hook{ ground.x, ground.y + top, ground.z };
+	b3JointId j = MakeRopeJoint( scene.World(), scene.groundBody, hook, w->body, Vector3Add( c, { 0, 0.42f, 0 } ), 1.0f );
+	Rope& r = scene.AddRope( scene.groundBody, hook, w->body, Vector3Add( c, { 0, 0.42f, 0 } ), 0.04f, Color{ 150, 120, 80, 255 } );
+	r.joint = j;
+	r.breakable = true;
+	if ( target != nullptr )
+	{
+		Rope& cord = scene.AddRope( scene.groundBody, hook, scene.groundBody, target->pos, 0.03f, Color{ 150, 120, 80, 255 } );
+		cord.joint = j;
+		cord.breakable = true;
+		Trigger( target, j );
+	}
+	return w;
+}
+
+Entity* Builder::OrbitShields( Vector3 centre, float radius, int count, float halfWidth, float height, float rate, float phase, bool roof )
+{
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = scene.CreateEntity( Kind::Mechanism, Mat::Metal, centre, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.hitEvents = false;
+	for ( int i = 0; i < count; ++i )
+	{
+		float a = i * 2.0f * PI / count;
+		Vector3 at{ sinf( a ) * radius, height * 0.5f + 0.05f, cosf( a ) * radius };
+		scene.AddBox( e, at, ToB3( QuaternionFromAxisAngle( { 0, 1, 0 }, a ) ), { halfWidth, height * 0.5f, 0.08f }, Mat::Metal, so );
+		e->parts.back().tint = Color{ 92, 90, 96, 255 };
+		// rivets round the rim
+		for ( int k = 0; k < 4; ++k )
+		{
+			Part rivet;
+			rivet.geo = Geo::Sphere;
+			Vector3 local{ ( k % 2 ? 1.0f : -1.0f ) * ( halfWidth - 0.12f ), ( k < 2 ? 1.0f : -1.0f ) * ( height * 0.5f - 0.12f ), 0.09f };
+			rivet.localPos = Vector3Add( at, Vector3RotateByQuaternion( local, QuaternionFromAxisAngle( { 0, 1, 0 }, a ) ) );
+			rivet.size = { 0.05f, 0.05f, 0.05f };
+			rivet.mat = Mat::Metal;
+			rivet.tint = kBrass;
+			scene.AddVisual( e, rivet );
+		}
+	}
+	if ( roof )
+	{
+		scene.AddBox( e, { 0, height + 0.15f, 0 }, b3Quat_identity, { radius + 0.1f, 0.1f, radius + 0.1f }, Mat::Metal, so );
+		e->parts.back().tint = Color{ 80, 78, 84, 255 };
+		Part knob;
+		knob.geo = Geo::Sphere;
+		knob.localPos = { 0, height + 0.3f, 0 };
+		knob.size = { 0.2f, 0.2f, 0.2f };
+		knob.mat = Mat::Metal;
+		knob.tint = kBrass;
+		scene.AddVisual( e, knob );
+	}
+	e->homeY = -1000.0f;
+	scene.FinalizeEntity( e );
+	Spin( e, rate, phase );
+	scene.mechanisms.back().boxes = true;
+	return e;
+}
+
 Entity* Builder::Ledge( Vector3 center, Vector3 half, Mat mat, Quaternion rot, Color tint )
 {
 	BodyOptions bo;
@@ -2289,6 +2591,427 @@ static void LevelRoccaFulmine( Builder& b )
 	b.Fortress( { 0, 3.0f, 41 }, 14.0f );
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fucina del Vulcano
+// ---------------------------------------------------------------------------------------------
+
+static const Color kIron{ 190, 40, 30, 255 }; // the robe of the Iron Emperor
+static const Color kBasalt{ 74, 66, 64, 255 };
+
+// Gives the stone of everything built since entity `from` the dark grey of basalt.
+static void Basalt( Builder& b, size_t from )
+{
+	for ( size_t i = from; i < b.scene.entities.size(); ++i )
+	{
+		Entity* e = b.scene.entities[i];
+		bool changed = false;
+		for ( Part& p : e->parts )
+		{
+			if ( p.mat == Mat::Stone )
+			{
+				p.tint = ColorBrightness( kBasalt, b.rng.Range( -0.08f, 0.08f ) );
+				changed = true;
+			}
+		}
+		if ( changed )
+		{
+			b.scene.FinalizeEntity( e );
+		}
+	}
+}
+
+// A cage of magic lattice round a king standing at `feet`, roof and all: no shot and no blast gets in, but the
+// magic orbs and the enchanted maces of the forge go through.
+static Entity* Cage( Builder& b, Vector3 feet, float half, float height, Color robe )
+{
+	const float t = 0.08f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.MagicBarrier( { feet.x, feet.y + height * 0.5f, feet.z + s * half }, { half, height * 0.5f, t } );
+		b.MagicBarrier( { feet.x + s * half, feet.y + height * 0.5f, feet.z }, { t, height * 0.5f, half - t } );
+	}
+	b.MagicBarrier( { feet.x, feet.y + height + t, feet.z }, { half + t, t, half + t } );
+	return b.King( feet, robe );
+}
+
+// A king on the long arm of a lever, a pane of glass in front of him: the way to him is a lob onto the brass plate
+// (or a weight dropped on it).
+static Entity* LeverKing( Builder& b, Vector3 fulcrum, Vector3 along, Color robe, Vector3* plateOut = nullptr )
+{
+	Vector3 seat, plate;
+	Entity* lever = b.Lever( fulcrum, along, 3.4f, 1.6f, seat, plate );
+	Entity* king = b.King( seat, robe );
+	b.GlassPane( { seat.x, 1.6f, seat.z - 1.3f }, { 1.1f, 1.6f, 0.06f } );
+	if ( plateOut )
+	{
+		*plateOut = plate;
+	}
+	else
+	{
+		b.AimHint( king, lever, Vector3Subtract( Vector3Add( plate, { 0, 0.3f, 0 } ), lever->pos ), 10.0f );
+	}
+	return king;
+}
+
+static void LevelLeva( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	size_t from = b.scene.entities.size();
+	LeverKing( b, { -0.6f, 1.2f, 37.0f }, { 1, 0, 0 }, kIron );
+	Vector3 p1 = b.Scatter( { -5.6f, 0, 33.5f }, 0.8f, 0.8f );
+	float t1 = b.Tower( p1, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kTeal );
+	Vector3 p2 = b.Scatter( { -2.5f, 0, 41.5f }, 1.0f, 0.5f );
+	float t2 = b.Tower( p2, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kOrange );
+	Basalt( b, from );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { 6.0f, 0, 40.0f }, kIron );
+	b.Fortress( { 0, 2.0f, 36 }, 11.0f );
+}
+
+// Kings under hanging weights, behind glass: the ropes are tied to brass targets.
+static void LevelMaglio( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	const Vector3 spots[3] = { { -4.6f, 0, 37.0f }, { 0.4f, 0, 39.5f }, { 5.0f, 0, 36.5f } };
+	const Vector3 targets[3] = { { -6.8f, 0, 31.5f }, { -1.6f, 0, 33.0f }, { 3.2f, 0, 31.0f } };
+	const Color robes[3] = { kTeal, kIron, kCrimson };
+	for ( int i = 0; i < 3; ++i )
+	{
+		Entity* target = b.Target( targets[i], 1.6f );
+		b.HangingWeight( spots[i], 3.8f, target );
+		Entity* king = b.King( spots[i], robes[i] );
+		b.GlassPane( { spots[i].x, 1.2f, spots[i].z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
+		b.AimHint( king, target, { 0, 0, 0 } );
+	}
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { 2.5f, 0, 42.5f }, kIron );
+	b.Fortress( { 0, 2.5f, 36 }, 11.0f );
+}
+
+// Two tilting dummies, each with a king in a magic cage where its mace comes round.
+static void LevelQuintana( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	const float arm = 2.2f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 base{ s * 3.6f, 0, 37.2f };
+		bool mirror = s < 0;
+		Entity* q = b.Quintain( base, 1.0f, arm, 0.0f, mirror );
+		Entity* king = Cage( b, { base.x, 0, base.z - arm }, 0.8f, 1.8f, s < 0 ? kCrimson : kTeal );
+		// strike the shield from the front
+		b.AimHint( king, q, { ( mirror ? -arm : arm ), 0.0f, -0.25f } );
+	}
+	Vector3 p = b.Scatter( { 0, 0, 41.5f }, 1.0f, 0.5f );
+	size_t from = b.scene.entities.size();
+	float t = b.Tower( p, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Basalt( b, from );
+	b.King( { p.x, t, p.z }, kIron );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { -6.0f, 0, 41.0f }, kIron );
+	b.Fortress( { 0, 2.0f, 37 }, 11.0f );
+}
+
+// Magic orbs tied to posts: struck from the front, each runs round its post and into the cage behind.
+static void LevelGuinzaglio( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	const float r = 2.4f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 post{ s * 3.4f, 0, 36.0f };
+		Entity* orb = b.Tether( post, { post.x + s * r, 0, post.z } );
+		Entity* king = Cage( b, { post.x, 0, post.z + r }, 0.8f, 1.8f, s < 0 ? kCrimson : kTeal );
+		b.AimHint( king, orb, { 0, 0.1f, -0.3f } );
+	}
+	Vector3 p = b.Scatter( { 0, 0, 41.5f }, 1.0f, 0.5f );
+	size_t from = b.scene.entities.size();
+	float t = b.Tower( p, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	Basalt( b, from );
+	b.King( { p.x, t, p.z }, kIron );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { 0, 0, 44.0f }, kIron );
+	b.Fortress( { 0, 2.0f, 37 }, 11.0f );
+}
+
+// Two levers, and over each plate a weight whose rope runs to a brass target: target, weight, lever, king.
+static void LevelContrappeso( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	size_t from = b.scene.entities.size();
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 plate;
+		Entity* king = LeverKing( b, { s * 2.4f, 1.2f, 37.0f + ( s < 0 ? 0.6f : 0.0f ) }, { (float)s, 0, 0 }, s < 0 ? kCrimson : kIron, &plate );
+		Entity* target = b.Target( { s * 5.2f, 0, 31.0f }, 1.6f );
+		b.HangingWeight( { plate.x, 0, plate.z }, 5.2f, target, { 0, 0, 1 } );
+		b.AimHint( king, target, { 0, 0, 0 } );
+	}
+	Basalt( b, from );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { 0, 0, 43.5f }, kIron );
+	b.Fortress( { 0, 2.5f, 36 }, 11.0f );
+}
+
+// Kings on plinths, each with iron shields going round him: shoot through the gap as it comes past.
+static void ShieldedKing( Builder& b, Vector3 feet, float rate, float phase, Color robe )
+{
+	size_t from = b.scene.entities.size();
+	b.Ledge( { feet.x, 0.25f, feet.z }, { 0.45f, 0.25f, 0.45f }, Mat::Stone, { 0, 0, 0, 1 }, kBasalt );
+	Basalt( b, from );
+	b.OrbitShields( { feet.x, 0, feet.z }, 1.4f, 2, 0.95f, 2.4f, rate, phase, true );
+	b.King( { feet.x, 0.5f, feet.z }, robe );
+}
+
+static void LevelScudiOrbitanti( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	ShieldedKing( b, b.Scatter( { -4.6f, 0, 35.5f }, 0.7f, 0.7f ), 0.8f, 0.0f, kTeal );
+	ShieldedKing( b, b.Scatter( { 0.4f, 0, 39.5f }, 0.7f, 0.5f ), -1.1f, 1.0f, kIron );
+	ShieldedKing( b, b.Scatter( { 5.0f, 0, 35.0f }, 0.7f, 0.7f ), 1.4f, 2.0f, kCrimson );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { -2.0f, 0, 43.5f }, kIron );
+	b.Fortress( { 0, 2.0f, 36 }, 11.0f );
+}
+
+// One section of a sloping chute, from x0 to x1 (x1 > x0) along the line z = `z`, its floor at height y0 + (x - x0)
+// * slope: a floor and two side rails, added to entity `e` (whose origin is at `origin`).
+static void ChuteSection( Builder& b, Entity* e, Vector3 origin, float x0, float x1, float y0, float slope, float z, const ShapeOptions& so )
+{
+	float angle = atanf( slope );
+	b3Quat q = QuatAxisAngle( { 0, 0, 1 }, angle );
+	float mid = ( x0 + x1 ) * 0.5f;
+	float yMid = y0 + ( mid - x0 ) * slope;
+	float half = ( x1 - x0 ) * 0.5f / cosf( angle );
+	Vector3 n = Vector3RotateByQuaternion( { 0, 1, 0 }, ToRl( q ) );
+	auto local = [&]( float up, float across ) {
+		Vector3 w = Vector3Add( { mid, yMid, z + across }, Vector3Scale( n, up ) );
+		return Vector3Subtract( w, origin );
+	};
+	b.scene.AddBox( e, local( -0.08f, 0 ), q, { half, 0.08f, 0.6f }, Mat::Wood, so );
+	e->parts.back().tint = Color{ 120, 84, 52, 255 };
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.scene.AddBox( e, local( 0.18f, s * 0.65f ), q, { half, 0.26f, 0.05f }, Mat::Metal, so );
+		e->parts.back().tint = kIronDark;
+	}
+}
+
+// The chute: a magic orb waits at the top against a wooden chock, and rolls down to a king in a magic cage once
+// the chock is knocked away. But the middle of the chute sits on a cart, pulled out towards the cannon: push it
+// home first, or the orb drops through the gap into the crucible below.
+static void LevelCarrello( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.5f );
+	const float z0 = 37.0f, slope = 0.2f, xLow = -3.2f, yLow = 0.35f;
+	auto floorAt = [&]( float x ) { return yLow + ( x - xLow ) * slope; };
+	const float aHigh = 6.6f, aLow = 3.45f, bHigh = 3.35f, bLow = 0.3f, cHigh = 0.2f;
+	// the fixed sections, on wooden legs
+	BodyOptions sb;
+	sb.type = b3_staticBody;
+	Entity* fixed = b.scene.CreateEntity( Kind::Static, Mat::Wood, { 0, 0, z0 }, b3Quat_identity, sb );
+	ShapeOptions fs;
+	fs.category = CatStatic;
+	fs.hitEvents = false;
+	ChuteSection( b, fixed, { 0, 0, z0 }, aLow, aHigh, floorAt( aLow ), slope, z0, fs );
+	ChuteSection( b, fixed, { 0, 0, z0 }, xLow, cHigh, floorAt( xLow ), slope, z0, fs );
+	// the top end is closed: a knock on the chock must not send the orb back up and over
+	b.scene.AddBox( fixed, { aHigh + 0.05f, floorAt( aHigh ) + 0.3f, 0 }, b3Quat_identity, { 0.05f, 0.45f, 0.7f }, Mat::Metal, fs );
+	fixed->parts.back().tint = kIronDark;
+	for ( float x : { aHigh - 0.3f, aLow + 0.3f, cHigh - 0.3f } )
+	{
+		for ( int s = -1; s <= 1; s += 2 )
+		{
+			float h = floorAt( x ) - 0.2f;
+			b.scene.AddBox( fixed, { x, h * 0.5f, s * 0.5f }, b3Quat_identity, { 0.08f, h * 0.5f, 0.08f }, Mat::Wood, fs );
+			fixed->parts.back().tint = Color{ 110, 78, 50, 255 };
+		}
+	}
+	b.scene.FinalizeEntity( fixed );
+
+	// the crucible under the gap, glowing
+	const float cx = ( bLow + bHigh ) * 0.5f;
+	b.Ledge( { cx, 0.05f, z0 }, { 1.9f, 0.05f, 0.9f }, Mat::Plain, { 0, 0, 0, 1 }, Color{ 255, 120, 30, 255 } );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { cx, 0.3f, z0 + s * 1.0f }, { 2.0f, 0.3f, 0.1f }, Mat::Stone, { 0, 0, 0, 1 }, kBasalt );
+		b.Ledge( { cx + s * 2.0f, 0.3f, z0 }, { 0.1f, 0.3f, 0.9f }, Mat::Stone, { 0, 0, 0, 1 }, kBasalt );
+	}
+
+	// the cart: the middle section with a brass handle in front, pulled out 1.4 m towards the cannon
+	const float pull = 1.4f;
+	Vector3 cartPos{ cx, floorAt( cx ), z0 - pull };
+	BodyOptions cb;
+	cb.angularDamping = 0.5f;
+	Entity* cart = b.scene.CreateEntity( Kind::Mechanism, Mat::Wood, cartPos, b3Quat_identity, cb );
+	// light (a good shot always pushes it all the way home) and stiff on its guides (once home it stays there)
+	ShapeOptions cs;
+	cs.densityScale = 0.05f;
+	ChuteSection( b, cart, cartPos, bLow, bHigh, floorAt( bLow ), slope, z0 - pull, cs );
+	ShapeOptions hs;
+	hs.densityScale = 0.03f;
+	b.scene.AddBox( cart, { 0, 0.1f, -1.0f }, b3Quat_identity, { 0.6f, 0.35f, 0.3f }, Mat::Metal, hs );
+	cart->parts.back().tint = kBrass;
+	cart->homeY = -1000.0f;
+	b.scene.FinalizeEntity( cart );
+	b3PrismaticJointDef pj = b3DefaultPrismaticJointDef();
+	pj.base.bodyIdA = b.scene.groundBody;
+	pj.base.bodyIdB = cart->body;
+	pj.base.localFrameA.p = ToB3( cartPos );
+	pj.base.localFrameA.q = b3ComputeQuatBetweenUnitVectors( b3Vec3_axisX, b3Vec3_axisZ );
+	pj.base.localFrameB.q = pj.base.localFrameA.q;
+	pj.enableLimit = true;
+	pj.lowerTranslation = 0.0f;
+	pj.upperTranslation = pull;
+	pj.enableMotor = true;
+	pj.motorSpeed = 0.0f;
+	pj.maxMotorForce = 600.0f;
+	b3CreatePrismaticJoint( b.scene.World(), &pj );
+	// the guides it runs on
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		float x = cx + s * 1.2f;
+		b.Ledge( { x, floorAt( x ) - 0.21f, z0 - pull * 0.5f - 0.3f }, { 0.06f, 0.04f, pull * 0.5f + 1.0f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	}
+
+	// the orb at the top, held by the chock
+	float chockX = aHigh - 1.1f;
+	// oak, heavy enough not to creep down under the orb (a light block slid 80 cm in 20 s)
+	BodyOptions kb;
+	Entity* chock = b.scene.CreateEntity( Kind::Block, Mat::Wood, { chockX, floorAt( chockX ) + 0.5f, z0 }, QuatAxisAngle( { 0, 0, 1 }, atanf( slope ) ), kb );
+	ShapeOptions ks;
+	ks.densityScale = 4.0f;
+	b.scene.AddBox( chock, { 0, 0, 0 }, b3Quat_identity, { 0.16f, 0.5f, 0.5f }, Mat::Wood, ks );
+	chock->parts.back().tint = Color{ 140, 95, 55, 255 };
+	chock->homeY = b.homeY;
+	b.scene.FinalizeEntity( chock );
+	// struck by a shot, it flies to splinters: nothing of it can fall back into the chute
+	chock->trigger = (int)b.scene.triggers.size();
+	b.scene.triggers.emplace_back();
+	b.scene.triggers.back().shatter = true;
+	float orbX = chockX + 0.62f;
+	Entity* orb = b.MagicOrb( { orbX, floorAt( orbX ) + 0.43f, z0 }, 0.42f );
+
+	// the king at the bottom, in his cage
+	Entity* king = Cage( b, { xLow - 1.7f, 0, z0 }, 0.8f, 1.8f, kIron );
+	b.AimHint( king, cart, { 0, 0.1f, -1.3f } );
+	b.AimHint( king, chock, { 0, 0.3f, -0.1f } );
+	(void)orb;
+
+	// and two more, in plain sight
+	size_t from = b.scene.entities.size();
+	Vector3 p1 = b.Scatter( { -6.0f, 0, 32.5f }, 0.7f, 0.7f );
+	float t1 = b.Tower( p1, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kTeal );
+	Vector3 p2 = b.Scatter( { 6.5f, 0, 32.0f }, 0.7f, 0.7f );
+	float t2 = b.Tower( p2, 1, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kCrimson );
+	Basalt( b, from );
+	b.Flag( { 2.0f, 0, 42.5f }, kIron );
+	b.Fortress( { 0, 2.0f, 36 }, 12.0f );
+}
+
+// A trap: three weights, three targets, and the cords cross. Only two weights hang over kings.
+static void LevelTreCorde( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36 }, 10.0f );
+	const Vector3 targets[3] = { { -5.2f, 0, 31.5f }, { 0.0f, 0, 32.5f }, { 5.2f, 0, 31.5f } };
+	Entity* t[3];
+	for ( int i = 0; i < 3; ++i )
+	{
+		t[i] = b.Target( targets[i], 1.6f );
+	}
+	// the king on the right hangs from the target on the left, the king on the left from the middle one, and the
+	// target on the right holds a weight over an empty heap of sandbags
+	const Vector3 left{ 4.8f, 0, 38.0f }, right{ -4.8f, 0, 38.0f }, empty{ 0.0f, 0, 40.0f };
+	b.HangingWeight( right, 3.8f, t[0] );
+	b.HangingWeight( left, 3.8f, t[1] );
+	b.HangingWeight( empty, 3.8f, t[2] );
+	b.SandbagWall( { -1.0f, 0, 40.0f }, true, 2, 2 );
+	Entity* kr = b.King( right, kCrimson );
+	Entity* kl = b.King( left, kTeal );
+	b.GlassPane( { right.x, 1.2f, right.z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
+	b.GlassPane( { left.x, 1.2f, left.z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
+	b.AimHint( kr, t[0], { 0, 0, 0 } );
+	b.AimHint( kl, t[1], { 0, 0, 0 } );
+	BackTrees( b, { 0, 0, 36 }, 8.8f );
+	b.Flag( { 2.5f, 0, 43.0f }, kIron );
+	b.Fortress( { 0, 2.5f, 36 }, 11.0f );
+}
+
+// The foundry: a dummy, an orb on a rope and shields going round, one king for each.
+static void LevelFonderia( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 36.5f }, 10.5f );
+	const float arm = 2.2f;
+	Vector3 qb{ 4.4f, 0, 38.0f };
+	Entity* q = b.Quintain( qb, 1.0f, arm, 0.0f );
+	Entity* k1 = Cage( b, { qb.x, 0, qb.z - arm }, 0.8f, 1.8f, kTeal );
+	b.AimHint( k1, q, { arm, 0.0f, -0.25f } );
+	Vector3 post{ -4.0f, 0, 36.0f };
+	Entity* orb = b.Tether( post, { post.x - 2.4f, 0, post.z } );
+	Entity* k2 = Cage( b, { post.x, 0, post.z + 2.4f }, 0.8f, 1.8f, kCrimson );
+	b.AimHint( k2, orb, { 0, 0.1f, -0.3f } );
+	ShieldedKing( b, b.Scatter( { 0.3f, 0, 41.0f }, 0.6f, 0.4f ), 1.2f, 0.5f, kIron );
+	BackTrees( b, { 0, 0, 36.5f }, 9.2f );
+	b.Flag( { 6.5f, 0, 42.0f }, kIron );
+	b.Fortress( { 0, 2.0f, 37.5f }, 12.0f );
+}
+
+// The Iron Emperor's forge: he sits on a lever with a weight hung over its plate, and the target that lets the
+// weight go is guarded by shields going round it. A dummy, an orb on a rope and a king in shields guard the rest.
+static void LevelForgia( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 38.0f }, 12.0f );
+	size_t from = b.scene.entities.size();
+	// the Emperor, on his lever at the back, behind glass
+	Vector3 plate;
+	Entity* emperor = LeverKing( b, { -1.4f, 1.2f, 41.5f }, { 1, 0, 0 }, kIron, &plate );
+	Entity* target = b.Target( { -6.2f, 0, 33.5f }, 1.4f );
+	b.HangingWeight( { plate.x, 0, plate.z }, 5.2f, target, { 0, 0, 1 } );
+	b.OrbitShields( { -6.2f, 0, 33.5f }, 1.3f, 2, 0.9f, 2.6f, 1.0f );
+	b.AimHint( emperor, target, { 0, 0, 0 } );
+	// a dummy with a king in its cage
+	const float arm = 2.2f;
+	Vector3 qb{ 5.6f, 0, 38.0f };
+	Entity* q = b.Quintain( qb, 1.0f, arm, 0.0f );
+	Entity* k1 = Cage( b, { qb.x, 0, qb.z - arm }, 0.8f, 1.8f, kTeal );
+	b.AimHint( k1, q, { arm, 0.0f, -0.25f } );
+	// an orb on a rope
+	Vector3 post{ -6.0f, 0, 40.0f };
+	Entity* orb = b.Tether( post, { post.x - 2.4f, 0, post.z } );
+	Entity* k2 = Cage( b, { post.x, 0, post.z + 2.4f }, 0.8f, 1.8f, kCrimson );
+	b.AimHint( k2, orb, { 0, 0.1f, -0.3f } );
+	// and a king in shields, in front
+	ShieldedKing( b, b.Scatter( { 1.2f, 0, 33.0f }, 0.6f, 0.5f ), -1.2f, 0.0f, kPurple );
+	Basalt( b, from );
+	b.Flag( { 3.0f, 0, 46.0f }, kIron, 1.2f );
+	b.Flag( { -3.0f, 0, 46.0f }, kIron, 1.2f );
+	b.Fortress( { 0, 3.0f, 39 }, 14.0f );
+}
+
 static void Level04( Builder& b )
 {
 	b.PlayerIsland();
@@ -3185,6 +3908,36 @@ static const LevelDef s_levels[] = {
 	{ "La Rocca di Re Fulmine", "Tuoni, lampi e gomma. Vediamo se hai imparato qualcosa.",
 	  "Re Fulmine si prende solo di sponda sulla pala che gira; la guardia nel pozzo di pallonetto quando il soffione tace, quella in vetrina dal molo di gomma.",
 	  { 9, 1, 0, 0, 1, 0, 0 }, 7, { 0, 0, 0 }, LevelRoccaFulmine, "arcipelago_rocca" },
+	{ "La Leva", "Benvenuto nella mia fucina. Qui ogni cosa ha il suo ingranaggio, e ogni ingranaggio lavora per me.",
+	  "Il re sulla leva sta dietro il vetro: fai cadere un pallonetto sulla piastra d'ottone e la leva lo lancer\u00e0 in aria.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelLeva, "fucina_leva" },
+	{ "Il Maglio", "Quei pesi stanno appesi da secoli. Sopra la testa dei miei re, s\u00ec, ma ben legati.",
+	  "Ogni corda \u00e8 legata a un bersaglio d'ottone: colpiscilo e il peso cade sul re.",
+	  { 6, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMaglio, "fucina_maglio" },
+	{ "La Quintana", "I miei fantocci non sentono dolore. I miei re, invece, nemmeno ci pensano.",
+	  "Colpisci lo scudo d'ottone del fantoccio: la mazza ferrata gira, passa la gabbia magica e colpisce il re.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelQuintana, "fucina_quintana" },
+	{ "Il Guinzaglio", "Le mie sfere sono al guinzaglio. Buone, buone...",
+	  "Le sfere magiche sono legate a un palo: colpiscile da davanti e gireranno attorno al palo fino alla gabbia del re.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelGuinzaglio, "fucina_guinzaglio" },
+	{ "Il Contrappeso", "Leve, pesi e corde: la mia fortezza si difende da sola.",
+	  "Il bersaglio d'ottone sgancia il peso, il peso cade sulla piastra, la leva lancia il re. Una catena!",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelContrappeso, "fucina_contrappeso" },
+	{ "Scudi Orbitanti", "I miei scudi non stanno mai fermi. Proprio come il tuo cuore, adesso.",
+	  "Gli scudi di ferro girano attorno ai re: spara quando il varco passa davanti.",
+	  { 7, 0, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelScudiOrbitanti, "fucina_scudi" },
+	{ "Il Carrello", "La mia sfera aspetta in cima allo scivolo. Ma lo scivolo, ahim\u00e8, \u00e8 rotto.",
+	  "Prima spingi il carrello d'ottone per completare lo scivolo, poi colpisci il fermo di legno: la sfera rotoler\u00e0 fino al re.",
+	  { 6, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelCarrello, "fucina_carrello" },
+	{ "Tre Corde", "Tre corde, tre pesi, tre bersagli. Scegli bene: i miei re ringraziano.",
+	  "Segui le corde con lo sguardo prima di sparare: non tutte portano dove sembra.",
+	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelTreCorde, "fucina_tre_corde" },
+	{ "La Fonderia", "Fantocci, sfere e scudi: nella mia fonderia si lavora sodo.",
+	  "Lo scudo del fantoccio, la sfera al guinzaglio, il varco fra gli scudi che girano: un re per ogni ingranaggio.",
+	  { 7, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelFonderia, "fucina_fonderia" },
+	{ "La Forgia dell'Imperatore", "Sono l'Imperatore di Ferro. Il mio trono \u00e8 una leva, e la leva \u00e8 nelle mie mani.",
+	  "L'Imperatore siede sulla leva: il bersaglio che sgancia il peso \u00e8 protetto da scudi che girano. Poi il fantoccio, la sfera, gli scudi.",
+	  { 9, 1, 0, 0, 1, 0, 0 }, 6, { 0, 0, 0 }, LevelForgia, "fucina_forgia" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -3239,7 +3992,9 @@ static std::vector<Campaign> BuildCampaigns()
 				   "l'ultimo frammento della Corona, e tutto quello che hai imparato ti servir\u00e0.",
 				   "La Corona dei Venti \u00e8 di nuovo intera. Le isole tornano a salire, e Mastra Bombarda pu\u00f2 finalmente "
 				   "riposare. Per un po'.",
-				   {} } );
+				   { idx( "fucina_leva" ), idx( "fucina_maglio" ), idx( "fucina_quintana" ), idx( "fucina_guinzaglio" ),
+					 idx( "fucina_contrappeso" ), idx( "fucina_scudi" ), idx( "fucina_carrello" ), idx( "fucina_tre_corde" ),
+					 idx( "fucina_fonderia" ), idx( "fucina_forgia" ) } } );
 	return c;
 }
 

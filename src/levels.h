@@ -149,6 +149,34 @@ public:
 	// A crystal wall that is solid for `onTime` seconds out of every `period`, shifted by `phase`.
 	Entity* Shield( Vector3 center, Vector3 half, float yaw, float period, float onTime, float phase );
 
+	// Fucina del Vulcano: mechanisms set going by a shot. Parts meant to be struck are brass.
+	// A lever on a stone fulcrum, lying along `along` (horizontal): the long arm of `kingArm` metres rests on a post
+	// and ends in a flat seat, the short arm of `plateArm` ends in a brass plate. A heavy shot dropped on the plate
+	// throws the long arm up until it hits its stop, and whoever sits on it flies. Returns the plank; `seat` is
+	// where a king's feet go, `plate` the top of the plate.
+	Entity* Lever( Vector3 fulcrum, Vector3 along, float kingArm, float plateArm, Vector3& seat, Vector3& plate );
+	// A tilting dummy turning freely on a post: a brass shield at one end of its arm and an iron mace at the other,
+	// `arm` metres from the post, at `height`. With yaw 0 the shield is on +x facing -z and the mace on -x: strike
+	// the shield from the front and the mace swings round through -z. The mace (and the arm) pass through magic
+	// barriers and knock down any king they meet. Returns the turning part.
+	// `mirror` swaps the ends: shield on -x, mace on +x (it then swings the other way, still through -z).
+	Entity* Quintain( Vector3 base, float height, float arm, float yaw, bool mirror = false );
+	// A magic orb lying on the ground at `orb`, tied by a rope to a post at `post`: struck, it runs round the post
+	// at the end of its rope. Returns the orb.
+	Entity* Tether( Vector3 post, Vector3 orb, float radius = 0.45f );
+	// A brass target on a post, facing the cannon: a shot that strikes it lets go of the joints handed to Trigger().
+	Entity* Target( Vector3 base, float height );
+	// Makes `target` let go of `joint` when struck (a target can hold several).
+	void Trigger( Entity* target, b3JointId joint );
+	// An iron weight hanging from a gantry by a rope, `drop` metres above the ground; the rope is tied to `target`:
+	// strike the target and the weight falls. Returns the weight.
+	// The gantry's posts stand either side along `across`.
+	Entity* HangingWeight( Vector3 ground, float drop, Entity* target, Vector3 across = { 1, 0, 0 } );
+	// Iron shields going round `centre`: `count` plates on a circle of `radius`, `height` tall, turning at `rate`.
+	// With `roof`, an iron lid turns with them over the king: no lob drops in.
+	Entity* OrbitShields( Vector3 centre, float radius, int count, float halfWidth, float height, float rate, float phase = 0.0f,
+						  bool roof = false );
+
 	// Picchi Gelati
 	// Fixed scenery (ledges, walls, ramps, ice sheets): never moves and never breaks.
 	Entity* Ledge( Vector3 center, Vector3 half, Mat mat, Quaternion rot = { 0, 0, 0, 1 }, Color tint = { 0, 0, 0, 0 } );

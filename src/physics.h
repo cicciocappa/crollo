@@ -118,6 +118,7 @@ struct Entity
 	TreeKind treeKind = TreeKind::Oak;
 	Color leaf{};
 	float ghost = 0.0f;		  // seconds before a felled tree starts colliding with shots again
+	int trigger = -1;		  // a brass target: index of the trigger a shot sets off (Scene::triggers)
 	float flash = 0.0f;		  // hit flash for rendering
 
 	// king
@@ -193,6 +194,15 @@ struct Mechanism
 	// across its top, y how far the body reaches down below its origin. Zero uses its first part.
 	Vector3 carry{ 0, 0, 0 };
 	float reach = 0.6f; // how far above its top a rider can stand (a king on a tower on the island)
+	bool boxes = false; // Mover: every box it is made of is in the way (shields going round a king), not just the first
+};
+
+// What a brass target does when a shot strikes it: the joints it lets go of (a latch, a catch).
+struct Trigger
+{
+	std::vector<b3JointId> joints;
+	bool shatter = false; // the target itself flies to splinters (a wooden chock)
+	bool fired = false;
 };
 
 // Where a mover is at simulation time t.
@@ -348,6 +358,7 @@ public:
 	std::vector<Rope> ropes;
 	std::vector<Mechanism> mechanisms;
 	std::vector<AirCurrent> currents;
+	std::vector<Trigger> triggers;
 	std::vector<HitRecord> hits;
 	std::vector<BeginTouchRecord> touches;
 	std::vector<b3JointId> overloadedJoints;
