@@ -27,6 +27,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 - Sessione 6 fatta: Dune Sospese a 8 livelli, palme e cactus, tappeti volanti e ascensori (`Mover`), vetro, IA con anticipo.
 - Sessione 6b fatta (richiesta dell'utente: grappolo e Vortice non servivano mai): Il Bazar e Il Frutteto (grappolo
   indispensabile), Le Teche e La Cupola Stregata (Vortice indispensabile); Dune e Valle a 10 livelli.
+- Sessione 6d fatta: re sparsi estesi a Prati Alti, Valle dei Mulini e Picchi Gelati.
 - Sessione 6c fatta (riscontro sulle Dune): granelli di sabbia al posto delle foglie, vento fisso in tutte le Dune (niente
   più vento variabile nemmeno in Tappeti e Tempesta), re sparsi a caso a ogni tentativo e munizioni più generose.
 - Prossima: prova delle Dune da parte dell'utente, poi sessione 7 (Arcipelago). Poi versione mobile (10); multiplayer
@@ -112,7 +113,10 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Re sparsi** (`b.Scatter(p, rx, rz)`): il seme della disposizione cambia a ogni tentativo (`Game::m_layoutSeed`, 0 nei
   test e nelle demo = disposizione disegnata). Sposta insieme il re e ciò che lo regge. L'autotest prova ogni livello
   sparso anche in 5 disposizioni (`CROLLO_DEBUG=1` stampa dove stanno i re). Idea dell'utente: così il pallonetto si
-  cerca sempre un po' per tentativi e le munizioni possono essere generose. Oggi: Dune (non i tappeti) e Il Frutteto.
+  cerca sempre un po' per tentativi e le munizioni possono essere generose. Oggi in 31 livelli su 40 (una palla in più
+  a ciascuno); fissi solo quelli a colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera, re centrale
+  delle Sponde e del Granaio, torri davanti al pendolo). Sulle isole piccole tieni il perimetro stretto: un re spostato
+  può finire dietro un albero dell'anello di `Trees` (Mongolfiere).
 - Vento delle Dune: fisso, verso +x (a sinistra dal cannone); i granelli (`PType::Grain`) seguono il vento vero.
 - IA: il fondo della palla si controlla perpendicolare alla traiettoria (sui pallonetti ripidi tocca lo spigolo con la
   parte davanti); per i bersagli mobili conta solo colpire il re, non "qualcosa entro 1,2 m" (era il muro del Montacarichi).

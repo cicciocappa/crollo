@@ -67,8 +67,10 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
     nella sfida infinita.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
   il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
-- **Re sparsi**: in alcuni livelli (le Dune, Il Frutteto) i re e le loro torri cambiano posto a ogni tentativo, entro un
-  piccolo perimetro (`Builder::Scatter`): la mira non si impara a memoria, e le munizioni sono più generose. I test usano la
+- **Re sparsi**: in 31 livelli su 40 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
+  tentativo entro un piccolo perimetro (`Builder::Scatter`): la mira non si impara a memoria, e le munizioni sono più
+  generose. Restano fissi i livelli costruiti su un colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera,
+  Pendolo) e i re legati a una sponda o a una sfera. I test usano la
   disposizione disegnata e altre cinque a caso.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
 - **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano, l'unica che taglia gli alberi), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).

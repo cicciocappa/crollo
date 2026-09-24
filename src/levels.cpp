@@ -1215,8 +1215,9 @@ static void Level01( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 30 }, 7.0f );
-	float top = b.Tower( { 0, 0, 30 }, 2, 1.0f, 1.3f, Mat::Wood, Mat::Wood );
-	b.King( { 0, top, 30 }, kPurple );
+	Vector3 p = b.Scatter( { 0, 0, 30 }, 1.2f, 1.0f );
+	float top = b.Tower( p, 2, 1.0f, 1.3f, Mat::Wood, Mat::Wood );
+	b.King( { p.x, top, p.z }, kPurple );
 	b.Box( { 3.0f, 0.4f, 29.0f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, 0.2f );
 	b.Box( { 3.0f, 1.2f, 29.0f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, -0.1f );
 	b.Box( { -3.0f, 0.4f, 31.0f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, 0.5f );
@@ -1234,13 +1235,15 @@ static void Level02( Builder& b )
 	b.Wall( { -4.0f, 1.0f, 30.0f }, true, 8, 5, Mat::Stone );
 	// the third king hides at ground level behind the wall; the player finds him in the
 	// opening fly-by or with TAB, and needs a lob (or a breach) to reach him
-	b.King( { 0.0f, 1.0f, 31.6f }, kGreen );
+	b.King( b.Scatter( { 0.0f, 1.0f, 31.6f }, 1.5f, 0.2f ), kGreen );
 	// the two visible kings stand well apart, so a single bomb cannot reach all three
-	float top = b.Tower( { -3.6f, 1.0f, 35.0f }, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -3.6f, top, 35.0f }, kCrimson );
-	float c = b.Column( { 4.0f, 1.0f, 35.5f }, 2, 0.5f, Mat::Stone );
-	b.Box( { 4.0f, c + 0.12f, 35.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-	b.King( { 4.0f, c + 0.24f, 35.5f }, kBlue );
+	Vector3 p = b.Scatter( { -3.6f, 1.0f, 35.0f }, 0.8f, 0.8f );
+	float top = b.Tower( p, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p.x, top, p.z }, kCrimson );
+	Vector3 q = b.Scatter( { 4.0f, 1.0f, 35.5f }, 0.8f, 0.8f );
+	float c = b.Column( q, 2, 0.5f, Mat::Stone );
+	b.Box( { q.x, c + 0.12f, q.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { q.x, c + 0.24f, q.z }, kBlue );
 	b.Trees( { 0, 1, 34 }, 9.0f, 4, 7.2f );
 	b.Flag( { 1.5f, 1.0f, 38.5f }, kCrimson );
 	b.Fortress( { 0, 3, 34 }, 11.0f );
@@ -1252,10 +1255,11 @@ static void Level03( Builder& b )
 	b.homeY = 0.0f;
 	b.Island( { -7.0f, 0, 34 }, 4.5f );
 	b.Island( { 7.0f, 0, 34 }, 4.5f );
-	float t1 = b.Tower( { -7.0f, 0, 35.0f }, 2, 1.0f, 1.4f, Mat::Stone, Mat::Wood );
-	b.King( { -7.0f, t1, 35.0f }, kGreen );
-	float t2 = b.Tower( { 7.0f, 0, 35.0f }, 2, 1.0f, 1.4f, Mat::Stone, Mat::Wood );
-	b.King( { 7.0f, t2, 35.0f }, kOrange );
+	Vector3 p1 = b.Scatter( { -7.0f, 0, 35.0f }, 0.8f, 0.8f ), p2 = b.Scatter( { 7.0f, 0, 35.0f }, 0.8f, 0.8f );
+	float t1 = b.Tower( p1, 2, 1.0f, 1.4f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kGreen );
+	float t2 = b.Tower( p2, 2, 1.0f, 1.4f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kOrange );
 	// anchored right at the island edges, so no plank starts inside the rock
 	Vector3 mid = b.RopeBridge( { -2.45f, 0.0f, 34.0f }, { 2.45f, 0.0f, 34.0f }, 9, 0.8f, 0.55f );
 	b.King( { mid.x, mid.y - 0.03f, mid.z }, kPurple );
@@ -1310,9 +1314,9 @@ static void LevelBoschetto( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 36 }, 10.0f );
-	GroveKing( b, { -4.2f, 0, 37.5f }, kGreen );
-	GroveKing( b, { 0.6f, 0, 40.0f }, kPurple );
-	GroveKing( b, { 5.0f, 0, 37.0f }, kOrange );
+	GroveKing( b, b.Scatter( { -4.2f, 0, 37.5f }, 0.8f, 0.8f ), kGreen );
+	GroveKing( b, b.Scatter( { 0.6f, 0, 40.0f }, 0.8f, 0.6f ), kPurple );
+	GroveKing( b, b.Scatter( { 5.0f, 0, 37.0f }, 0.8f, 0.8f ), kOrange );
 	b.Trees( { 0, 0, 36 }, 10.0f, 4, 8.2f );
 	b.Flag( { 1.5f, 0, 43.0f }, kPurple );
 	b.Fortress( { 0.5f, 2, 38 }, 11.0f );
@@ -1707,14 +1711,16 @@ static void LevelCupola( Builder& b )
 	b.MagicBarrier( { 0, h + 0.08f, ( z0 + z1 ) * 0.5f }, { ( x1 - x0 ) * 0.5f, 0.08f, ( z1 - z0 ) * 0.5f } );
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		float t = b.Tower( { s * 2.2f, 0, 37.0f }, 2, 0.8f, 1.1f, Mat::Wood, Mat::Wood );
-		Entity* king = b.King( { s * 2.2f, t, 37.0f }, s < 0 ? kTeal : kCrimson );
+		Vector3 p = b.Scatter( { s * 2.2f, 0, 37.0f }, 0.5f, 0.5f );
+		float t = b.Tower( p, 2, 0.8f, 1.1f, Mat::Wood, Mat::Wood );
+		Entity* king = b.King( { p.x, t, p.z }, s < 0 ? kTeal : kCrimson );
 		// against the front of the dome, level with the king
-		b.AimHint( king, front, { s * 2.2f, t + 0.7f - front->pos.y, -0.1f } );
+		b.AimHint( king, front, { p.x, t + 0.7f - front->pos.y, -0.1f } );
 	}
 	// and one outside, in plain view
-	float t = b.Tower( { -7.4f, 0, 31.6f }, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -7.4f, t, 31.6f }, kOrange );
+	Vector3 o = b.Scatter( { -7.4f, 0, 31.6f }, 0.6f, 0.6f );
+	float t = b.Tower( o, 2, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { o.x, t, o.z }, kOrange );
 	b.Trees( { 0, 0, 36 }, 9.5f, 4, 7.8f );
 	b.Flag( { 6.0f, 0, 39.0f }, kOrange );
 	b.Fortress( { -1.0f, 2, 36 }, 11.0f );
@@ -1725,12 +1731,14 @@ static void Level04( Builder& b )
 	b.PlayerIsland();
 	b.homeY = -1.0f;
 	b.Island( { 0, -1, 33 }, 8.0f );
-	float t = b.Tower( { 0, -1, 34.5f }, 3, 1.2f, 1.3f, Mat::Ice, Mat::Ice );
-	b.King( { 0, t, 34.5f }, kTeal );
-	float t2 = b.Tower( { -3.6f, -1, 33.5f }, 2, 0.9f, 1.2f, Mat::Ice, Mat::Wood );
-	b.King( { -3.6f, t2, 33.5f }, kBlue );
-	float t3 = b.Tower( { 3.6f, -1, 33.5f }, 2, 0.9f, 1.2f, Mat::Ice, Mat::Wood );
-	b.King( { 3.6f, t3, 33.5f }, kPurple );
+	Vector3 p1 = b.Scatter( { 0, -1, 34.5f }, 0.5f, 0.6f );
+	Vector3 p2 = b.Scatter( { -3.6f, -1, 33.5f }, 0.6f, 0.8f ), p3 = b.Scatter( { 3.6f, -1, 33.5f }, 0.6f, 0.8f );
+	float t = b.Tower( p1, 3, 1.2f, 1.3f, Mat::Ice, Mat::Ice );
+	b.King( { p1.x, t, p1.z }, kTeal );
+	float t2 = b.Tower( p2, 2, 0.9f, 1.2f, Mat::Ice, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kBlue );
+	float t3 = b.Tower( p3, 2, 0.9f, 1.2f, Mat::Ice, Mat::Wood );
+	b.King( { p3.x, t3, p3.z }, kPurple );
 	b.Pyramid( { 0, -1, 30.5f }, 3, 0.35f, Mat::Ice );
 	b.Trees( { 0, -1, 33 }, 8.0f, 3, 6.0f );
 	b.Flag( { 5.5f, -1, 36.0f }, kTeal );
@@ -1742,10 +1750,11 @@ static void Level05( Builder& b )
 	b.PlayerIsland();
 	b.homeY = 0.0f;
 	b.Island( { 0, 0, 32 }, 6.0f );
-	b.King( { 0, 0, 33.0f }, kCrimson );
-	b.Hut( { 0, 0, 33.0f }, 1.1f, 1.7f, Mat::Wood, Mat::Wood );
-	b.BalloonBasket( { -8.0f, 3.0f, 34.0f }, Color{ 230, 70, 80, 255 }, kBlue );
-	b.BalloonBasket( { 8.5f, 4.5f, 36.0f }, Color{ 250, 200, 50, 255 }, kGreen );
+	Vector3 hut = b.Scatter( { 0, 0, 33.0f }, 0.6f, 0.4f );
+	b.King( hut, kCrimson );
+	b.Hut( hut, 1.1f, 1.7f, Mat::Wood, Mat::Wood );
+	b.BalloonBasket( b.Scatter( { -8.0f, 3.0f, 34.0f }, 1.5f, 1.5f ), Color{ 230, 70, 80, 255 }, kBlue );
+	b.BalloonBasket( b.Scatter( { 8.5f, 4.5f, 36.0f }, 1.5f, 1.5f ), Color{ 250, 200, 50, 255 }, kGreen );
 	b.Trees( { 0, 0, 32 }, 6.0f, 3, 3.5f );
 	b.Flag( { 3.0f, 0, 35.0f }, kCrimson );
 	b.Fortress( { 0, 3, 34 }, 14.0f );
@@ -1758,13 +1767,15 @@ static void Level06( Builder& b )
 	b.Island( { 0, 0, 35 }, 9.5f );
 	b.Windmill( { 0, 0, 29.5f }, 5.5f, 3.2f, 0.9f );
 	b.Wall( { -3.5f, 0, 33.0f }, true, 7, 2, Mat::Stone );
-	float t1 = b.Tower( { -4.6f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -4.6f, t1, 36.5f }, kOrange );
-	float t2 = b.Tower( { 4.6f, 0, 36.5f }, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 4.6f, t2, 36.5f }, kPurple );
-	float c = b.Column( { 0, 0, 39.5f }, 3, 0.45f, Mat::Stone );
-	b.Box( { 0, c + 0.12f, 39.5f }, { 0.75f, 0.12f, 0.75f }, Mat::Stone );
-	b.King( { 0, c + 0.24f, 39.5f }, kCrimson );
+	Vector3 p1 = b.Scatter( { -4.6f, 0, 36.5f }, 0.8f, 0.6f ), p2 = b.Scatter( { 4.6f, 0, 36.5f }, 0.8f, 0.6f );
+	float t1 = b.Tower( p1, 3, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kOrange );
+	float t2 = b.Tower( p2, 3, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kPurple );
+	Vector3 p3 = b.Scatter( { 0, 0, 39.5f }, 1.0f, 0.6f );
+	float c = b.Column( p3, 3, 0.45f, Mat::Stone );
+	b.Box( { p3.x, c + 0.12f, p3.z }, { 0.75f, 0.12f, 0.75f }, Mat::Stone );
+	b.King( { p3.x, c + 0.24f, p3.z }, kCrimson );
 	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.0f );
 	b.Flag( { -6.0f, 0, 38.0f }, kOrange );
 	b.Fortress( { 0, 3, 35 }, 12.0f );
@@ -1783,8 +1794,9 @@ static void Level07( Builder& b )
 	float t2 = b.Tower( { 1.9f, 0, 33.2f }, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
 	b.King( { 1.9f, t2, 33.2f }, kGreen );
 	b.Tnt( { 0, 0.35f, 33.6f } );
-	float t3 = b.Tower( { 0, 0, 36.8f }, 2, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 0, t3, 36.8f }, kCrimson );
+	Vector3 p3 = b.Scatter( { 0, 0, 36.8f }, 0.8f, 0.4f );
+	float t3 = b.Tower( p3, 2, 1.0f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p3.x, t3, p3.z }, kCrimson );
 	b.Trees( { 0, 0, 33.5f }, 9.0f, 4, 6.5f );
 	b.Flag( { 5.0f, 0, 36.0f }, kBlue );
 	b.Fortress( { 0, 3, 33.5f }, 11.0f );
@@ -1870,10 +1882,11 @@ static void Level09( Builder& b )
 	b.Island( { 0, 2, 37 }, 9.0f );
 	b.Slider( { 0, 2.0f + 1.7f, 31.5f }, { 1.6f, 1.6f, 0.2f }, { 1, 0, 0 }, 3.8f, 0.8f, 0.0f, Mat::Stone );
 	b.Slider( { 0, 2.0f + 5.2f, 32.3f }, { 1.6f, 1.4f, 0.2f }, { 1, 0, 0 }, 3.8f, 1.15f, PI, Mat::Stone );
-	float t1 = b.Tower( { -3.0f, 2, 37.5f }, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { -3.0f, t1, 37.5f }, kBlue );
-	float t2 = b.Tower( { 3.0f, 2, 37.5f }, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
-	b.King( { 3.0f, t2, 37.5f }, kGreen );
+	Vector3 p1 = b.Scatter( { -3.0f, 2, 37.5f }, 0.7f, 0.6f ), p2 = b.Scatter( { 3.0f, 2, 37.5f }, 0.7f, 0.6f );
+	float t1 = b.Tower( p1, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kBlue );
+	float t2 = b.Tower( p2, 4, 0.9f, 1.2f, Mat::Stone, Mat::Wood );
+	b.King( { p2.x, t2, p2.z }, kGreen );
 	// centre: the queen's keep; the boulder still has to find the gap between the sliding walls
 	QueenKeep( b, 0.0f, 2.0f, 38.9f );
 	b.Trees( { 0, 2, 37 }, 9.0f, 4, 6.5f );
@@ -1897,23 +1910,26 @@ static void Level10( Builder& b )
 	b.King( { 0, g1 + 0.3f, 31.75f }, kOrange );
 
 	// the keep
-	float k = b.Tower( { 0, 0, 39.0f }, 4, 1.4f, 1.3f, Mat::Stone, Mat::Wood );
-	b.King( { 0, k, 39.0f }, kPurple );
+	Vector3 kp = b.Scatter( { 0, 0, 39.0f }, 1.0f, 0.8f );
+	float k = b.Tower( kp, 4, 1.4f, 1.3f, Mat::Stone, Mat::Wood );
+	b.King( { kp.x, k, kp.z }, kPurple );
 
 	// ice tower and a wooden hall
-	float it = b.Tower( { -5.0f, 0, 41.0f }, 3, 0.9f, 1.2f, Mat::Ice, Mat::Ice );
-	b.King( { -5.0f, it, 41.0f }, kTeal );
-	b.King( { 5.0f, 0, 41.0f }, kCrimson );
-	b.Hut( { 5.0f, 0, 41.0f }, 1.2f, 1.6f, Mat::Wood, Mat::Wood );
+	Vector3 ip = b.Scatter( { -5.0f, 0, 41.0f }, 0.8f, 0.8f ), hp = b.Scatter( { 5.0f, 0, 41.0f }, 0.8f, 0.8f );
+	float it = b.Tower( ip, 3, 0.9f, 1.2f, Mat::Ice, Mat::Ice );
+	b.King( { ip.x, it, ip.z }, kTeal );
+	b.King( hp, kCrimson );
+	b.Hut( hp, 1.2f, 1.6f, Mat::Wood, Mat::Wood );
 
 	// outposts on satellite islands
 	b.homeY = 3.0f;
 	b.Island( { -14.0f, 3.0f, 33.0f }, 4.0f );
-	float o1 = b.Tower( { -14.0f, 3.0f, 33.0f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { -14.0f, o1, 33.0f }, kGreen );
+	Vector3 o1p = b.Scatter( { -14.0f, 3.0f, 33.0f }, 1.0f, 1.0f ), o2p = b.Scatter( { 14.0f, 3.0f, 33.0f }, 1.0f, 1.0f );
+	float o1 = b.Tower( o1p, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { o1p.x, o1, o1p.z }, kGreen );
 	b.Island( { 14.0f, 3.0f, 33.0f }, 4.0f );
-	float o2 = b.Tower( { 14.0f, 3.0f, 33.0f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 14.0f, o2, 33.0f }, kBlue );
+	float o2 = b.Tower( o2p, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { o2p.x, o2, o2p.z }, kBlue );
 
 	b.homeY = 0.0f;
 	b.Trees( { 0, 0, 39 }, 12.5f, 5, 9.0f );
@@ -1933,11 +1949,12 @@ static void Level11( Builder& b )
 	// kings on heavy stone pillars: the crystal walls are the defence, not flimsy wood
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		float x = 3.4f * s;
-		float top = b.Column( { x, 0, 35.0f }, 3, 0.5f, Mat::Stone );
-		b.Box( { x, top + 0.12f, 35.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-		b.King( { x, top + 0.24f, 35.0f }, s < 0 ? kTeal : kPurple );
-		b.Shield( { x, 3.2f, 33.4f }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, s < 0 ? 0.0f : 2.0f );
+		Vector3 d = b.Scatter( { 0, 0, 0 }, 0.6f, 0.5f );
+		float x = 3.4f * s + d.x;
+		float top = b.Column( { x, 0, 35.0f + d.z }, 3, 0.5f, Mat::Stone );
+		b.Box( { x, top + 0.12f, 35.0f + d.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+		b.King( { x, top + 0.24f, 35.0f + d.z }, s < 0 ? kTeal : kPurple );
+		b.Shield( { x, 3.2f, 33.4f + d.z }, { 1.5f, 3.2f, 0.12f }, 0.0f, 4.0f, 2.4f, s < 0 ? 0.0f : 2.0f );
 	}
 
 	b.Box( { 0, 0.4f, 36.5f }, { 0.4f, 0.4f, 0.4f }, Mat::Wood, 0.3f );
@@ -1957,11 +1974,12 @@ static void Level12( Builder& b )
 	// so no single bomb can take them all: each one has to be earned.
 
 	// left: two walls with different rhythms, the way through opens only when both are down
-	float c = b.Column( { -4.4f, 1.0f, 36.0f }, 2, 0.5f, Mat::Stone );
-	b.Box( { -4.4f, c + 0.12f, 36.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-	b.King( { -4.4f, c + 0.24f, 36.0f }, kCrimson );
-	b.Shield( { -4.4f, 3.4f, 34.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 3.0f, 1.6f, 0.0f );
-	b.Shield( { -4.4f, 3.4f, 33.2f }, { 1.5f, 2.4f, 0.12f }, 0.0f, 5.0f, 2.2f, 1.0f );
+	Vector3 dl = b.Scatter( { 0, 0, 0 }, 0.6f, 0.5f );
+	float c = b.Column( { -4.4f + dl.x, 1.0f, 36.0f + dl.z }, 2, 0.5f, Mat::Stone );
+	b.Box( { -4.4f + dl.x, c + 0.12f, 36.0f + dl.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { -4.4f + dl.x, c + 0.24f, 36.0f + dl.z }, kCrimson );
+	b.Shield( { -4.4f + dl.x, 3.4f, 34.2f + dl.z }, { 1.5f, 2.4f, 0.12f }, 0.0f, 3.0f, 1.6f, 0.0f );
+	b.Shield( { -4.4f + dl.x, 3.4f, 33.2f + dl.z }, { 1.5f, 2.4f, 0.12f }, 0.0f, 5.0f, 2.2f, 1.0f );
 
 	// right: a stone pillar under a crystal canopy, with a stone wall in front forcing a lob
 	float t = b.Column( { 4.4f, 1.0f, 37.5f }, 4, 0.5f, Mat::Stone );
@@ -1971,8 +1989,9 @@ static void Level12( Builder& b )
 	b.Wall( { 2.4f, 1.0f, 34.3f }, true, 4, 6, Mat::Stone );
 
 	// back: a king on the roof of a stone hut, only reachable with a high shot
-	float h = b.Hut( { 0, 1.0f, 42.0f }, 1.1f, 1.6f, Mat::Stone, Mat::Stone );
-	b.King( { 0, h, 42.0f }, kGreen );
+	Vector3 hp = b.Scatter( { 0, 1.0f, 42.0f }, 1.0f, 0.6f );
+	float h = b.Hut( hp, 1.1f, 1.6f, Mat::Stone, Mat::Stone );
+	b.King( { hp.x, h, hp.z }, kGreen );
 
 	b.Trees( { 0, 1, 36 }, 10.5f, 4, 8.3f );
 	b.Flag( { -7.0f, 1.0f, 40.0f }, kCrimson );
@@ -2007,14 +2026,15 @@ static void Level13( Builder& b )
 	b.AimHint( sheltered, rubber, { 0, 2.3f - rubber->pos.y, foot + tanf( lean ) * 2.3f - rubber->pos.z }, 10.0f );
 
 	// right: a wooden tower behind a low wall of sandbags that swallows direct hits
-	b.SandbagWall( { 3.6f, 0, 32.6f }, true, 3, 3 );
-	float t = b.Tower( { 5.1f, 0, 35.0f }, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 5.1f, t, 35.0f }, kCrimson );
+	Vector3 dr = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f ), dl = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+	b.SandbagWall( { 3.6f + dr.x, 0, 32.6f + dr.z }, true, 3, 3 );
+	float t = b.Tower( { 5.1f + dr.x, 0, 35.0f + dr.z }, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 5.1f + dr.x, t, 35.0f + dr.z }, kCrimson );
 
 	// left: a king on a pile of sandbags, which bombs barely move
-	float pile = b.SandbagWall( { -6.1f, 0, 34.0f }, true, 2, 4 );
-	b.Box( { -5.1f, pile + 0.12f, 34.0f }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
-	b.King( { -5.1f, pile + 0.24f, 34.0f }, kGreen );
+	float pile = b.SandbagWall( { -6.1f + dl.x, 0, 34.0f + dl.z }, true, 2, 4 );
+	b.Box( { -5.1f + dl.x, pile + 0.12f, 34.0f + dl.z }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
+	b.King( { -5.1f + dl.x, pile + 0.24f, 34.0f + dl.z }, kGreen );
 
 	b.Trees( { 0, 0, 34.5f }, 9.5f, 4, 7.6f );
 	b.Flag( { 6.5f, 0, 38.5f }, kPurple );
@@ -2036,15 +2056,16 @@ static void Level14( Builder& b )
 	b.King( { 0, t, 35.6f }, kOrange );
 
 	// right: a king on stone behind a rubber wall that bounces cannonballs away
-	float c = b.Column( { 7.0f, 1.0f, 38.5f }, 2, 0.5f, Mat::Stone );
-	b.Box( { 7.0f, c + 0.12f, 38.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
-	b.King( { 7.0f, c + 0.24f, 38.5f }, kBlue );
-	b.Bumper( { 7.0f, 2.6f, 36.4f }, { 1.6f, 1.6f, 0.2f } );
+	Vector3 dr = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f ), dl = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+	float c = b.Column( { 7.0f + dr.x, 1.0f, 38.5f + dr.z }, 2, 0.5f, Mat::Stone );
+	b.Box( { 7.0f + dr.x, c + 0.12f, 38.5f + dr.z }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
+	b.King( { 7.0f + dr.x, c + 0.24f, 38.5f + dr.z }, kBlue );
+	b.Bumper( { 7.0f + dr.x, 2.6f, 36.4f + dr.z }, { 1.6f, 1.6f, 0.2f } );
 
 	// left: a king on a sandbag mound
-	float pile = b.SandbagWall( { -8.0f, 1.0f, 38.5f }, true, 2, 5 );
-	b.Box( { -7.0f, pile + 0.12f, 38.5f }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
-	b.King( { -7.0f, pile + 0.24f, 38.5f }, kTeal );
+	float pile = b.SandbagWall( { -8.0f + dl.x, 1.0f, 38.5f + dl.z }, true, 2, 5 );
+	b.Box( { -7.0f + dl.x, pile + 0.12f, 38.5f + dl.z }, { 0.8f, 0.12f, 0.6f }, Mat::Wood );
+	b.King( { -7.0f + dl.x, pile + 0.24f, 38.5f + dl.z }, kTeal );
 
 	b.Trees( { 0, 1, 36.5f }, 10.0f, 3, 8.6f );
 	b.Flag( { 0.0f, 1.0f, 41.5f }, kOrange );
@@ -2112,10 +2133,11 @@ static void LevelCurling( Builder& b )
 	// outside, one on each side: kings on stone columns behind low walls of ice bricks
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		float c = b.Column( { 6.2f * s, 0, 35.5f }, 2, 0.5f, Mat::Stone );
-		b.Box( { 6.2f * s, c + 0.12f, 35.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-		b.King( { 6.2f * s, c + 0.24f, 35.5f }, s < 0 ? kBlue : kPurple );
-		b.Wall( { 6.2f * s - 1.5f, 0, 33.6f }, true, 3, 3, Mat::Ice );
+		Vector3 d = b.Scatter( { 0, 0, 0 }, 0.5f, 0.6f );
+		float c = b.Column( { 6.2f * s + d.x, 0, 35.5f + d.z }, 2, 0.5f, Mat::Stone );
+		b.Box( { 6.2f * s + d.x, c + 0.12f, 35.5f + d.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+		b.King( { 6.2f * s + d.x, c + 0.24f, 35.5f + d.z }, s < 0 ? kBlue : kPurple );
+		b.Wall( { 6.2f * s - 1.5f + d.x, 0, 33.6f + d.z }, true, 3, 3, Mat::Ice );
 	}
 
 	b.Trees( { 0, 0, 34 }, 9.5f, 3, 7.5f );
@@ -2134,12 +2156,14 @@ static void LevelDueMulini( Builder& b )
 	{
 		b.Windmill( { 3.8f * s, 0, 31.0f }, 5.5f, 3.0f, 0.8f * s );
 		// off to the side of the mill's tower, but still behind its sails
-		float c = b.Column( { 5.4f * s, 0, 37.0f }, 2, 0.5f, Mat::Stone );
-		b.Box( { 5.4f * s, c + 0.12f, 37.0f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-		b.King( { 5.4f * s, c + 0.24f, 37.0f }, s < 0 ? kOrange : kTeal );
+		Vector3 q = b.Scatter( { 5.4f * s, 0, 37.0f }, 0.5f, 0.6f );
+		float c = b.Column( q, 2, 0.5f, Mat::Stone );
+		b.Box( { q.x, c + 0.12f, q.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+		b.King( { q.x, c + 0.24f, q.z }, s < 0 ? kOrange : kTeal );
 	}
-	float t = b.Tower( { 0, 0, 38.5f }, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 0, t, 38.5f }, kPurple );
+	Vector3 p = b.Scatter( { 0, 0, 38.5f }, 0.8f, 0.6f );
+	float t = b.Tower( p, 3, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p.x, t, p.z }, kPurple );
 
 	b.Trees( { 0, 0, 35.5f }, 10.0f, 4, 8.0f );
 	b.Flag( { -7.0f, 0, 39.0f }, kOrange );
@@ -2171,10 +2195,11 @@ static void LevelSpondaMagica( Builder& b )
 	b.Ledge( { -2.0f, 0.6f, 32.9f }, { 0.8f, 0.6f, 0.8f }, Mat::Stone, { 0, 0, 0, 1 }, Color{ 128, 124, 132, 255 } );
 
 	// right: a king on a stone column behind sandbags that swallow flat shots
-	b.SandbagWall( { 3.2f, 0, 33.2f }, true, 3, 4 );
-	float c = b.Column( { 4.2f, 0, 35.2f }, 2, 0.5f, Mat::Stone );
-	b.Box( { 4.2f, c + 0.12f, 35.2f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-	b.King( { 4.2f, c + 0.24f, 35.2f }, kTeal );
+	Vector3 d = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+	b.SandbagWall( { 3.2f + d.x, 0, 33.2f + d.z }, true, 3, 4 );
+	float c = b.Column( { 4.2f + d.x, 0, 35.2f + d.z }, 2, 0.5f, Mat::Stone );
+	b.Box( { 4.2f + d.x, c + 0.12f, 35.2f + d.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { 4.2f + d.x, c + 0.24f, 35.2f + d.z }, kTeal );
 
 	b.Trees( { 0, 0, 34 }, 9.5f, 3, 7.8f );
 	b.Flag( { 6.5f, 0, 38.0f }, kOrange );
@@ -2196,7 +2221,7 @@ static void LevelPalazzoOttavia( Builder& b )
 	b.King( { 0.9f, roof, 40.4f }, kPurple );
 
 	// left: the lattice pavilion with its orb
-	const Vector3 feet{ -6.2f, 0, 38.0f };
+	const Vector3 feet = b.Scatter( { -6.2f, 0, 38.0f }, 0.5f, 0.4f );
 	const float h = 2.8f;
 	b.MagicBarrier( { feet.x, h * 0.5f, feet.z - 1.4f }, { 1.5f, h * 0.5f, 0.08f } );
 	b.MagicBarrier( { feet.x, h + 0.08f, feet.z }, { 1.6f, 0.08f, 1.5f } );
@@ -2207,9 +2232,10 @@ static void LevelPalazzoOttavia( Builder& b )
 
 	// right: a king behind the sails of a mill
 	b.Windmill( { 6.0f, 0, 31.5f }, 5.5f, 3.0f, -0.9f );
-	float c = b.Column( { 7.6f, 0, 37.5f }, 2, 0.5f, Mat::Stone );
-	b.Box( { 7.6f, c + 0.12f, 37.5f }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
-	b.King( { 7.6f, c + 0.24f, 37.5f }, kTeal );
+	Vector3 q = b.Scatter( { 7.6f, 0, 37.5f }, 0.5f, 0.6f );
+	float c = b.Column( q, 2, 0.5f, Mat::Stone );
+	b.Box( { q.x, c + 0.12f, q.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	b.King( { q.x, c + 0.24f, q.z }, kTeal );
 
 	b.Trees( { 0, 0, 36 }, 12.0f, 4, 10.0f );
 	b.Flag( { -3.0f, roof, 41.0f }, kPurple );
@@ -2235,9 +2261,10 @@ static void LevelGranaio( Builder& b )
 
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		b.Wall( { 4.4f * s - 1.5f, 0, 33.4f }, true, 3, 3, Mat::Stone );
-		float tt = b.Tower( { 4.4f * s, 0, 35.8f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-		b.King( { 4.4f * s, tt, 35.8f }, s < 0 ? kPurple : kGreen );
+		Vector3 d = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+		b.Wall( { 4.4f * s - 1.5f + d.x, 0, 33.4f + d.z }, true, 3, 3, Mat::Stone );
+		float tt = b.Tower( { 4.4f * s + d.x, 0, 35.8f + d.z }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+		b.King( { 4.4f * s + d.x, tt, 35.8f + d.z }, s < 0 ? kPurple : kGreen );
 	}
 
 	b.Trees( { 0, 0, 35 }, 9.5f, 4, 7.6f );
@@ -2259,7 +2286,7 @@ static void LevelSfere( Builder& b )
 	b.MagicBarrier( { 0, h + 0.08f, ( front + back ) * 0.5f }, { 3.0f, 0.08f, ( back - front ) * 0.5f } );
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		Vector3 feet{ s * 1.5f, 0, 36.4f };
+		Vector3 feet = b.Scatter( { s * 1.5f, 0, 36.4f }, 0.4f, 0.3f );
 		Entity* king = b.King( feet, s < 0 ? kOrange : kCrimson );
 		// each orb lies on the line from the cannon to its king, close to the barrier: a first taste, so a shot
 		// a little off line still gets there
@@ -2269,9 +2296,10 @@ static void LevelSfere( Builder& b )
 	}
 
 	// outside: a wooden tower behind a wall of sandbags
-	b.SandbagWall( { 4.8f, 0, 33.0f }, true, 3, 2 );
-	float t = b.Tower( { 6.0f, 0, 35.5f }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
-	b.King( { 6.0f, t, 35.5f }, kPurple );
+	Vector3 d = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+	b.SandbagWall( { 4.8f + d.x, 0, 33.0f + d.z }, true, 3, 2 );
+	float t = b.Tower( { 6.0f + d.x, 0, 35.5f + d.z }, 2, 0.9f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { 6.0f + d.x, t, 35.5f + d.z }, kPurple );
 
 	b.Trees( { 0, 0, 34.5f }, 9.5f, 4, 7.6f );
 	b.Flag( { -5.5f, 0, 37.5f }, kOrange );
@@ -2338,11 +2366,12 @@ static void LevelStalattiti( Builder& b )
 	const Color robes[4] = { kTeal, kBlue, kPurple, kCrimson };
 	for ( int s = 0; s < 2; ++s )
 	{
-		float cx = s == 0 ? -4.3f : 4.3f;
-		Entity* front = b.SnowShelter( { cx, 0, 35.0f }, 1.3f, 1.1f, 2.2f );
+		Vector3 d = b.Scatter( { 0, 0, 0 }, 0.6f, 0.6f );
+		float cx = ( s == 0 ? -4.3f : 4.3f ) + d.x;
+		Entity* front = b.SnowShelter( { cx, 0, 35.0f + d.z }, 1.3f, 1.1f, 2.2f );
 		for ( int k = 0; k < 2; ++k )
 		{
-			Entity* king = b.King( { cx + ( k == 0 ? -0.55f : 0.55f ), 0, 34.75f }, robes[s * 2 + k] );
+			Entity* king = b.King( { cx + ( k == 0 ? -0.55f : 0.55f ), 0, 34.75f + d.z }, robes[s * 2 + k] );
 			b.AimHint( king, front, { 0, 0.2f, 0 } );
 		}
 	}
@@ -2427,15 +2456,17 @@ static void LevelReggia( Builder& b )
 	b.Island( { 0, 1, 40 }, 12.5f );
 
 	// centre: Re Ghiacciolo on his ice tower, behind a crystal wall
-	float t = b.Tower( { 0, 1, 43.0f }, 3, 1.1f, 1.2f, Mat::Ice, Mat::Ice );
-	b.King( { 0, t, 43.0f }, kTeal );
-	b.Shield( { 0, 1.0f + 2.9f, 40.6f }, { 1.9f, 2.9f, 0.12f }, 0.0f, 4.5f, 2.6f, 0.0f );
+	Vector3 dc = b.Scatter( { 0, 0, 0 }, 0.6f, 0.5f );
+	float t = b.Tower( { dc.x, 1, 43.0f + dc.z }, 3, 1.1f, 1.2f, Mat::Ice, Mat::Ice );
+	b.King( { dc.x, t, 43.0f + dc.z }, kTeal );
+	b.Shield( { dc.x, 1.0f + 2.9f, 40.6f + dc.z }, { 1.9f, 2.9f, 0.12f }, 0.0f, 4.5f, 2.6f, 0.0f );
 
 	// left: two kings under a roof of snow
-	Entity* front = b.SnowShelter( { -6.5f, 1, 39.0f }, 1.3f, 1.1f, 2.2f );
+	Vector3 dl = b.Scatter( { 0, 0, 0 }, 0.5f, 0.5f );
+	Entity* front = b.SnowShelter( { -6.5f + dl.x, 1, 39.0f + dl.z }, 1.3f, 1.1f, 2.2f );
 	for ( int k = 0; k < 2; ++k )
 	{
-		Entity* king = b.King( { -6.5f + ( k == 0 ? -0.55f : 0.55f ), 1, 38.75f }, k == 0 ? kBlue : kPurple );
+		Entity* king = b.King( { -6.5f + dl.x + ( k == 0 ? -0.55f : 0.55f ), 1, 38.75f + dl.z }, k == 0 ? kBlue : kPurple );
 		b.AimHint( king, front, { 0, 0.2f, 0 } );
 	}
 
@@ -2456,49 +2487,49 @@ static const LevelDef s_levels[] = {
 	{ "Primo Colpo", "Una torre di legno basta e avanza. Chi mai sparerebbe a un re?", "Muovi il mouse per mirare, rotellina per la potenza, click per sparare!",
 	  { 4, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, Level01, "prati_primo_colpo" },
 	{ "Mura di Pietra", "Tre re, due in vista. Il terzo? Segreto di stato.", "Conta le corone: un re si nasconde. Premi TAB per guardare dietro le mura. La BOMBA (2) esplode all'impatto.",
-	  { 5, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02, "prati_mura" },
+	  { 6, 2, 0, 0, 0 }, 3, { 0, 0, 0 }, Level02, "prati_mura" },
 	{ "Il Ponte", "Il mio ponte regge un re. Anche due, se stanno fermi.", "La PALLA INCATENATA (tasto 4) spazza tutto: spezza le corde e taglia gli alberi!",
-	  { 3, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03, "prati_ponte" },
+	  { 4, 0, 0, 2, 0 }, 3, { 0, 0, 0 }, Level03, "prati_ponte" },
 	{ "Palazzo di Ghiaccio", "Le mie torri di ghiaccio non si sciolgono, figuriamoci sotto le tue palle di ferro.", "Il ghiaccio si frantuma. Il GRAPPOLO (tasto 3) si divide con SPAZIO.",
-	  { 3, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, Level04, "gelo_palazzo" },
+	  { 4, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, Level04, "gelo_palazzo" },
 	{ "Mongolfiere", "Da quassù i tuoi cannoni sembrano giocattoli.", "Buca i palloni e i cesti precipiteranno tra le nuvole.",
-	  { 3, 0, 2, 0, 0 }, 3, { 0.8f, 0, 0 }, Level05, "prati_mongolfiere" },
+	  { 5, 0, 2, 0, 0 }, 3, { 0.8f, 0, 0 }, Level05, "prati_mongolfiere" },
 	{ "Il Mulino", "Le mie pale girano da cent'anni. Non si fermeranno per te.",
 	  "Aspetta il momento giusto per passare fra le pale, oppure spezzale con il MACIGNO (5).",
-	  { 4, 2, 0, 0, 1 }, 3, { 0, 0, 0 }, Level06, "mulini_mulino" },
+	  { 5, 2, 0, 0, 1 }, 3, { 0, 0, 0 }, Level06, "mulini_mulino" },
 	{ "Il Pendolo", "Tic, tac. Il pendolo decide chi resta in piedi.", "Il pendolo oscilla: colpiscilo quando passa davanti alle torri e lascia fare alla fisica. Occhio al vento!",
-	  { 3, 1, 0, 0, 0 }, 2, { -2.2f, 0, 0 }, Level07, "mulini_pendolo" },
+	  { 4, 1, 0, 0, 0 }, 2, { -2.2f, 0, 0 }, Level07, "mulini_pendolo" },
 	{ "Polveriera", "La polvere da sparo è ben custodita: proprio sotto di noi.",
 	  "La casamatta non si scalfisce, ma la feritoia guarda dritta sul TNT. Centrala: le esplosioni si propagano...",
 	  { 4, 1, 0, 0, 0 }, 2, { 0, 0, 0 }, Level08, "prati_polveriera" },
 	{ "Scudi Mobili", "Muri che vanno e vengono. Come le tue speranze.",
 	  "Gli scudi scorrono e il vento cambia a ogni colpo. Il portone cerchiato di ferro lo sfonda solo il MACIGNO (5).",
-	  { 4, 0, 0, 1, 2 }, 6, { 1.4f, 0, 0.4f }, Level09, "mulini_scudi" },
-	{ "La Cittadella", "Hai buttato giù i miei cugini. Ma me, non mi prendi.", "Sei re, tre isole, e il vento cambia a ogni colpo: guarda la freccia prima di sparare.", { 4, 3, 2, 2, 2 }, 7, { -1.0f, 0, 0 },
+	  { 5, 0, 0, 1, 2 }, 6, { 1.4f, 0, 0.4f }, Level09, "mulini_scudi" },
+	{ "La Cittadella", "Hai buttato giù i miei cugini. Ma me, non mi prendi.", "Sei re, tre isole, e il vento cambia a ogni colpo: guarda la freccia prima di sparare.", { 5, 3, 2, 2, 2 }, 7, { -1.0f, 0, 0 },
 	  Level10, "prati_cittadella" },
 	{ "Cristalli Guardiani", "Il cristallo protegge. Il cristallo aspetta. Il cristallo non sbaglia.",
 	  "Gli scudi di cristallo si spengono a intervalli: guarda l'anello sopra ogni scudo e spara al momento giusto.",
-	  { 3, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11, "gelo_cristalli" },
+	  { 4, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, Level11, "gelo_cristalli" },
 	{ "Doppia Guardia", "Due guardie di cristallo sono meglio di una.", "Due scudi in fila: si passa solo quando sono spenti entrambi. Tieni conto del volo.",
-	  { 4, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12, "gelo_doppia" },
+	  { 5, 2, 0, 0, 1 }, 3, { 0.8f, 0, 0 }, Level12, "gelo_doppia" },
 	{ "Sponde di Gomma", "Qui tutto rimbalza, perfino le tue minacce.",
 	  "Il re al centro sta sotto un tetto: tira oltre il tetto, sul muro di gomma, e il rimbalzo lo colpirà. I sacchi assorbono urti ed esplosioni.",
-	  { 5, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13, "prati_gomma" },
+	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, Level13, "prati_gomma" },
 	{ "Il Bunker", "Sacchi di sabbia. Tanti, tanti sacchi di sabbia.", "Novità: il VORTICE (6) risucchia i blocchi, la bomba ADESIVA (7) si attacca ed esplode dopo 3 s.",
-	  { 3, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14, "prati_bunker" },
+	  { 4, 1, 0, 0, 0, 2, 2 }, 3, { 0.6f, 0, 0 }, Level14, "prati_bunker" },
 	{ "Crepacci", "Il ghiaccio regge. Quasi sempre.", "I ponti di ghiaccio si frantumano: colpiscili e i re cadranno tra le nuvole.",
 	  { 4, 0, 1, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCrepacci, "gelo_crepacci" },
 	{ "Curling", "Le mie pietre scivolano. I miei re, no.",
 	  "Un re si nasconde nella casa di pietra: colpisci da dietro la pietra da curling in fondo, la spinta passa all'altra che scivola sotto il muro.",
-	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCurling, "gelo_curling" },
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCurling, "gelo_curling" },
 	{ "Stalattiti", "Sotto il mio tetto nessuno ci tocca. Nemmeno il cielo.",
 	  "I tetti di neve poggiano su colonne di ghiaccio: spezza una colonna davanti e il tetto crolla.",
-	  { 3, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelStalattiti, "gelo_stalattiti" },
+	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelStalattiti, "gelo_stalattiti" },
 	{ "Valanga", "La neve lassù è ferma da secoli. Non svegliarla.", "Colpisci la diga di ghiaccio sulla rampa: le palle di neve faranno il resto.",
 	  { 2, 0, 0, 0, 0, 0, 0 }, 1, { 0, 0, 0 }, LevelValanga, "gelo_valanga" },
 	{ "La Reggia di Ghiacciolo", "Benvenuto nella mia reggia. Resterai congelato all'ingresso.",
 	  "Cristallo, neve e pietre da curling: tutto quello che hai imparato sul ghiaccio ti servirà.",
-	  { 5, 2, 1, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelReggia, "gelo_reggia" },
+	  { 6, 2, 1, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelReggia, "gelo_reggia" },
 	{ "Doppio Curling", "Due pietre, due re. Ti tremerà la mano.",
 	  "Due re nella casa di pietra: colpisci da dietro ogni pietra da curling. Le sponde di legno la riportano verso il suo re.",
 	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelCurlingDoppio, "gelo_curling_doppio" },
@@ -2509,22 +2540,22 @@ static const LevelDef s_levels[] = {
 	  { 3, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelNeveFresca, "gelo_neve_fresca" },
 	{ "Sfere Magiche", "Il mio padiglione è stregato: le tue palle di ferro non passano.",
 	  "Le palle di cannone rimbalzano sulla barriera magica, le sfere magiche la attraversano: colpisci ogni sfera da dietro e mandala sul suo re.",
-	  { 4, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelSfere, "mulini_sfere" },
+	  { 5, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelSfere, "mulini_sfere" },
 	{ "Il Granaio", "Il mio grano è al sicuro dietro il ferro. E io con lui.",
 	  "I muri di mattoni cedono alle palle; quello cerchiato di ferro solo al MACIGNO (5). Il vento cambia a ogni colpo.",
-	  { 3, 0, 0, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, LevelGranaio, "mulini_granaio" },
+	  { 4, 0, 0, 0, 2, 0, 0 }, 3, { 0, 0, 0 }, LevelGranaio, "mulini_granaio" },
 	{ "Due Mulini", "Due mulini, due venti, due volte il fastidio per te.",
 	  "Le pale girano in versi opposti: passa nei varchi o scavalcale. Il MACIGNO (5) spezza le pale di un mulino.",
-	  { 4, 0, 0, 0, 1, 0, 0 }, 3, { 0, 0, 0 }, LevelDueMulini, "mulini_due" },
+	  { 5, 0, 0, 0, 1, 0, 0 }, 3, { 0, 0, 0 }, LevelDueMulini, "mulini_due" },
 	{ "Sponda Magica", "Il mio padiglione non si vede nemmeno da qui. Figurati colpirlo.",
 	  "La sfera magica attraversa la barriera: mandala sul pannello di gomma, rimbalzerà verso il re.",
-	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelSpondaMagica, "mulini_sponda" },
+	  { 5, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelSpondaMagica, "mulini_sponda" },
 	{ "Il Palazzo di Ottavia", "Mulini, magie, ferro e vento: il mio palazzo ha tutto. Tranne una porta per te.",
 	  "La regina è dietro il portone di ferro: serve il MACIGNO (5), nel varco del muro che scorre. Il vento cambia a ogni colpo.",
-	  { 4, 0, 0, 0, 2, 0, 0 }, 5, { 0.8f, 0, 0 }, LevelPalazzoOttavia, "mulini_palazzo" },
+	  { 5, 0, 0, 0, 2, 0, 0 }, 5, { 0.8f, 0, 0 }, LevelPalazzoOttavia, "mulini_palazzo" },
 	{ "Il Boschetto", "Nel mio boschetto nessuno mi trova. Nemmeno le tue palle di ferro.",
 	  "Le palle rimbalzano sui tronchi: solo la PALLA INCATENATA (4) taglia gli alberi. Premi TAB per trovare i re nascosti.",
-	  { 2, 0, 0, 4, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelBoschetto, "prati_boschetto" },
+	  { 3, 0, 0, 4, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelBoschetto, "prati_boschetto" },
 	{ "La Carovana", "Benvenuto sulle Dune. Qui niente sta fermo, men che meno io.",
 	  "Il re sul tappeto volante si muove: mira dove sar\u00e0 quando arriva la palla, non dove \u00e8 adesso.",
 	  { 7, 0, 0, 0, 0, 0, 0 }, 3, { 0.8f, 0, 0.2f }, LevelCarovana, "dune_carovana" },
@@ -2560,7 +2591,7 @@ static const LevelDef s_levels[] = {
 	  { 0, 0, 4, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelFrutteto, "mulini_frutteto" },
 	{ "La Cupola Stregata", "Sotto la mia cupola non entra niente. Nemmeno le tue sfere.",
 	  "La barriera ferma palle ed esplosioni, e qui non ci sono sfere magiche. Il VORTICE (6) invece la attraversa.",
-	  { 2, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
+	  { 3, 1, 0, 0, 0, 4, 0 }, 3, { 0, 0, 0 }, LevelCupola, "mulini_cupola" },
 };
 
 // ---------------------------------------------------------------------------------------------
