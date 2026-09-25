@@ -184,6 +184,7 @@ struct Mechanism
 	Vector3 home{};
 	float travel = 0.0f;
 	float pause = 0.0f;
+	float pauseFar = -1.0f; // rest at the far end, when it differs from the one at home
 	// Mover: it may also turn `turn` radians about `spinAxis` over each run (eased like the travel), and spin
 	// steadily at `spin` rad/s, starting from the rotation `baseRot`
 	Vector3 spinAxis{ 0, 1, 0 };

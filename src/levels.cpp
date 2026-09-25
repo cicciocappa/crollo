@@ -841,7 +841,7 @@ Entity* Builder::Carpet( Vector3 center, float halfX, float halfZ, Color color, 
 	return e;
 }
 
-Entity* Builder::Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase )
+Entity* Builder::Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase, float pauseFar )
 {
 	Mechanism m;
 	m.type = MechType::Mover;
@@ -851,6 +851,7 @@ Entity* Builder::Mover( Entity* e, Vector3 axis, float distance, float travel, f
 	m.amplitude = distance;
 	m.travel = travel;
 	m.pause = pause;
+	m.pauseFar = pauseFar;
 	m.phase = phase;
 	m.baseRot = e->rot;
 	scene.mechanisms.push_back( m );
@@ -961,11 +962,12 @@ Entity* Builder::Turn( Entity* e, float angle, float travel, float pause, float 
 	return e;
 }
 
-Entity* Builder::Spin( Entity* e, float rate, float phase )
+Entity* Builder::Spin( Entity* e, float rate, float phase, Vector3 axis )
 {
 	Mover( e, { 1, 0, 0 }, 0.0f, 0.0f, 0.0f, phase );
 	Mechanism& m = scene.mechanisms.back();
 	m.spin = rate;
+	m.spinAxis = Vector3Normalize( axis );
 	Quaternion q = MoverRotAt( m, 0.0f );
 	b3Body_SetTransform( e->body, ToB3( e->pos ), ToB3( q ) );
 	e->rot = e->prevRot = q;
@@ -1369,32 +1371,37 @@ Entity* Builder::Tether( Vector3 post, Vector3 orb, float radius )
 	return o;
 }
 
-Entity* Builder::Target( Vector3 base, float height )
+Entity* Builder::Target( Vector3 base, float height, float tilt, bool moving )
 {
 	Vector3 toCannon = Vector3Normalize( { faceTarget.x - base.x, 0, faceTarget.z - base.z } );
 	float yaw = atan2f( toCannon.x, toCannon.z );
 	BodyOptions bo;
-	bo.type = b3_staticBody;
-	Entity* e = scene.CreateEntity( Kind::Static, Mat::Gold, { base.x, base.y + height, base.z }, QuatYaw( yaw ), bo );
+	bo.type = moving ? b3_kinematicBody : b3_staticBody;
+	Entity* e = scene.CreateEntity( moving ? Kind::Mechanism : Kind::Static, Mat::Gold, { base.x, base.y + height, base.z }, QuatYaw( yaw ), bo );
 	ShapeOptions so;
-	so.category = CatStatic;
+	so.category = moving ? CatBlock : CatStatic;
 	so.hitEvents = true;
-	// a round brass target, rings painted on it, facing the cannon, on an iron post
-	scene.AddHull( e, { 0, 0, 0 }, QuatAxisAngle( { 1, 0, 0 }, PI * 0.5f ), scene.Cylinder( 0.12f, 0.55f, -0.06f, 20 ), Mat::Gold, so );
+	// a round brass target, rings painted on it, facing the cannon (leaning back by `tilt`), on an iron post
+	Quaternion face = QuaternionMultiply( QuaternionFromAxisAngle( { 1, 0, 0 }, -tilt ), QuaternionFromAxisAngle( { 1, 0, 0 }, PI * 0.5f ) );
+	scene.AddHull( e, { 0, 0, 0 }, ToB3( face ), scene.Cylinder( 0.12f, 0.55f, -0.06f, 20 ), Mat::Gold, so );
 	e->parts.back().tint = kBrass;
 	for ( int i = 0; i < 2; ++i )
 	{
 		Part ring;
 		ring.geo = Geo::Hull;
 		ring.hull = scene.Cylinder( 0.02f, i == 0 ? 0.36f : 0.16f, 0.0f, 20 );
-		ring.localPos = { 0, 0, 0.06f + 0.005f * i };
-		ring.localRot = QuaternionFromAxisAngle( { 1, 0, 0 }, PI * 0.5f );
+		ring.localPos = Vector3RotateByQuaternion( { 0, 0, 0.06f + 0.005f * i }, QuaternionFromAxisAngle( { 1, 0, 0 }, -tilt ) );
+		ring.localRot = face;
 		ring.mat = Mat::Gold;
 		ring.tint = i == 0 ? Color{ 170, 40, 30, 255 } : Color{ 240, 220, 150, 255 };
 		scene.AddVisual( e, ring );
 	}
 	scene.AddBox( e, { 0, -height * 0.5f - 0.25f, -0.1f }, b3Quat_identity, { 0.07f, height * 0.5f - 0.25f, 0.07f }, Mat::Metal, so );
 	e->parts.back().tint = kIronDark;
+	if ( moving )
+	{
+		e->homeY = -1000.0f;
+	}
 	scene.FinalizeEntity( e );
 	e->trigger = (int)scene.triggers.size();
 	scene.triggers.emplace_back();
@@ -1445,7 +1452,9 @@ Entity* Builder::HangingWeight( Vector3 ground, float drop, Entity* target, Vect
 	r.breakable = true;
 	if ( target != nullptr )
 	{
-		Rope& cord = scene.AddRope( scene.groundBody, hook, scene.groundBody, target->pos, 0.03f, Color{ 150, 120, 80, 255 } );
+		// (a moving target takes its end of the cord along)
+		b3BodyId end = target->isStatic ? scene.groundBody : target->body;
+		Rope& cord = scene.AddRope( scene.groundBody, hook, end, target->pos, 0.03f, Color{ 150, 120, 80, 255 } );
 		cord.joint = j;
 		cord.breakable = true;
 		Trigger( target, j );
@@ -2634,6 +2643,134 @@ static Entity* Cage( Builder& b, Vector3 feet, float half, float height, Color r
 	return b.King( feet, robe );
 }
 
+// A trip hammer: an iron head that drops between two iron posts, hiding whatever stands behind it, and rises
+// again. `down` is the centre of the head at the bottom of its run; it goes up `lift` metres in `travel` seconds,
+// resting `upTime` seconds at the top and `downTime` at the bottom.
+static Entity* TripHammer( Builder& b, Vector3 down, Vector3 half, float lift, float travel, float upTime, float downTime, float phase )
+{
+	const float top = down.y + lift + half.y + 0.4f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { down.x + s * ( half.x + 0.18f ), top * 0.5f, down.z }, { 0.1f, top * 0.5f, 0.14f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	}
+	b.Ledge( { down.x, top + 0.12f, down.z }, { half.x + 0.4f, 0.12f, 0.18f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	// the anvil it comes down on
+	float anvil = down.y - half.y - 0.03f;
+	b.Ledge( { down.x, anvil * 0.5f, down.z }, { half.x * 0.7f, anvil * 0.5f, half.z + 0.1f }, Mat::Stone, { 0, 0, 0, 1 }, kBasalt );
+
+	Entity* head = b.Platform( { down.x, down.y + lift, down.z }, half, Mat::Metal, Color{ 84, 82, 88, 255 } );
+	// the rod it hangs from, running up through the beam, and a band of brass
+	Part rod;
+	rod.localPos = { 0, half.y + ( lift + 0.6f ) * 0.5f, 0 };
+	rod.size = { 0.09f, ( lift + 0.6f ) * 0.5f, 0.09f };
+	rod.mat = Mat::Metal;
+	rod.tint = kIronDark;
+	b.scene.AddVisual( head, rod );
+	Part band;
+	band.localPos = { 0, half.y * 0.45f, 0 };
+	band.size = { half.x + 0.012f, 0.07f, half.z + 0.012f };
+	band.mat = Mat::Metal;
+	band.tint = kBrass;
+	b.scene.AddVisual( head, band );
+	b.scene.FinalizeEntity( head );
+	b.Mover( head, { 0, -1, 0 }, lift, travel, upTime, phase, downTime );
+	return head;
+}
+
+// An iron shutter running on a rail on the ground, sliding `distance` metres along x (either way) and back: it
+// rests `closed` seconds at `center` and `open` seconds at the other end. (No rail above: a shot slipping in under
+// it would clip it.)
+static Entity* Shutter( Builder& b, Vector3 center, Vector3 half, float distance, float travel, float closed, float open, float phase )
+{
+	float x0 = std::min( center.x, center.x + distance ) - half.x - 0.3f;
+	float x1 = std::max( center.x, center.x + distance ) + half.x + 0.3f;
+	float foot = center.y - half.y;
+	b.Ledge( { ( x0 + x1 ) * 0.5f, 0.04f, center.z }, { ( x1 - x0 ) * 0.5f, 0.04f, 0.1f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		b.Ledge( { ( s < 0 ? x0 : x1 ) + s * 0.08f, 0.2f, center.z }, { 0.08f, 0.2f, 0.14f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	}
+	Entity* e = b.Platform( center, half, Mat::Metal, Color{ 92, 90, 96, 255 } );
+	// the legs it runs on
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Part leg;
+		leg.localPos = { s * ( half.x - 0.2f ), -half.y - ( foot - 0.08f ) * 0.5f, 0 };
+		leg.size = { 0.06f, ( foot - 0.08f ) * 0.5f + 0.01f, 0.05f };
+		leg.mat = Mat::Metal;
+		leg.tint = kIronDark;
+		b.scene.AddVisual( e, leg );
+		Part wheel;
+		wheel.geo = Geo::Sphere;
+		wheel.localPos = { s * ( half.x - 0.2f ), -half.y - foot + 0.12f, 0 };
+		wheel.size = { 0.09f, 0.09f, 0.07f };
+		wheel.mat = Mat::Metal;
+		wheel.tint = kBrass;
+		b.scene.AddVisual( e, wheel );
+	}
+	for ( int k = 0; k < 4; ++k )
+	{
+		Part rivet;
+		rivet.geo = Geo::Sphere;
+		rivet.localPos = { ( k % 2 ? 1.0f : -1.0f ) * ( half.x - 0.12f ), ( k < 2 ? 1.0f : -1.0f ) * ( half.y - 0.12f ), -half.z - 0.01f };
+		rivet.size = { 0.05f, 0.05f, 0.05f };
+		rivet.mat = Mat::Metal;
+		rivet.tint = kBrass;
+		b.scene.AddVisual( e, rivet );
+	}
+	b.scene.FinalizeEntity( e );
+	b.Mover( e, { distance < 0.0f ? -1.0f : 1.0f, 0, 0 }, fabsf( distance ), travel, closed, phase, open );
+	return e;
+}
+
+// A wheel of broad iron paddles turning at `rate` about the line towards the cannon: shots get through only
+// between the paddles. It hangs from an axle on a post standing on the `side` (+1 or -1 along x).
+static Entity* PaddleWheel( Builder& b, Vector3 hub, float length, float halfWidth, int paddles, float rate, float phase, float side )
+{
+	float px = hub.x + side * ( length + 0.55f );
+	b.Ledge( { px, hub.y * 0.5f + 0.15f, hub.z + 0.3f }, { 0.14f, hub.y * 0.5f + 0.15f, 0.14f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	b.Ledge( { ( px + hub.x ) * 0.5f, hub.y, hub.z + 0.3f }, { fabsf( px - hub.x ) * 0.5f + 0.1f, 0.09f, 0.09f }, Mat::Metal, { 0, 0, 0, 1 },
+			 kIronDark );
+
+	BodyOptions bo;
+	bo.type = b3_kinematicBody;
+	Entity* e = b.scene.CreateEntity( Kind::Mechanism, Mat::Metal, hub, b3Quat_identity, bo );
+	ShapeOptions so;
+	so.category = CatBlock;
+	so.hitEvents = false;
+	b.scene.AddBox( e, { 0, 0, 0 }, b3Quat_identity, { 0.26f, 0.26f, 0.14f }, Mat::Metal, so );
+	e->parts.back().tint = kBrass;
+	for ( int i = 0; i < paddles; ++i )
+	{
+		Quaternion q = QuaternionFromAxisAngle( { 0, 0, 1 }, i * 2.0f * PI / paddles );
+		Vector3 at = Vector3RotateByQuaternion( { 0, 0.2f + length * 0.5f, 0 }, q );
+		b.scene.AddBox( e, at, ToB3( q ), { halfWidth, length * 0.5f, 0.06f }, Mat::Metal, so );
+		e->parts.back().tint = Color{ 92, 90, 96, 255 };
+		Part rim;
+		rim.localPos = Vector3RotateByQuaternion( { 0, 0.2f + length - 0.06f, 0 }, q );
+		rim.localRot = q;
+		rim.size = { halfWidth + 0.012f, 0.06f, 0.072f };
+		rim.mat = Mat::Metal;
+		rim.tint = kBrass;
+		b.scene.AddVisual( e, rim );
+	}
+	e->homeY = -1000.0f;
+	b.scene.FinalizeEntity( e );
+	b.Spin( e, rate, phase, { 0, 0, 1 } );
+	b.scene.mechanisms.back().boxes = true;
+	return e;
+}
+
+// A brass target running to and fro on a rail along x, `distance` metres from `base` (either way).
+static Entity* RailTarget( Builder& b, Vector3 base, float height, float distance, float travel, float pause, float phase )
+{
+	float x0 = std::min( base.x, base.x + distance ) - 0.4f;
+	float x1 = std::max( base.x, base.x + distance ) + 0.4f;
+	b.Ledge( { ( x0 + x1 ) * 0.5f, base.y + 0.04f, base.z - 0.1f }, { ( x1 - x0 ) * 0.5f, 0.04f, 0.12f }, Mat::Metal, { 0, 0, 0, 1 }, kIronDark );
+	Entity* t = b.Target( base, height, 0.0f, true );
+	return b.Mover( t, { distance < 0.0f ? -1.0f : 1.0f, 0, 0 }, fabsf( distance ), travel, pause, phase );
+}
+
 // A king on the long arm of a lever, a pane of glass in front of him: the way to him is a lob onto the brass plate
 // (or a weight dropped on it).
 static Entity* LeverKing( Builder& b, Vector3 fulcrum, Vector3 along, Color robe, Vector3* plateOut = nullptr )
@@ -2681,6 +2818,9 @@ static void LevelMaglio( Builder& b )
 	const Vector3 spots[3] = { { -4.6f, 0, 37.0f }, { 0.4f, 0, 39.5f }, { 5.0f, 0, 36.5f } };
 	const Vector3 targets[3] = { { -6.8f, 0, 31.5f }, { -1.6f, 0, 33.0f }, { 3.2f, 0, 31.0f } };
 	const Color robes[3] = { kTeal, kIron, kCrimson };
+	// in front of each target a trip hammer, each with its own beat: shoot so as to arrive while it is up
+	const float travel[3] = { 0.35f, 0.3f, 0.25f }, up[3] = { 0.9f, 0.6f, 0.5f }, down[3] = { 1.1f, 1.5f, 0.9f };
+	const float phase[3] = { 0.0f, 0.7f, 1.3f };
 	for ( int i = 0; i < 3; ++i )
 	{
 		Entity* target = b.Target( targets[i], 1.6f );
@@ -2688,6 +2828,7 @@ static void LevelMaglio( Builder& b )
 		Entity* king = b.King( spots[i], robes[i] );
 		b.GlassPane( { spots[i].x, 1.2f, spots[i].z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
 		b.AimHint( king, target, { 0, 0, 0 } );
+		TripHammer( b, { targets[i].x, 1.6f, targets[i].z - 0.8f }, { 0.75f, 0.62f, 0.28f }, 2.0f, travel[i], up[i], down[i], phase[i] );
 	}
 	BackTrees( b, { 0, 0, 36 }, 8.8f );
 	b.Flag( { 2.5f, 0, 42.5f }, kIron );
@@ -2708,7 +2849,10 @@ static void LevelQuintana( Builder& b )
 		Entity* q = b.Quintain( base, 1.0f, arm, 0.0f, mirror );
 		Entity* king = Cage( b, { base.x, 0, base.z - arm }, 0.8f, 1.8f, s < 0 ? kCrimson : kTeal );
 		// strike the shield from the front
-		b.AimHint( king, q, { ( mirror ? -arm : arm ), 0.0f, -0.25f } );
+		b.AimHint( king, q, { ( mirror ? -arm : arm ), 0.0f, -0.25f }, -16.0f );
+		// through the moment the shutter in front of it slides out of the way
+		Shutter( b, { s * ( 3.6f + arm ), 1.0f, 36.1f }, { 0.8f, 0.75f, 0.06f }, s * 1.9f, s < 0 ? 0.7f : 0.5f, s < 0 ? 1.0f : 0.8f,
+				 s < 0 ? 0.5f : 0.4f, s < 0 ? 0.0f : 0.9f );
 	}
 	Vector3 p = b.Scatter( { 0, 0, 41.5f }, 1.0f, 0.5f );
 	size_t from = b.scene.entities.size();
@@ -2733,6 +2877,8 @@ static void LevelGuinzaglio( Builder& b )
 		Entity* orb = b.Tether( post, { post.x + s * r, 0, post.z } );
 		Entity* king = Cage( b, { post.x, 0, post.z + r }, 0.8f, 1.8f, s < 0 ? kCrimson : kTeal );
 		b.AimHint( king, orb, { 0, 0.1f, -0.3f } );
+		// a paddle wheel turns in front of each orb
+		PaddleWheel( b, { post.x + s * r, 2.3f, post.z - 0.8f }, 2.0f, 0.55f, 4, s < 0 ? 0.9f : -1.1f, s < 0 ? 0.0f : 0.8f, (float)s );
 	}
 	Vector3 p = b.Scatter( { 0, 0, 41.5f }, 1.0f, 0.5f );
 	size_t from = b.scene.entities.size();
@@ -2755,7 +2901,8 @@ static void LevelContrappeso( Builder& b )
 	{
 		Vector3 plate;
 		Entity* king = LeverKing( b, { s * 2.4f, 1.2f, 37.0f + ( s < 0 ? 0.6f : 0.0f ) }, { (float)s, 0, 0 }, s < 0 ? kCrimson : kIron, &plate );
-		Entity* target = b.Target( { s * 5.2f, 0, 31.0f }, 1.6f );
+		// the targets run on rails: aim where each will be when the ball gets there
+		Entity* target = RailTarget( b, { s * 6.8f, 0, 31.0f }, 1.6f, -s * 3.6f, s < 0 ? 1.8f : 2.2f, s < 0 ? 0.4f : 0.2f, s < 0 ? 0.0f : 1.1f );
 		b.HangingWeight( { plate.x, 0, plate.z }, 5.2f, target, { 0, 0, 1 } );
 		b.AimHint( king, target, { 0, 0, 0 } );
 	}
@@ -2935,10 +3082,14 @@ static void LevelTreCorde( Builder& b )
 	b.Island( { 0, 0, 36 }, 10.0f );
 	const Vector3 targets[3] = { { -5.2f, 0, 31.5f }, { 0.0f, 0, 32.5f }, { 5.2f, 0, 31.5f } };
 	Entity* t[3];
+	// the targets lean back behind basalt parapets: only a lob gets at them
+	size_t from = b.scene.entities.size();
 	for ( int i = 0; i < 3; ++i )
 	{
-		t[i] = b.Target( targets[i], 1.6f );
+		t[i] = b.Target( targets[i], 1.25f, 0.7f );
+		b.Ledge( { targets[i].x, 1.0f, targets[i].z - 1.3f }, { 0.95f, 1.0f, 0.2f }, Mat::Stone );
 	}
+	Basalt( b, from );
 	// the king on the right hangs from the target on the left, the king on the left from the middle one, and the
 	// target on the right holds a weight over an empty heap of sandbags
 	const Vector3 left{ 4.8f, 0, 38.0f }, right{ -4.8f, 0, 38.0f }, empty{ 0.0f, 0, 40.0f };
@@ -2950,8 +3101,8 @@ static void LevelTreCorde( Builder& b )
 	Entity* kl = b.King( left, kTeal );
 	b.GlassPane( { right.x, 1.2f, right.z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
 	b.GlassPane( { left.x, 1.2f, left.z - 1.0f }, { 1.1f, 1.2f, 0.06f } );
-	b.AimHint( kr, t[0], { 0, 0, 0 } );
-	b.AimHint( kl, t[1], { 0, 0, 0 } );
+	b.AimHint( kr, t[0], { 0, 0, 0 }, 13.0f );
+	b.AimHint( kl, t[1], { 0, 0, 0 }, 13.0f );
 	BackTrees( b, { 0, 0, 36 }, 8.8f );
 	b.Flag( { 2.5f, 0, 43.0f }, kIron );
 	b.Fortress( { 0, 2.5f, 36 }, 11.0f );
@@ -2967,11 +3118,13 @@ static void LevelFonderia( Builder& b )
 	Vector3 qb{ 4.4f, 0, 38.0f };
 	Entity* q = b.Quintain( qb, 1.0f, arm, 0.0f );
 	Entity* k1 = Cage( b, { qb.x, 0, qb.z - arm }, 0.8f, 1.8f, kTeal );
-	b.AimHint( k1, q, { arm, 0.0f, -0.25f } );
+	b.AimHint( k1, q, { arm, 0.0f, -0.25f }, -16.0f );
+	Shutter( b, { qb.x + arm, 1.0f, qb.z - 1.1f }, { 0.8f, 0.75f, 0.06f }, 1.9f, 0.55f, 0.9f, 0.45f, 0.3f );
 	Vector3 post{ -4.0f, 0, 36.0f };
 	Entity* orb = b.Tether( post, { post.x - 2.4f, 0, post.z } );
 	Entity* k2 = Cage( b, { post.x, 0, post.z + 2.4f }, 0.8f, 1.8f, kCrimson );
 	b.AimHint( k2, orb, { 0, 0.1f, -0.3f } );
+	PaddleWheel( b, { post.x - 2.4f, 2.3f, post.z - 0.8f }, 2.0f, 0.55f, 4, 1.0f, 0.4f, -1.0f );
 	ShieldedKing( b, b.Scatter( { 0.3f, 0, 41.0f }, 0.6f, 0.4f ), 1.2f, 0.5f, kIron );
 	BackTrees( b, { 0, 0, 36.5f }, 9.2f );
 	b.Flag( { 6.5f, 0, 42.0f }, kIron );
@@ -2998,12 +3151,14 @@ static void LevelForgia( Builder& b )
 	Vector3 qb{ 5.6f, 0, 38.0f };
 	Entity* q = b.Quintain( qb, 1.0f, arm, 0.0f );
 	Entity* k1 = Cage( b, { qb.x, 0, qb.z - arm }, 0.8f, 1.8f, kTeal );
-	b.AimHint( k1, q, { arm, 0.0f, -0.25f } );
+	b.AimHint( k1, q, { arm, 0.0f, -0.25f }, -16.0f );
+	Shutter( b, { qb.x + arm, 1.0f, qb.z - 1.1f }, { 0.8f, 0.75f, 0.06f }, 1.9f, 0.45f, 1.0f, 0.4f, 0.6f );
 	// an orb on a rope
 	Vector3 post{ -6.0f, 0, 40.0f };
 	Entity* orb = b.Tether( post, { post.x - 2.4f, 0, post.z } );
 	Entity* k2 = Cage( b, { post.x, 0, post.z + 2.4f }, 0.8f, 1.8f, kCrimson );
 	b.AimHint( k2, orb, { 0, 0.1f, -0.3f } );
+	PaddleWheel( b, { post.x - 2.4f, 2.3f, post.z - 0.8f }, 2.0f, 0.55f, 4, -1.2f, 1.2f, -1.0f );
 	// and a king in shields, in front
 	ShieldedKing( b, b.Scatter( { 1.2f, 0, 33.0f }, 0.6f, 0.5f ), -1.2f, 0.0f, kPurple );
 	Basalt( b, from );
@@ -3912,16 +4067,16 @@ static const LevelDef s_levels[] = {
 	  "Il re sulla leva sta dietro il vetro: fai cadere un pallonetto sulla piastra d'ottone e la leva lo lancer\u00e0 in aria.",
 	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelLeva, "fucina_leva" },
 	{ "Il Maglio", "Quei pesi stanno appesi da secoli. Sopra la testa dei miei re, s\u00ec, ma ben legati.",
-	  "Ogni corda \u00e8 legata a un bersaglio d'ottone: colpiscilo e il peso cade sul re.",
+	  "Ogni corda \u00e8 legata a un bersaglio d'ottone, ma davanti batte un maglio: spara in modo che la palla arrivi quando \u00e8 alzato.",
 	  { 6, 0, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelMaglio, "fucina_maglio" },
 	{ "La Quintana", "I miei fantocci non sentono dolore. I miei re, invece, nemmeno ci pensano.",
-	  "Colpisci lo scudo d'ottone del fantoccio: la mazza ferrata gira, passa la gabbia magica e colpisce il re.",
+	  "Colpisci lo scudo d'ottone quando la paratia scorre via: la mazza ferrata gira, passa la gabbia magica e colpisce il re.",
 	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelQuintana, "fucina_quintana" },
 	{ "Il Guinzaglio", "Le mie sfere sono al guinzaglio. Buone, buone...",
-	  "Le sfere magiche sono legate a un palo: colpiscile da davanti e gireranno attorno al palo fino alla gabbia del re.",
+	  "Colpisci le sfere da davanti, passando fra le pale della ruota: gireranno attorno al palo fino alla gabbia del re.",
 	  { 6, 1, 0, 0, 0, 0, 0 }, 3, { 0, 0, 0 }, LevelGuinzaglio, "fucina_guinzaglio" },
 	{ "Il Contrappeso", "Leve, pesi e corde: la mia fortezza si difende da sola.",
-	  "Il bersaglio d'ottone sgancia il peso, il peso cade sulla piastra, la leva lancia il re. Una catena!",
+	  "I bersagli corrono sulle rotaie: mira dove saranno. Il bersaglio sgancia il peso, il peso cade sulla piastra, la leva lancia il re.",
 	  { 6, 1, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelContrappeso, "fucina_contrappeso" },
 	{ "Scudi Orbitanti", "I miei scudi non stanno mai fermi. Proprio come il tuo cuore, adesso.",
 	  "Gli scudi di ferro girano attorno ai re: spara quando il varco passa davanti.",
@@ -3930,13 +4085,13 @@ static const LevelDef s_levels[] = {
 	  "Prima spingi il carrello d'ottone per completare lo scivolo, poi colpisci il fermo di legno: la sfera rotoler\u00e0 fino al re.",
 	  { 6, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelCarrello, "fucina_carrello" },
 	{ "Tre Corde", "Tre corde, tre pesi, tre bersagli. Scegli bene: i miei re ringraziano.",
-	  "Segui le corde con lo sguardo prima di sparare: non tutte portano dove sembra.",
+	  "I bersagli sono dietro i parapetti: ci arriva solo un pallonetto. E segui le corde, prima: non tutte portano dove sembra.",
 	  { 4, 0, 0, 0, 0, 0, 0 }, 2, { 0, 0, 0 }, LevelTreCorde, "fucina_tre_corde" },
 	{ "La Fonderia", "Fantocci, sfere e scudi: nella mia fonderia si lavora sodo.",
-	  "Lo scudo del fantoccio, la sfera al guinzaglio, il varco fra gli scudi che girano: un re per ogni ingranaggio.",
+	  "Lo scudo dietro la paratia, la sfera dietro la ruota a pale, il varco fra gli scudi che girano: un re per ogni ingranaggio.",
 	  { 7, 1, 0, 0, 0, 0, 0 }, 4, { 0, 0, 0 }, LevelFonderia, "fucina_fonderia" },
 	{ "La Forgia dell'Imperatore", "Sono l'Imperatore di Ferro. Il mio trono \u00e8 una leva, e la leva \u00e8 nelle mie mani.",
-	  "L'Imperatore siede sulla leva: il bersaglio che sgancia il peso \u00e8 protetto da scudi che girano. Poi il fantoccio, la sfera, gli scudi.",
+	  "L'Imperatore siede sulla leva: il bersaglio che sgancia il peso \u00e8 protetto da scudi che girano. Poi paratia, ruota a pale e scudi.",
 	  { 9, 1, 0, 0, 1, 0, 0 }, 6, { 0, 0, 0 }, LevelForgia, "fucina_forgia" },
 };
 

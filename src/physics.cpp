@@ -402,8 +402,9 @@ const b3HullData* Scene::RockHull( float radius, uint32_t seed )
 // rides on it does not slide off.
 static float MoverProgress( const Mechanism& m, float t )
 {
-	// out, rest, back, rest
-	float cycle = 2.0f * ( m.travel + m.pause );
+	// rest, out, rest, back
+	float far = m.pauseFar >= 0.0f ? m.pauseFar : m.pause;
+	float cycle = 2.0f * m.travel + m.pause + far;
 	if ( cycle <= 0.0f )
 	{
 		return 0.0f;
@@ -422,13 +423,13 @@ static float MoverProgress( const Mechanism& m, float t )
 	{
 		f = ( u - m.pause ) / m.travel;
 	}
-	else if ( u < 2.0f * m.pause + m.travel )
+	else if ( u < m.pause + far + m.travel )
 	{
 		f = 1.0f;
 	}
 	else
 	{
-		f = 1.0f - ( u - 2.0f * m.pause - m.travel ) / m.travel;
+		f = 1.0f - ( u - m.pause - far - m.travel ) / m.travel;
 	}
 	return f * f * ( 3.0f - 2.0f * f );
 }

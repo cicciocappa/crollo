@@ -36,7 +36,9 @@ riprendere lo sviluppo e che non si ricava dal codice.
   gira, ventole, soffioni, isole che fluttuano, giostra; mira assistita che segue rimbalzi e correnti; lampi e tuoni.
 - Sessione 8 fatta: Fucina del Vulcano a 10 livelli con le idee dell'utente (leva, quintana, guinzaglio, carrello) più
   bersagli d'ottone che sganciano pesi, scudi orbitanti e il trabocchetto Tre Corde. L'arpione è rimandato.
-- Prossima: prova della Fucina da parte dell'utente, poi sessione 9 (campagne a 10 livelli, livelli bonus; lì anche il
+- Sessione 8b fatta (riscontro sulla Fucina: colpi tesi troppo facili con la mira assistita): maglio, paratie, ruote a
+  pale, bersagli su rotaia e bersagli dietro parapetti.
+- Prossima: sessione 9 (campagne a 10 livelli, livelli bonus; lì anche il
   taglio delle munizioni in eccesso). Poi versione mobile (10); multiplayer alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
@@ -165,6 +167,11 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - Gli scudi orbitanti (`Mechanism::boxes`) non portano nessuno: `MoverUnder` li salta, se no l'IA crede che il re al
   centro ci viaggi sopra e li ignora come ostacolo. Senza tetto l'IA li scavalca di pallonetto.
 - Uno scivolo va chiuso in cima: il colpo al fermo spingeva la sfera in salita e fuori.
+- **Mira assistita**: mostra tutto il volo fino al punto d'impatto, quindi un bersaglio fermo e in vista si prende sempre
+  al primo colpo (riscontro dell'utente sulla Fucina). La sfida viene da ciò che si muove (maglio, paratia, ruota a pale,
+  scudi orbitanti: la previsione guarda la scena di adesso) o da bersagli nascosti (dietro un parapetto, di pallonetto).
+- Niente traverse sopra il varco di una paratia: un pallonetto che scende ci passa sotto e la tocca con la parte alta,
+  che l'IA non controlla (controlla solo il fondo della palla). `AimHint` con `lob` < 0 vuole solo tiri tesi (fantocci).
 
 ## Nuovo PC
 - Build desktop: vedi README (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`, poi `cmake --build build -j`).

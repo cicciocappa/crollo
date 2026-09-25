@@ -3019,7 +3019,13 @@ bool Game::AutoFireAtKing()
 		{
 			// a brass target already struck has done its work
 			bool spent = e->trigger >= 0 && m_scene.triggers[e->trigger].fired;
-			if ( e->serial == h.via && e->alive && Vector3Distance( e->pos, h.home ) < 0.6f && spent == false )
+			if ( e->serial != h.via || e->alive == false || spent )
+			{
+				continue;
+			}
+			// (a piece that travels on its own, like a target on a rail, is always where it should be)
+			const Mechanism* own = MoverUnder( e );
+			if ( Vector3Distance( e->pos, h.home ) < 0.6f || ( own != nullptr && own->entity == e ) )
 			{
 				Vector3 offset = h.offset;
 				if ( e->kind == Kind::Mechanism )
@@ -3557,9 +3563,6 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 				{
 					continue;
 				}
-				Vector3 shift = Vector3Subtract( MoverPosAt( m, m_scene.time + t ), MoverPosAt( m, m_scene.time ) );
-				Vector3 c = Vector3Add( m.entity->pos, shift );
-				Quaternion rot = MoverRotAt( m, m_scene.time + t );
 				float pad = 0.35f + edgeReach;
 				// the boxes it is made of, where they will be: a panel or a carpet is its first part; an island or a
 				// turntable is its body (from its top down to the tip of its rock, as a box) and any walls on it
@@ -3588,19 +3591,23 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 				{
 					solids[count++] = { { 0, 0, 0 }, m.entity->parts[0].size, { 0, 0, 0, 1 } };
 				}
-				for ( int i = 0; i < count; ++i )
+				// (where it is at each quarter of the step: a shutter moves a good way in 0.05 s)
+				for ( int k = 1; k <= 4; ++k )
 				{
-					// what the target stands on is no obstacle, but the walls going round with him are
-					if ( &m == ride && i == 0 && m.carry.x > 0.0f )
+					float when = m_scene.time + t - 0.05f * ( 1.0f - k * 0.25f );
+					Vector3 c = Vector3Add( m.entity->pos, Vector3Subtract( MoverPosAt( m, when ), MoverPosAt( m, m_scene.time ) ) );
+					Quaternion rot = MoverRotAt( m, when );
+					Vector3 at = Vector3Lerp( prev, p, k * 0.25f );
+					for ( int i = 0; i < count; ++i )
 					{
-						continue;
-					}
-					Quaternion q = QuaternionMultiply( rot, solids[i].rot );
-					Vector3 centre = Vector3Add( c, Vector3RotateByQuaternion( solids[i].centre, rot ) );
-					Vector3 h = solids[i].half;
-					for ( int k = 1; k <= 4; ++k )
-					{
-						Vector3 at = Vector3Lerp( prev, p, k * 0.25f );
+						// what the target stands on is no obstacle, but the walls going round with him are
+						if ( &m == ride && i == 0 && m.carry.x > 0.0f )
+						{
+							continue;
+						}
+						Quaternion q = QuaternionMultiply( rot, solids[i].rot );
+						Vector3 centre = Vector3Add( c, Vector3RotateByQuaternion( solids[i].centre, rot ) );
+						Vector3 h = solids[i].half;
 						Vector3 local = Vector3RotateByQuaternion( Vector3Subtract( at, centre ), QuaternionInvert( q ) );
 						if ( fabsf( local.x ) < h.x + pad && fabsf( local.y ) < h.y + pad && fabsf( local.z ) < h.z + pad )
 						{
@@ -3680,7 +3687,7 @@ bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob 
 	{
 		Vector3 v;
 		float flight;
-		if ( lob > 0.0f && speeds[k] > lob )
+		if ( ( lob > 0.0f && speeds[k] > lob ) || ( lob < 0.0f && speeds[k] < -lob ) )
 		{
 			continue;
 		}

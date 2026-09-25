@@ -119,15 +119,16 @@ public:
 	// Sends a kinematic entity `distance` metres along `axis` and back, `travel` seconds each way, resting
 	// `pause` seconds at each end; `phase` (seconds) shifts it along the cycle. It is moved to where the cycle
 	// puts it at time 0: place riders after this call, on top of e->pos.
-	Entity* Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase = 0.0f );
+	// `pauseFar` >= 0 rests that long at the far end instead.
+	Entity* Mover( Entity* e, Vector3 axis, float distance, float travel, float pause, float phase = 0.0f, float pauseFar = -1.0f );
 	// A rubber wall: shots bounce off it, so it can be used for bank shots. `moving` makes it kinematic, for
 	// Mover(), Turn() and Spin().
 	Entity* Bumper( Vector3 center, Vector3 half, float yaw = 0.0f, bool moving = false );
 	// Swings a kinematic entity `angle` radians about the vertical through its centre and back, `travel`
 	// seconds each way, resting `pause` seconds at each end.
 	Entity* Turn( Entity* e, float angle, float travel, float pause, float phase = 0.0f );
-	// Keeps a kinematic entity turning about the vertical through its centre at `rate` rad/s.
-	Entity* Spin( Entity* e, float rate, float phase = 0.0f );
+	// Keeps a kinematic entity turning about the vertical (or `axis`) through its centre at `rate` rad/s.
+	Entity* Spin( Entity* e, float rate, float phase = 0.0f, Vector3 axis = { 0, 1, 0 } );
 
 	// Arcipelago delle Tempeste
 	// An island that drifts `distance` metres along `axis` and back (Mover timing), carrying whatever is built
@@ -165,7 +166,8 @@ public:
 	// at the end of its rope. Returns the orb.
 	Entity* Tether( Vector3 post, Vector3 orb, float radius = 0.45f );
 	// A brass target on a post, facing the cannon: a shot that strikes it lets go of the joints handed to Trigger().
-	Entity* Target( Vector3 base, float height );
+	// `tilt` leans its face back towards the sky (for lobs); `moving` makes it kinematic, for Mover().
+	Entity* Target( Vector3 base, float height, float tilt = 0.0f, bool moving = false );
 	// Makes `target` let go of `joint` when struck (a target can hold several).
 	void Trigger( Entity* target, b3JointId joint );
 	// An iron weight hanging from a gantry by a rope, `drop` metres above the ground; the rope is tied to `target`:
@@ -198,7 +200,7 @@ public:
 	// player cannot just repeat the aim that worked last time. Move a king and all that belongs to him by it.
 	Vector3 Scatter( Vector3 p, float rx, float rz );
 	// Tells the autotest AI (and the demo) to go for `via` instead of `king` while `via` has not moved.
-	// `lob` > 0 keeps it to high arcs: horizontal speeds up to `lob` m/s.
+	// `lob` > 0 keeps it to high arcs: horizontal speeds up to `lob` m/s; < 0 to flat shots, of at least -`lob`.
 	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 }, float lob = 0.0f );
 	// Tells the autotest AI that `king` is reached off the rubber: it searches for a bank shot.
 	void BankHint( Entity* king );
