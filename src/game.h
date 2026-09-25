@@ -18,6 +18,7 @@ enum class Ammo : int
 	Boulder,
 	Implosion, // "Vortice": pulls everything towards the blast
 	Sticky,	   // welds itself to what it hits, explodes after 3 s
+	Comet,	   // steered in flight by the player, who rides it in first person
 	Count
 };
 
@@ -51,6 +52,7 @@ enum class CamMode
 	Follow,
 	Overview,
 	Attract,
+	Pilot, // riding a comet, steering it with the mouse
 };
 
 struct FloatText
@@ -205,6 +207,8 @@ public:
 	void SetCannon( Vector3 pos, float yaw );
 	void SetFortressCenter( Vector3 c, float radius );
 	void AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob = 0.0f, bool bank = false );
+	// The king is reached only by a comet flying through `route` (world points, the king himself last).
+	void AddGuideHint( Entity* king, const std::vector<Vector3>& route );
 	// The wind turns and changes strength (up to `strength`) once each shot has landed.
 	void SetShiftingWind( float strength )
 	{
@@ -275,6 +279,14 @@ private:
 	Entity* CastSkippingRubber( Vector3 from, Vector3 to, b3QueryFilter filter, Vector3* point = nullptr, Vector3* normal = nullptr ) const;
 	// Automatic play: a bank shot off the rubber at `king`; false if no shot works right now.
 	bool FireBank( const Entity* king, Ammo type );
+	// Automatic play: a comet that steers itself through `route` (the last point is where it ends up).
+	void FireComet( const std::vector<Vector3>& route );
+	// The comet still being steered (nullptr once it has struck something or run out of flight).
+	Entity* GuidedComet() const;
+	// Turns the steered comet towards where it is wanted, at its limited rate, keeping its speed.
+	void SteerComet( float dt );
+	// The comet stops being steered: it falls like any cannonball from now on.
+	void ReleaseComet( Entity* e );
 	// The kinematic mover `e` is, or rides on (nullptr if none).
 	const Mechanism* MoverUnder( const Entity* e ) const;
 	// Steers the kinematic movers to where they must be at the end of the next step.
@@ -377,6 +389,7 @@ private:
 		float lob; // highest horizontal speed worth trying (a high lob), 0 = any arc
 		bool bank; // `via` is rubber: search for a shot that bounces off it into the king
 		Quaternion homeRot; // a mechanism that turns (a quintain) carries the offset round with it
+		std::vector<Vector3> route; // not empty: reached only by a comet steered through these points
 	};
 	std::vector<AimHintRecord> m_aimHints;
 
@@ -456,6 +469,14 @@ private:
 	bool m_zoom = false;
 	Entity* m_focus = nullptr;
 	Vector3 m_focusLast{};
+	// the comet being steered: where it is wanted to go (yaw and pitch, like the cannon), how long it can still
+	// fly, and for automatic play the points it steers through
+	int m_cometSerial = 0;
+	float m_cometFuel = 0.0f;
+	float m_steerYaw = 0.0f;
+	float m_steerPitch = 0.0f;
+	std::vector<Vector3> m_cometRoute;
+	size_t m_cometLeg = 0;
 	float m_followTime = 0.0f;
 	float m_watchTime = 0.0f;
 
@@ -492,5 +513,9 @@ private:
 	Vector3 m_rpLook{};
 	Vector3 m_rpCamPos{};
 	float m_rpOrbit = 0.0f;
+	// a comet turns in flight: the replay follows the way it is going, not the way it was fired
+	bool m_shotComet = false;
+	Vector3 m_rpFlat{ 0, 0, 1 };
+	Vector3 m_rpLastProj{};
 
 };

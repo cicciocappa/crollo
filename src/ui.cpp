@@ -323,6 +323,18 @@ void AmmoIcon( int ammo, Vector2 c, float r )
 			DrawCircleV( { c.x - r * 0.3f, c.y - r * 0.3f }, r * 0.25f, Color{ 150, 220, 130, 255 } );
 			break;
 		}
+		case 7: // comet: a glowing ball with a tail of fire
+		{
+			for ( int i = 3; i >= 1; --i )
+			{
+				float k = i / 3.0f;
+				DrawCircleV( { c.x + r * 0.9f * k, c.y + r * 0.9f * k }, r * ( 0.75f - 0.18f * i ), Color{ 255, (unsigned char)( 200 - 40 * i ), 60, (unsigned char)( 230 - 50 * i ) } );
+			}
+			DrawCircleV( { c.x - r * 0.15f, c.y - r * 0.15f }, r * 0.8f, Color{ 255, 170, 70, 255 } );
+			DrawCircleV( { c.x - r * 0.15f, c.y - r * 0.15f }, r * 0.55f, Color{ 120, 70, 40, 255 } );
+			DrawCircleV( { c.x - r * 0.35f, c.y - r * 0.35f }, r * 0.18f, Color{ 255, 230, 180, 255 } );
+			break;
+		}
 		default:
 			break;
 	}

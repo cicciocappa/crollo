@@ -1677,6 +1677,11 @@ void Builder::BankHint( Entity* king )
 	game.AddAimHint( king, king, { 0, 0, 0 }, 0.0f, true );
 }
 
+void Builder::GuideHint( Entity* king, const std::vector<Vector3>& route )
+{
+	game.AddGuideHint( king, route );
+}
+
 void Builder::ShiftingWind( float strength )
 {
 	game.SetShiftingWind( strength );
@@ -3167,6 +3172,99 @@ static void LevelForgia( Builder& b )
 	b.Fortress( { 0, 3.0f, 39 }, 14.0f );
 }
 
+// A stone house with a roof and one door, on the side `doorYaw` turns towards (0: +z, the far side; PI/2: +x).
+// No cannonball finds the way in; a comet steered round to the door does. `centre` is the middle of its floor.
+static void DoorHouse( Builder& b, Vector3 centre, float halfW, float halfD, float height, float doorYaw, Color tint )
+{
+	Quaternion q = QuaternionFromAxisAngle( { 0, 1, 0 }, doorYaw );
+	auto wall = [&]( Vector3 local, Vector3 half ) {
+		b.Ledge( Vector3Add( centre, Vector3RotateByQuaternion( local, q ) ), half, Mat::Stone, q, tint );
+	};
+	// in the house's own frame the door is on +z
+	const float t = 0.15f, door = 0.95f, doorH = 2.0f;
+	wall( { 0, height * 0.5f, -halfD }, { halfW + t, height * 0.5f, t } );
+	wall( { -halfW, height * 0.5f, 0 }, { t, height * 0.5f, halfD - t } );
+	wall( { halfW, height * 0.5f, 0 }, { t, height * 0.5f, halfD - t } );
+	float jamb = ( halfW + t - door ) * 0.5f;
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		wall( { s * ( door + jamb ), height * 0.5f, halfD }, { jamb, height * 0.5f, t } );
+	}
+	wall( { 0, ( doorH + height ) * 0.5f, halfD }, { door, ( height - doorH ) * 0.5f, t } );
+	wall( { 0, height + t, 0 }, { halfW + 0.35f, t, halfD + 0.35f } );
+}
+
+// Points along a circle of radius `r` about `centre` (at height y), from angle a0 to a1 (radians, 0 = +z,
+// PI/2 = +x): the way a comet turns, for the automatic player.
+static void ArcRoute( std::vector<Vector3>& route, Vector3 centre, float r, float a0, float a1, int steps )
+{
+	for ( int i = 0; i <= steps; ++i )
+	{
+		float a = a0 + ( a1 - a0 ) * i / steps;
+		route.push_back( { centre.x + sinf( a ) * r, centre.y, centre.z + cosf( a ) * r } );
+	}
+}
+
+// Prati Alti: the comet makes its debut. A king in a stone house whose door looks across the island.
+static void LevelCometa( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 35 }, 10.0f );
+	Vector3 hc{ -4.0f, 0, 36.0f };
+	DoorHouse( b, hc, 1.6f, 1.6f, 2.6f, PI * 0.5f, { 0, 0, 0, 0 } );
+	Entity* k = b.King( hc, kPurple );
+	b.Flag( { hc.x, 2.9f, hc.z }, kPurple, 0.8f );
+	// up the left of the island, then a quarter turn to the right and in through the door
+	std::vector<Vector3> route{ { 6.2f, 1.3f, 25.0f } };
+	ArcRoute( route, { 0.8f, 1.3f, 30.6f }, 5.4f, PI * 0.5f, 0.0f, 4 );
+	route.push_back( { -1.4f, 1.3f, 36.0f } );
+	b.GuideHint( k, route );
+
+	Vector3 p1 = b.Scatter( { 4.5f, 0, 40.5f }, 0.8f, 0.6f );
+	float t1 = b.Tower( p1, 2, 1.0f, 1.2f, Mat::Wood, Mat::Wood );
+	b.King( { p1.x, t1, p1.z }, kCrimson );
+	Vector3 p2 = b.Scatter( { 0.5f, 0, 42.5f }, 0.8f, 0.5f );
+	float t2 = b.Column( p2, 3, 0.5f, Mat::Stone );
+	b.Box( { p2.x, t2 + 0.12f, p2.z }, { 0.8f, 0.12f, 0.8f }, Mat::Wood );
+	b.King( { p2.x, t2 + 0.24f, p2.z }, kBlue );
+	BackTrees( b, { 0, 0, 35 }, 8.8f );
+	b.Fortress( { 0, 2.0f, 37 }, 11.0f );
+}
+
+// Fucina: two furnaces with their doors at the back. The comet goes up one side, turns right round behind them
+// and comes back into the door.
+static void LevelFornaci( Builder& b )
+{
+	b.PlayerIsland();
+	b.homeY = 0.0f;
+	b.Island( { 0, 0, 38.0f }, 12.0f );
+	size_t from = b.scene.entities.size();
+	for ( int s = -1; s <= 1; s += 2 )
+	{
+		Vector3 fc{ s * 2.6f, 0, 38.0f };
+		DoorHouse( b, fc, 1.5f, 1.5f, 2.6f, 0.0f, kBasalt );
+		// the glow of the fire inside
+		b.Ledge( { fc.x, 0.03f, fc.z - 0.6f }, { 1.2f, 0.03f, 0.6f }, Mat::Plain, { 0, 0, 0, 1 }, Color{ 255, 120, 30, 255 } );
+		Entity* k = b.King( { fc.x, 0, fc.z + 0.3f }, s < 0 ? kCrimson : kTeal );
+		b.Flag( { fc.x, 2.9f, fc.z }, s < 0 ? kCrimson : kTeal, 0.8f );
+		// up the far side, a half turn round a point beside the other furnace, and straight in
+		float r = 5.4f;
+		Vector3 centre{ fc.x - s * r, 1.3f, 45.0f };
+		std::vector<Vector3> route{ { fc.x - s * 2.0f * r, 1.3f, 38.0f } };
+		ArcRoute( route, centre, r, -s * PI * 0.5f, s * PI * 0.5f, 8 );
+		route.push_back( { fc.x, 1.3f, 41.5f } );
+		b.GuideHint( k, route );
+	}
+	// and one in plain sight, on a column in front
+	Vector3 p = b.Scatter( { 0.0f, 0, 31.0f }, 1.0f, 0.5f );
+	float t = b.Column( p, 3, 0.5f, Mat::Stone );
+	b.Box( { p.x, t + 0.12f, p.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
+	Basalt( b, from );
+	b.King( { p.x, t + 0.24f, p.z }, kIron );
+	b.Fortress( { 0, 2.0f, 39 }, 13.0f );
+}
+
 static void Level04( Builder& b )
 {
 	b.PlayerIsland();
@@ -4093,6 +4191,12 @@ static const LevelDef s_levels[] = {
 	{ "La Forgia dell'Imperatore", "Sono l'Imperatore di Ferro. Il mio trono \u00e8 una leva, e la leva \u00e8 nelle mie mani.",
 	  "L'Imperatore siede sulla leva: il bersaglio che sgancia il peso \u00e8 protetto da scudi che girano. Poi paratia, ruota a pale e scudi.",
 	  { 9, 1, 0, 0, 1, 0, 0 }, 6, { 0, 0, 0 }, LevelForgia, "fucina_forgia" },
+	{ "La Cometa", "La mia casa ha una porta sola, e guarda dall'altra parte. Furbo, eh?",
+	  "Il re nella casa di pietra si prende solo con la Cometa: dopo lo sparo muovi il mouse, falle fare la curva e infilala nella porta.",
+	  { 4, 0, 0, 0, 0, 0, 0, 2 }, 3, { 0, 0, 0 }, LevelCometa, "prati_cometa" },
+	{ "Le Fornaci", "Le mie fornaci si aprono sul retro. Il davanti \u00e8 per gli ospiti, e tu non sei invitato.",
+	  "Le porte delle fornaci guardano dall'altra parte: sali con la Cometa lungo un fianco, gira dietro e rientra dalla porta.",
+	  { 3, 0, 0, 0, 0, 0, 0, 3 }, 3, { 0, 0, 0 }, LevelFornaci, "fucina_fornaci" },
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -4110,7 +4214,7 @@ static std::vector<Campaign> BuildCampaigns()
 				   "Re Bernardo rotola gi\u00f9 dalla sua cittadella e il primo frammento della Corona torna a brillare. "
 				   "L'isola di Mastra Bombarda risale di qualche metro. Verso ovest, il vento porta il cigolio di cento mulini.",
 				   { idx( "prati_primo_colpo" ), idx( "prati_mura" ), idx( "prati_ponte" ), idx( "prati_boschetto" ), idx( "prati_mongolfiere" ),
-					 idx( "prati_polveriera" ), idx( "prati_gomma" ), idx( "prati_bunker" ), idx( "prati_cittadella" ) } } );
+					 idx( "prati_polveriera" ), idx( "prati_gomma" ), idx( "prati_bunker" ), idx( "prati_cometa" ), idx( "prati_cittadella" ) } } );
 	c.push_back( { "Valle dei Mulini", "Regina Ottavia", kOrange, 1,
 				   "Nella Valle dei Mulini il tramonto non finisce mai. La Regina Ottavia ha costruito difese che si muovono: "
 				   "pale, pendoli, scudi su binari, e perfino barriere incantate. Qui non basta mirare bene: bisogna scegliere "
@@ -4149,7 +4253,7 @@ static std::vector<Campaign> BuildCampaigns()
 				   "riposare. Per un po'.",
 				   { idx( "fucina_leva" ), idx( "fucina_maglio" ), idx( "fucina_quintana" ), idx( "fucina_guinzaglio" ),
 					 idx( "fucina_contrappeso" ), idx( "fucina_scudi" ), idx( "fucina_carrello" ), idx( "fucina_tre_corde" ),
-					 idx( "fucina_fonderia" ), idx( "fucina_forgia" ) } } );
+					 idx( "fucina_fonderia" ), idx( "fucina_fornaci" ), idx( "fucina_forgia" ) } } );
 	return c;
 }
 

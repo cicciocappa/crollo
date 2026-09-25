@@ -28,6 +28,7 @@ enum class Mat : uint8_t
 	Magic, // the magic barrier: a glowing lattice you can see through
 	Orb,   // the magic orbs that pass through it
 	Glass, // unbreakable glass: see-through, stops everything
+	Fire,  // the glowing shell of the comet
 	Count
 };
 

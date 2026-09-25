@@ -13,7 +13,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 
 ## Il gioco
 
-- **60 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
+- **62 livelli** fatti a mano, ognuno costruito attorno a una caratteristica diversa di Box3D:
   1. *Primo Colpo*: tutorial, una torre di legno.
   2. *Mura di Pietra*: un muro alto 2,5 m nasconde un terzo re: va scoperto (volo d'apertura o TAB) e raggiunto di pallonetto o con la bomba.
   3. *Il Ponte*: ponte di corda fatto di assi e giunti sferici che **si spezzano** se sovraccaricati.
@@ -65,35 +65,37 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   49. *L'Occhio del Ciclone*: una colonna d'aria ascendente ferma i pallonetti sul re del pilastro; tre isole alla deriva e vento che cambia a ogni colpo.
   50. *La Rocca di Re Fulmine*: il finale dell'Arcipelago: il re si prende di sponda sulla pala che gira, poi un soffione, una vetrina e un'isola alla deriva.
   51. *La Leva*: un re sul braccio lungo di una **leva** su **giunto rotoidale con fine corsa**: un pallonetto sulla piastra d'ottone lo lancia in aria.
-  52. *Il Maglio*: pesi di ferro appesi sopra i re; le corde sono legate a **bersagli d'ottone** che, colpiti, **distruggono il giunto** e sganciano il peso.
-  53. *La Quintana*: due **fantocci girevoli**: si colpisce lo scudo e la mazza ferrata gira, attraversa la gabbia magica e colpisce il re.
-  54. *Il Guinzaglio*: sfere magiche legate a un palo con una **corda** (giunto di distanza con limite): colpite, girano attorno al palo fino al re.
-  55. *Il Contrappeso*: una catena: bersaglio, peso che cade, leva che lancia il re.
+  52. *Il Maglio*: pesi di ferro appesi sopra i re; le corde sono legate a **bersagli d'ottone** che, colpiti, **distruggono il giunto** e sganciano il peso. Davanti a ogni bersaglio sale e scende un **maglio** (corpo cinematico), ognuno con il suo ritmo.
+  53. *La Quintana*: due **fantocci girevoli**: si colpisce lo scudo e la mazza ferrata gira, attraversa la gabbia magica e colpisce il re. Lo scudo si vede solo quando la **paratia** davanti scorre via.
+  54. *Il Guinzaglio*: sfere magiche legate a un palo con una **corda** (giunto di distanza con limite): colpite, girano attorno al palo fino al re. Davanti gira una **ruota a pale**.
+  55. *Il Contrappeso*: una catena: bersaglio, peso che cade, leva che lancia il re. I bersagli corrono su rotaie.
   56. *Scudi Orbitanti*: re dentro scudi di ferro (con il tetto) che girano: si spara quando passa il varco.
   57. *Il Carrello*: uno scivolo in tre tratti; quello di mezzo sta su un **carrello** (giunto prismatico con fine corsa e attrito) spostato in avanti: prima lo si spinge al suo posto, poi si manda in schegge il fermo e la sfera rotola fino al re. Nell'ordine sbagliato la sfera cade nel crogiolo.
-  58. *Tre Corde*: un **trabocchetto**: tre pesi, tre bersagli e corde che si incrociano; uno dei pesi non sta sopra nessuno.
-  59. *La Fonderia*: un fantoccio, una sfera al guinzaglio e un re negli scudi orbitanti.
+  58. *Tre Corde*: un **trabocchetto**: tre pesi, tre bersagli e corde che si incrociano; uno dei pesi non sta sopra nessuno. I bersagli stanno dietro parapetti: solo di pallonetto.
+  59. *La Fonderia*: un fantoccio dietro la paratia, una sfera dietro la ruota a pale e un re negli scudi orbitanti.
   60. *La Forgia dell'Imperatore*: il finale: l'Imperatore di Ferro siede su una leva, e il bersaglio che sgancia il peso è protetto da scudi che girano.
+  61. *La Cometa*: debutta la **Cometa**, la palla che si guida in volo: il re sta in una casa di pietra con la porta sul fianco, e ci si entra solo curvando.
+  62. *Le Fornaci*: due fornaci con la porta sul retro: si sale lungo un fianco, si fa l'inversione dietro e si rientra dalla porta.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
   in ordine. Un prologo accoglie la prima visita, un epilogo chiude l'ultimo livello, e i sottotitoli dei livelli sono le
   provocazioni del re di turno.
-  - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 28, 5, 8, 13, 14 e 10 come finale.
+  - *Prati Alti* (Re Bernardo il Tondo): livelli 1, 2, 3, 28, 5, 8, 13, 14, 61 e 10 come finale.
   - *Valle dei Mulini* (Regina Ottavia): 6, 7, 24, 39, 23, 25, 9, 26, 40 e 27 come finale — tramonto, foglie al vento.
   - *Picchi Gelati* (Re Ghiacciolo III): 4, 15, 16, 11, 17, 18, 22, 20, 12, 21 e 19 come finale — neve e abeti.
   - *Dune Sospese* (Sultana Zaira): 29, 30, 31, 32, 33, 37, 34, 38, 35 e 36 come finale — sabbia, palme e cactus.
   - *Arcipelago delle Tempeste* (Re Fulmine): 41-49 e 50 come finale — pioggia, lampi e tuoni in lontananza.
-  - *Fucina del Vulcano* (l'Imperatore di Ferro): 51-59 e 60 come finale — basalto sopra un mare di lava, braci che salgono.
+  - *Fucina del Vulcano* (l'Imperatore di Ferro): 51-59, 62 e 60 come finale — basalto sopra un mare di lava, braci che salgono.
 - **Biomi**: colori del cielo, del mare di nuvole, della luce e delle isole passano allo shader come uniform; ogni regno ha
   il suo meteo (foglie, neve, sabbia, pioggia, braci) e il suo stile di musica.
-- **Re sparsi**: in 46 livelli su 60 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
+- **Re sparsi**: in 48 livelli su 62 i re, con le torri, gli scudi e i ripari che li accompagnano, cambiano posto a ogni
   tentativo entro un piccolo perimetro (`Builder::Scatter`): la mira non si impara a memoria, e le munizioni sono più
   generose. Restano fissi i livelli costruiti su un colpo preciso (curling, Valanga, Neve Fresca, Crepacci, Polveriera,
   Pendolo) e i re legati a una sponda o a una sfera. I test usano la
   disposizione disegnata e altre cinque a caso.
 - **Sfida infinita**: fortezze generate proceduralmente, sempre più difficili; i punti si sommano round dopo round e il record viene salvato.
-- **7 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano, l'unica che taglia gli alberi), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi).
+- **8 munizioni**: palla di ferro, bomba (esplode all'impatto o con SPAZIO), grappolo (si divide in 7 con SPAZIO), palla incatenata (due sfere legate che ruotano e spazzano, l'unica che taglia gli alberi), macigno (convex hull irregolare, enorme e pesante), Vortice (implode e risucchia i blocchi verso il centro), bomba adesiva (si attacca a ciò che colpisce ed esplode dopo 3 secondi), **Cometa** (si guida col mouse in prima persona: vola dritta e senza gravità a velocità fissa, curva al massimo di 2,4 rad/s, per 7 secondi o fino al primo urto; SPAZIO la lascia cadere).
 - **Replay del colpo decisivo**: dopo ogni vittoria il colpo viene *ri-simulato* dalla registrazione deterministica di Box3D e mostrato al rallentatore con una telecamera cinematografica (vedi sotto).
 - Stelle in base ai colpi usati, bonus per le munizioni avanzate, progressi salvati.
 - Tutto l'audio è **sintetizzato al volo**: effetti (cannone, legno, pietra, ghiaccio, esplosioni, "wooo" del re...) generati all'avvio, e una musica generativa per liuto (sintesi Karplus-Strong) con vento ambientale: ogni regno ha accordi, scala e tempo suoi
@@ -118,8 +120,9 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
 | W-S | potenza continua (SHIFT: più lenta) |
 | Click sinistro | spara (in volo: torna al cannone) |
 | Click destro (tenuto) | cannocchiale |
-| 1-7, Q/E | scegli la munizione |
+| 1-8, Q/E | scegli la munizione |
 | SPAZIO | abilità speciale del proiettile in volo |
+| Mouse o frecce, con la Cometa in volo | sterza (la visuale è quella della Cometa) |
 | TAB | panoramica libera della fortezza |
 | T | mira assistita (traiettoria completa con punto d'impatto) |
 | R | ricomincia · O ombre · M musica · F11 schermo intero · ESC pausa |
@@ -167,7 +170,7 @@ scena lo riaggancia.
 ./build/crollo --test-shields                 # la previsione degli scudi coincide con ciò che succede davvero?
 ./build/crollo --test-ammo                    # munizioni e materiali: gomma, sacchi, Vortice, adesiva, portoni, alberi,
                                               # tappeto volante, vetro, teca di vetro, rimbalzi previsti, ventole,
-                                              # soffioni, leva, quintana, carrello... si comportano come previsto?
+                                              # soffioni, leva, quintana, carrello, cometa... si comportano come previsto?
 ./build/crollo --test-campaigns               # campagne, sblocchi e migrazione dei vecchi salvataggi
 ./build/crollo --scan-shots [livello]         # quanti re può abbattere un colpo solo, per ogni munizione
 ./build/crollo --shot <modo> <livello> <frame> out.png   # screenshot (aim, fire, fireall, intro, title, map, select, story, outro, pause, howto, challenge)
@@ -227,6 +230,7 @@ nel menu principale.
 | Filtri di collisione (categorie e maschere, `b3Shape_SetFilter`) | la barriera magica che lascia passare solo le sfere magiche; l'albero appena tagliato che per mezzo secondo lascia passare la catena |
 | Giunto di distanza rigido e "a corda" (molla a 0 Hz + limite) | pendolo, palla incatenata, funi delle mongolfiere, ormeggi |
 | `gravityScale` negativa, damping, forze | mongolfiere, vento e correnti d'aria sui proiettili |
+| `gravityScale` a zero e `b3Body_SetLinearVelocity` a ogni passo | la Cometa guidata: il giocatore sceglie la direzione, la velocità gira verso di lei a ritmo limitato |
 | Ray cast (`b3World_CastRayClosest`, `b3World_CastRay` con filtro) | mira assistita e pianificazione della traiettoria dell'IA |
 | `b3Body_Disable` / `b3Body_Enable`, `b3World_OverlapShape` | scudi di cristallo a tempo; uno scudo non si riaccende finché dentro c'è qualcosa |
 | Sleep delle isole, multithreading (`workerCount`) | scene con centinaia di corpi a costo basso |

@@ -318,6 +318,14 @@ void main()
 		specK = 0.8;
 		fresnelK = 0.4;
 	}
+	else if (matType == 19) // comet: fire boiling over its surface
+	{
+		float boil = fbm(p * 4.0 + vec3(0.0, time * 2.5, time * 1.3));
+		albedo = mix(vec3(0.95, 0.35, 0.08), vec3(1.0, 0.85, 0.35), boil);
+		emissive = mix(vec3(0.85, 0.30, 0.05), vec3(1.0, 0.75, 0.30), boil) * 0.9;
+		shininess = 40.0;
+		specK = 0.3;
+	}
 	else if (matType == 18) // glass: a faint tint, sharp highlights and diagonal streaks of glare
 	{
 		float streak = smoothstep(0.82, 1.0, sin((p.x + p.y * 0.8 + p.z) * 2.6) * 0.5 + 0.5);

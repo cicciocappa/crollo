@@ -19,8 +19,8 @@ riprendere lo sviluppo e che non si ricava dal codice.
 ## Stato (fine sessione 8, settembre 2026)
 - Fatte le sessioni 1-4: scudi di cristallo a tempo; gomma, sacchi, Vortice, bomba adesiva; campagne, biomi, mappa
   dei regni, storie, salvataggi per id; Picchi Gelati a 8 livelli.
-- 60 livelli. Campagne: Prati Alti 9, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10, Arcipelago delle Tempeste 10,
-  Fucina del Vulcano 10. Tutte e sei le campagne sono giocabili.
+- 62 livelli. Campagne: Prati Alti 10, Valle dei Mulini 10, Picchi Gelati 11, Dune Sospese 10, Arcipelago delle Tempeste 10,
+  Fucina del Vulcano 11. Tutte e sei le campagne sono giocabili.
 - Sessione 4b fatta: riscontro dei test (l'utente prova i livelli di persona), modalità trucchi (F9 o `--cheat`),
   esplosioni fermate dai corpi statici, sacchi che assorbono, vento variabile, macigno che sfonda, 3 livelli nuovi.
 - Sessione 5 fatta: Valle dei Mulini a 8 livelli, barriera magica e sfere magiche.
@@ -38,7 +38,9 @@ riprendere lo sviluppo e che non si ricava dal codice.
   bersagli d'ottone che sganciano pesi, scudi orbitanti e il trabocchetto Tre Corde. L'arpione è rimandato.
 - Sessione 8b fatta (riscontro sulla Fucina: colpi tesi troppo facili con la mira assistita): maglio, paratie, ruote a
   pale, bersagli su rotaia e bersagli dietro parapetti.
-- Prossima: sessione 9 (campagne a 10 livelli, livelli bonus; lì anche il
+- Sessione 8c fatta (idea dell'utente): la Cometa, palla guidata col mouse in prima persona; livelli La Cometa (Prati
+  Alti) e Le Fornaci (Fucina). Da provare a mano: sensibilità, raggio di curva, carburante.
+- Prossima: prova di 8b e 8c da parte dell'utente, poi sessione 9 (campagne a 10 livelli, livelli bonus; lì anche il
   taglio delle munizioni in eccesso). Poi versione mobile (10); multiplayer alla fine (11+).
 - Sessioni 6-8: Dune Sospese (deserto con cactus e palme, bersagli mobili, barriera magica con sfere magiche), Arcipelago,
   Fucina. Ogni campagna fa debuttare una meccanica, ma le meccaniche si usano in tutte. Dettagli in `docs/sviluppo.md`.
@@ -47,7 +49,7 @@ riprendere lo sviluppo e che non si ricava dal codice.
 
 ## Verifica: da rifare dopo ogni modifica al gameplay
 ```bash
-./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 60/60); --autotest 12 N per il solo livello N
+./build/crollo --autotest 12            # tutti i livelli vincibili (oggi 62/62); --autotest 12 N per il solo livello N
 ./build/crollo --scan-shots N           # "!!" = un colpo solo abbatte tutti i re (voluto solo nei livelli 7 e 18; oggi lo
                                         # scanner trova solo il 7, ma la Valanga si vince comunque con un colpo)
 ./build/crollo --autotest-challenge     # 30/30
@@ -170,6 +172,10 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 - **Mira assistita**: mostra tutto il volo fino al punto d'impatto, quindi un bersaglio fermo e in vista si prende sempre
   al primo colpo (riscontro dell'utente sulla Fucina). La sfida viene da ciò che si muove (maglio, paratia, ruota a pale,
   scudi orbitanti: la previsione guarda la scena di adesso) o da bersagli nascosti (dietro un parapetto, di pallonetto).
+- **Cometa** (`Ammo::Comet`, `CamMode::Pilot`): la guida `SteerComet` dentro `FixedStep` con `b3Body_SetLinearVelocity`
+  (registrato, quindi il replay la rifà uguale); gravità a zero finché è guidata. In prima persona la Cometa non si
+  disegna (la telecamera è dentro). Il replay la segue da dietro nella direzione in cui va (`m_rpFlat`), non in quella
+  dello sparo. L'IA ha bisogno di `GuideHint` con la rotta; senza, spara la Cometa dritta. Raggio di curva ~5,4 m.
 - Niente traverse sopra il varco di una paratia: un pallonetto che scende ci passa sotto e la tocca con la parte alta,
   che l'IA non controlla (controlla solo il fondo della palla). `AimHint` con `lob` < 0 vuole solo tiri tesi (fantocci).
 

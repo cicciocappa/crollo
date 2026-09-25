@@ -79,8 +79,15 @@ static const AmmoInfo s_ammo[(int)Ammo::Count] = {
 	{ "Catena", "Due palle incatenate che ruotano e spazzano.", { 110, 110, 120, 255 } },
 	{ "Macigno", "Enorme e pesante. Lento, ma sfonda tutto.", { 125, 110, 98, 255 } },
 	{ "Vortice", "Implode: risucchia i blocchi verso il centro (SPAZIO in volo).", { 110, 60, 160, 255 } },
-	{ "Adesiva", "Si attacca a ciò che colpisce ed esplode dopo 3 s (o con SPAZIO).", { 70, 140, 70, 255 } },
+	{ "Adesiva", "Si attacca dove colpisce ed esplode dopo 3 s (o con SPAZIO).", { 70, 140, 70, 255 } },
+	{ "Cometa", "Si guida in volo col mouse. SPAZIO: la lasci cadere.", { 230, 150, 60, 255 } },
 };
+
+// The comet: it flies straight and level at a steady speed (no gravity) while it is steered, turning at most
+// kCometTurn rad/s (a circle of about 5 m), for kCometFuel seconds or until it strikes something.
+static const float kCometSpeed = 13.0f;
+static const float kCometTurn = 2.4f;
+static const float kCometFuel = 7.0f;
 
 const AmmoInfo& GetAmmoInfo( Ammo a )
 {
@@ -90,7 +97,8 @@ const AmmoInfo& GetAmmoInfo( Ammo a )
 // Ammunition that does something when the player presses SPACE mid-flight.
 static bool HasSpecial( int ammo )
 {
-	return ammo == (int)Ammo::Bomb || ammo == (int)Ammo::Cluster || ammo == (int)Ammo::Implosion || ammo == (int)Ammo::Sticky;
+	return ammo == (int)Ammo::Bomb || ammo == (int)Ammo::Cluster || ammo == (int)Ammo::Implosion || ammo == (int)Ammo::Sticky ||
+		   ammo == (int)Ammo::Comet;
 }
 
 static Color kGold{ 255, 200, 50, 255 };
@@ -179,7 +187,12 @@ void Game::SetCannon( Vector3 pos, float yaw )
 
 void Game::AddAimHint( Entity* king, Entity* via, Vector3 offset, float lob, bool bank )
 {
-	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob, bank, via->rot } );
+	m_aimHints.push_back( { king->serial, via->serial, via->pos, offset, lob, bank, via->rot, {} } );
+}
+
+void Game::AddGuideHint( Entity* king, const std::vector<Vector3>& route )
+{
+	m_aimHints.push_back( { king->serial, king->serial, king->pos, { 0, 0, 0 }, 0.0f, false, king->rot, route } );
 }
 
 void Game::SetFortressCenter( Vector3 c, float radius )
@@ -308,6 +321,8 @@ bool Game::LoadDef( const LevelDef* def, uint32_t seed, bool attract, const Chal
 	m_flags.clear();
 	m_kings.clear();
 	m_aimHints.clear();
+	m_cometSerial = 0;
+	m_cometRoute.clear();
 	m_focus = nullptr;
 
 	m_level = def;
@@ -1219,6 +1234,30 @@ void Game::FireProjectile( Ammo type, Vector3 muzzle, Vector3 dir, float speed )
 			first = e;
 			break;
 		}
+		case Ammo::Comet:
+		{
+			// it leaves at its own speed, whatever the power, and flies level until it is let go
+			bo.velocity = Vector3Scale( dir, kCometSpeed );
+			bo.gravityScale = 0.0f;
+			Entity* e = m_scene.CreateEntity( Kind::Projectile, Mat::Metal, muzzle, b3Quat_identity, bo );
+			so.rollingResistance = 0.08f;
+			m_scene.AddSphere( e, { 0, 0, 0 }, 0.3f, Mat::Metal, so );
+			e->parts.back().tint = Color{ 120, 70, 40, 255 };
+			Part glow;
+			glow.geo = Geo::Sphere;
+			glow.size = { 0.36f, 0.36f, 0.36f };
+			glow.mat = Mat::Fire;
+			glow.tint = Color{ 255, 170, 70, 255 };
+			m_scene.AddVisual( e, glow );
+			m_cometSerial = e->serial;
+			m_cometFuel = kCometFuel;
+			m_steerYaw = atan2f( dir.x, dir.z );
+			m_steerPitch = asinf( Clamp( dir.y, -1.0f, 1.0f ) );
+			m_cometRoute.clear();
+			m_cometLeg = 0;
+			first = e;
+			break;
+		}
 		default:
 			break;
 	}
@@ -1234,6 +1273,7 @@ void Game::FireProjectile( Ammo type, Vector3 muzzle, Vector3 dir, float speed )
 	}
 
 	m_focus = first;
+	m_shotComet = type == Ammo::Comet;
 	m_followTime = 0.0f;
 	m_watchTime = 0.0f;
 
@@ -1246,7 +1286,118 @@ void Game::FireProjectile( Ammo type, Vector3 muzzle, Vector3 dir, float speed )
 
 	if ( m_attract == false && m_camMode == CamMode::Aim )
 	{
+		// riding the comet: the view goes with it
+		m_camMode = type == Ammo::Comet ? CamMode::Pilot : CamMode::Follow;
+	}
+}
+
+Entity* Game::GuidedComet() const
+{
+	if ( m_cometSerial == 0 )
+	{
+		return nullptr;
+	}
+	for ( Entity* e : m_scene.entities )
+	{
+		if ( e->serial == m_cometSerial && e->alive )
+		{
+			return e;
+		}
+	}
+	return nullptr;
+}
+
+void Game::ReleaseComet( Entity* e )
+{
+	if ( e != nullptr && e->alive && e->serial == m_cometSerial )
+	{
+		b3Body_SetGravityScale( e->body, 1.0f );
+	}
+	m_cometSerial = 0;
+	m_cometRoute.clear();
+	if ( m_camMode == CamMode::Pilot )
+	{
 		m_camMode = CamMode::Follow;
+	}
+}
+
+void Game::SteerComet( float dt )
+{
+	if ( m_cometSerial == 0 )
+	{
+		return;
+	}
+	Entity* e = GuidedComet();
+	if ( e == nullptr || e->hasHit || m_cometFuel <= 0.0f )
+	{
+		ReleaseComet( e );
+		return;
+	}
+	m_cometFuel -= dt;
+	Vector3 v = ToRl( b3Body_GetLinearVelocity( e->body ) );
+	float speed = Vector3Length( v );
+	Vector3 d = speed > 0.1f ? Vector3Scale( v, 1.0f / speed ) : CannonAimDir( m_steerYaw, m_steerPitch );
+	if ( m_cometRoute.empty() == false )
+	{
+		// automatic play: on to the next point of the route once this one is reached or behind
+		while ( m_cometLeg + 1 < m_cometRoute.size() )
+		{
+			Vector3 to = Vector3Subtract( m_cometRoute[m_cometLeg], e->pos );
+			if ( Vector3Length( to ) < 1.5f || Vector3DotProduct( to, d ) < 0.0f )
+			{
+				++m_cometLeg;
+				continue;
+			}
+			break;
+		}
+		Vector3 to = Vector3Normalize( Vector3Subtract( m_cometRoute[m_cometLeg], e->pos ) );
+		m_steerYaw = atan2f( to.x, to.z );
+		m_steerPitch = asinf( Clamp( to.y, -1.0f, 1.0f ) );
+	}
+	// turn towards where it is wanted, no faster than it can
+	Vector3 want = CannonAimDir( m_steerYaw, m_steerPitch );
+	float angle = acosf( Clamp( Vector3DotProduct( d, want ), -1.0f, 1.0f ) );
+	if ( angle > 1e-4f )
+	{
+		Vector3 axis = Vector3CrossProduct( d, want );
+		axis = Vector3Length( axis ) > 1e-5f ? Vector3Normalize( axis ) : Vector3{ 0, 1, 0 };
+		d = Vector3Normalize( Vector3RotateByAxisAngle( d, axis, std::min( angle, kCometTurn * dt ) ) );
+	}
+	b3Body_SetLinearVelocity( e->body, ToB3( Vector3Scale( d, kCometSpeed ) ) );
+}
+
+void Game::FireComet( const std::vector<Vector3>& route )
+{
+	if ( route.empty() )
+	{
+		return;
+	}
+	Vector3 dir = Vector3Normalize( Vector3Subtract( route[0], Muzzle() ) );
+	for ( int iter = 0; iter < 3; ++iter )
+	{
+		// the muzzle moves with the aim
+		m_yaw = atan2f( dir.x, dir.z );
+		m_pitch = asinf( Clamp( dir.y, -1.0f, 1.0f ) );
+		dir = Vector3Normalize( Vector3Subtract( route[0], Muzzle() ) );
+	}
+	if ( m_attract == false )
+	{
+		m_ammo[(int)Ammo::Comet] -= 1;
+		m_shots += 1;
+	}
+	RestartRecording();
+	FireProjectile( Ammo::Comet, Muzzle(), dir, kCometSpeed );
+	m_cometRoute = route;
+	m_cometLeg = 0;
+	if ( m_attract == false )
+	{
+		m_shotSerials.clear();
+		if ( m_focus )
+		{
+			m_shotSerials.push_back( m_focus->serial );
+		}
+		m_shotDir = dir;
+		AddReplayEvent( ReplayEvent::CannonFire, Muzzle(), dir );
 	}
 }
 
@@ -1260,6 +1411,11 @@ void Game::Special( Entity* p )
 	{
 		p->specialUsed = true;
 		Detonate( p );
+	}
+	else if ( p->ammo == (int)Ammo::Comet )
+	{
+		p->specialUsed = true;
+		ReleaseComet( p );
 	}
 	else if ( p->ammo == (int)Ammo::Cluster )
 	{
@@ -1871,7 +2027,7 @@ void Game::FixedStep()
 		{
 			continue;
 		}
-		if ( e->kind == Kind::Projectile && e->hasHit == false )
+		if ( e->kind == Kind::Projectile && e->hasHit == false && e->serial != m_cometSerial )
 		{
 			b3Body_ApplyForceToCenter( e->body, ToB3( Vector3Scale( Vector3Add( m_wind, CurrentAt( e->pos, m_scene.time ) ), e->mass ) ), false );
 		}
@@ -1904,6 +2060,7 @@ void Game::FixedStep()
 	}
 	DriveMovers( dt );
 	UpdateShields();
+	SteerComet( dt );
 
 	for ( Entity* e : m_scene.entities )
 	{
@@ -2015,7 +2172,13 @@ void Game::FixedStep()
 				if ( m_headless == false && speed > 6.0f && ( m_scene.stepCount % 2 ) == 0 && e->hasHit == false )
 				{
 					Color c = e->ammo == (int)Ammo::Bomb ? Color{ 255, 200, 120, 160 } : Color{ 235, 235, 235, 110 };
-					m_particles.Trail( e->pos, c, e->ammo == (int)Ammo::Boulder ? 0.7f : 0.35f );
+					if ( e->ammo == (int)Ammo::Comet )
+					{
+						// a tail of fire, thin while it is ridden (the view is right behind it)
+						c = Color{ 255, 150, 60, 190 };
+					}
+					float size = e->ammo == (int)Ammo::Boulder ? 0.7f : e->serial == m_cometSerial && m_camMode == CamMode::Pilot ? 0.12f : 0.35f;
+					m_particles.Trail( e->pos, c, size );
 				}
 				if ( e->ammo == (int)Ammo::Bomb || e->ammo == (int)Ammo::Implosion )
 				{
@@ -3003,11 +3166,18 @@ bool Game::AutoFireAtKing()
 	const Entity* goal = target;
 	float lob = 0.0f;
 	bool bank = false;
+	const std::vector<Vector3>* route = nullptr;
 	for ( const AimHintRecord& h : m_aimHints )
 	{
 		if ( h.king != target->serial )
 		{
 			continue;
+		}
+		if ( h.route.empty() == false )
+		{
+			// only a comet gets there: fly the route
+			route = &h.route;
+			break;
 		}
 		if ( h.bank )
 		{
@@ -3095,7 +3265,24 @@ bool Game::AutoFireAtKing()
 				}
 			}
 		};
-		if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
+		// and comets for the kings only a comet reaches
+		int guided = 0;
+		for ( const AimHintRecord& h : m_aimHints )
+		{
+			for ( const Entity* e : m_kings )
+			{
+				guided += h.route.empty() == false && e->serial == h.king && e->alive && e->defeated == false ? 1 : 0;
+			}
+		}
+		if ( route != nullptr && m_ammo[(int)Ammo::Comet] > 0 )
+		{
+			type = Ammo::Comet;
+		}
+		else if ( type == Ammo::Comet && m_ammo[(int)Ammo::Comet] <= guided )
+		{
+			spare( Ammo::Comet );
+		}
+		else if ( goal->reinforced && m_ammo[(int)Ammo::Boulder] > 0 )
 		{
 			type = Ammo::Boulder;
 		}
@@ -3118,6 +3305,13 @@ bool Game::AutoFireAtKing()
 		}
 	}
 
+	if ( route != nullptr && type == Ammo::Comet )
+	{
+		std::vector<Vector3> path = *route;
+		path.push_back( aimPoint );
+		FireComet( path );
+		return true;
+	}
 	if ( bank && m_attract == false )
 	{
 		// searching is slow: while no bounce works, look again every few frames (and never in the demo on the
@@ -3414,6 +3608,12 @@ Entity* Game::CastSkippingRubber( Vector3 from, Vector3 to, b3QueryFilter filter
 bool Game::FireAt( Vector3 aimPoint, Ammo type, const Entity* target, float lob )
 {
 	Rng& r = FxRng();
+	if ( type == Ammo::Comet )
+	{
+		// no arc to plan: it flies straight at the point (and is not steered)
+		FireComet( { aimPoint } );
+		return true;
+	}
 
 	// Exact solution under constant acceleration (gravity + wind): choose a flight time,
 	// then v = (d - a t^2 / 2) / t. Iterate because the muzzle moves with the aim.
@@ -4067,7 +4267,7 @@ void Game::UpdatePlaying( float dt )
 			RestartLevel();
 			return;
 		}
-		if ( IsKeyPressed( KEY_TAB ) )
+		if ( IsKeyPressed( KEY_TAB ) && m_camMode != CamMode::Pilot )
 		{
 			m_camMode = m_camMode == CamMode::Overview ? CamMode::Aim : CamMode::Overview;
 			if ( m_camMode == CamMode::Overview )
@@ -4125,7 +4325,33 @@ void Game::UpdatePlaying( float dt )
 		Vector2 md = m_screenTime > 0.15f ? m_mouseDelta : Vector2{ 0, 0 };
 		float wheel = GetMouseWheelMove();
 
-		if ( m_camMode == CamMode::Aim || m_camMode == CamMode::Follow )
+		if ( m_camMode == CamMode::Pilot )
+		{
+			// the mouse (or the arrows) says where to go; the comet turns that way as fast as it can
+			m_steerYaw -= md.x * 0.0022f;
+			m_steerPitch -= md.y * 0.0022f;
+			float keyRate = 1.6f * dt;
+			if ( IsKeyDown( KEY_A ) || IsKeyDown( KEY_LEFT ) )
+				m_steerYaw += keyRate;
+			if ( IsKeyDown( KEY_D ) || IsKeyDown( KEY_RIGHT ) )
+				m_steerYaw -= keyRate;
+			if ( IsKeyDown( KEY_W ) || IsKeyDown( KEY_UP ) )
+				m_steerPitch += keyRate;
+			if ( IsKeyDown( KEY_S ) || IsKeyDown( KEY_DOWN ) )
+				m_steerPitch -= keyRate;
+			// never far from where it is heading, so the sight stays on screen
+			if ( Entity* c = GuidedComet() )
+			{
+				Vector3 v = Vector3Normalize( ToRl( b3Body_GetLinearVelocity( c->body ) ) );
+				float yaw = atan2f( v.x, v.z );
+				float pitch = asinf( Clamp( v.y, -1.0f, 1.0f ) );
+				float dy = remainderf( m_steerYaw - yaw, 2.0f * PI );
+				m_steerYaw = yaw + Clamp( dy, -0.6f, 0.6f );
+				m_steerPitch = Clamp( m_steerPitch, pitch - 0.45f, pitch + 0.45f );
+			}
+			m_steerPitch = Clamp( m_steerPitch, -1.2f, 1.2f );
+		}
+		else if ( m_camMode == CamMode::Aim || m_camMode == CamMode::Follow )
 		{
 			float sens = m_zoom ? 0.0007f : 0.0020f;
 			if ( m_camMode == CamMode::Aim )
@@ -4179,7 +4405,7 @@ void Game::UpdatePlaying( float dt )
 			{
 				Fire();
 			}
-			else
+			else if ( m_camMode != CamMode::Pilot )
 			{
 				m_camMode = CamMode::Aim;
 			}
@@ -4320,6 +4546,29 @@ void Game::UpdateCamera( float dt )
 			{
 				m_camMode = CamMode::Aim;
 			}
+			break;
+		}
+		case CamMode::Pilot:
+		{
+			// right behind the comet, looking where it goes
+			Entity* c = GuidedComet();
+			if ( c == nullptr )
+			{
+				m_camMode = CamMode::Follow;
+				break;
+			}
+			// first person: the view rides in the comet (which is not drawn meanwhile); a quick glide from the
+			// cannon, then it sticks to it
+			Vector3 v = ToRl( b3Body_GetLinearVelocity( c->body ) );
+			Vector3 fwd = Vector3Length( v ) > 0.1f ? Vector3Normalize( v ) : CannonAimDir( m_steerYaw, m_steerPitch );
+			Vector3 at = Vector3Lerp( c->prevPos, c->pos, m_alpha );
+			desiredPos = Vector3Add( at, { 0, 0.12f, 0 } );
+			desiredTarget = Vector3Add( desiredPos, Vector3Scale( fwd, 10.0f ) );
+			desiredFov = 75.0f;
+			rate = std::min( 16.0f + 150.0f * m_followTime, 90.0f );
+			m_focusLast = c->pos;
+			m_followTime += dt;
+			m_watchTime = 0.0f;
 			break;
 		}
 		case CamMode::Overview:
@@ -5224,6 +5473,38 @@ void Game::TestMaterialsAndAmmo()
 		printf( "Tre Corde: il bersaglio sbagliato %s, re abbattuti %d -> %s\n", m_scene.triggers[2].fired ? "sgancia il suo peso" : "non scatta",
 				m_kingsDown, m_scene.triggers[2].fired && m_kingsDown == 0 ? "ok" : "FALLITO" );
 	}
+
+	// the comet: steered round to the door it gets the king in the house, flown straight at him it meets the wall
+	{
+		bool results[2] = {};
+		for ( int steered = 0; steered < 2; ++steered )
+		{
+			LoadLevel( FindLevelById( "prati_cometa" ), false );
+			SkipIntro();
+			settle( 60 );
+			const AimHintRecord* hint = nullptr;
+			for ( const AimHintRecord& h : m_aimHints )
+			{
+				hint = h.route.empty() == false ? &h : hint;
+			}
+			Entity* king = nullptr;
+			for ( Entity* k : m_kings )
+			{
+				king = hint && k->serial == hint->king ? k : king;
+			}
+			if ( king == nullptr )
+			{
+				break;
+			}
+			std::vector<Vector3> route = steered ? hint->route : std::vector<Vector3>{};
+			route.push_back( Vector3Add( king->pos, { 0, 0.7f, 0 } ) );
+			FireComet( route );
+			settle( 60 * 8 );
+			results[steered] = king->defeated;
+		}
+		printf( "Cometa: dritta contro il muro -> il re %s, guidata fino alla porta -> il re %s -> %s\n", results[0] ? "cade" : "resta in piedi",
+				results[1] ? "cade" : "resta in piedi", results[0] == false && results[1] ? "ok" : "FALLITO" );
+	}
 }
 
 bool Game::RunAutoTest( int levelIndex, int maxShots, bool verbose )
@@ -5351,7 +5632,9 @@ void Game::DrawWorld()
 
 	for ( const Entity* e : m_scene.entities )
 	{
-		if ( e->alive && ( e->kind != Kind::Shield || b3Body_IsEnabled( e->body ) ) )
+		// (the comet being ridden carries the camera inside it)
+		bool riding = m_camMode == CamMode::Pilot && e->serial == m_cometSerial;
+		if ( e->alive && ( e->kind != Kind::Shield || b3Body_IsEnabled( e->body ) ) && riding == false )
 		{
 			r.AddEntity( e, m_alpha );
 		}
@@ -5517,6 +5800,30 @@ void Game::DrawTrajectory()
 	{
 		return;
 	}
+	if ( m_selected == (int)Ammo::Comet )
+	{
+		// until it is steered the comet flies straight: a straight line, up to what it would strike
+		Vector3 p0 = Muzzle();
+		Vector3 d = AimDir();
+		float reach = m_progress.aimAssist ? 60.0f : 8.0f;
+		b3QueryFilter filter = b3DefaultQueryFilter();
+		filter.maskBits = CatStatic | CatBlock | CatKing | CatBarrier;
+		b3RayResult hit = b3World_CastRayClosest( m_scene.World(), ToB3( p0 ), ToB3( Vector3Scale( d, reach ) ), filter );
+		float len = hit.hit ? Vector3Distance( p0, ToRl( hit.point ) ) : reach;
+		for ( float t = 1.0f; t < len; t += 1.0f )
+		{
+			float fade = m_progress.aimAssist ? 1.0f : 1.0f - t / reach;
+			DrawSphereEx( Vector3Add( p0, Vector3Scale( d, t ) ), 0.08f, 6, 6, WithAlpha( Color{ 255, 200, 130, 255 }, fade ) );
+		}
+		if ( hit.hit && m_progress.aimAssist )
+		{
+			Vector3 hp = ToRl( hit.point ), hn = ToRl( hit.normal );
+			DrawSphereEx( hp, 0.22f, 8, 8, Color{ 255, 80, 60, 230 } );
+			DrawCircle3D( Vector3Add( hp, Vector3Scale( hn, 0.03f ) ), 0.5f, Vector3CrossProduct( { 0, 1, 0 }, hn ), acosf( Clamp( hn.y, -1.0f, 1.0f ) ) * RAD2DEG,
+						  Color{ 255, 80, 60, 255 } );
+		}
+		return;
+	}
 	Vector3 p0 = Muzzle();
 	float speed = LaunchSpeed() * ( m_selected == (int)Ammo::Boulder ? 0.82f : 1.0f );
 	Vector3 v = Vector3Scale( AimDir(), speed );
@@ -5668,6 +5975,27 @@ void Game::DrawHUD()
 
 	DrawShieldTimers();
 
+	if ( m_camMode == CamMode::Pilot && m_screen == Screen::Playing )
+	{
+		if ( Entity* c = GuidedComet() )
+		{
+			// a ring where it is wanted to go, a dot where it is heading
+			Vector3 v = ToRl( b3Body_GetLinearVelocity( c->body ) );
+			Vector3 heading = Vector3Length( v ) > 0.1f ? Vector3Normalize( v ) : CannonAimDir( m_steerYaw, m_steerPitch );
+			Vector2 want = GetWorldToScreen( Vector3Add( c->pos, Vector3Scale( CannonAimDir( m_steerYaw, m_steerPitch ), 30.0f ) ), m_camera );
+			Vector2 head = GetWorldToScreen( Vector3Add( c->pos, Vector3Scale( heading, 30.0f ) ), m_camera );
+			DrawRing( want, 18 * S, 23 * S, 0, 360, 36, Color{ 255, 200, 110, 230 } );
+			DrawCircleV( head, 5 * S, Color{ 255, 250, 235, 220 } );
+			// how long it can still be steered
+			float w = 420 * S, h = 16 * S;
+			Rectangle rc{ W * 0.5f - w * 0.5f, H - 130 * S, w, h };
+			ui::Panel( { rc.x - 6 * S, rc.y - 6 * S, w + 12 * S, h + 12 * S }, Color{ 40, 30, 25, 170 }, Color{ 255, 220, 150, 110 }, 0.5f );
+			float f = Clamp01( m_cometFuel / kCometFuel );
+			DrawRectangleRec( { rc.x, rc.y, w * f, h }, f > 0.25f ? Color{ 255, 170, 70, 255 } : Color{ 230, 70, 50, 255 } );
+			ui::TextCentered( "Mouse: sterza   •   SPAZIO: lasciala cadere", W * 0.5f, H - 100 * S, 26, kCream );
+		}
+	}
+
 	// top left: level + kings
 	int total = KingsTotal() + ( m_kingsDown - ( KingsTotal() - KingsRemaining() ) );
 	const char* title = m_challenge ? m_level->name : TextFormat( "%d. %s", PositionInCampaign( m_levelIndex ) + 1, m_level->name );
@@ -5770,25 +6098,30 @@ void Game::DrawHUD()
 		ui::TextShadow( desc, { W - 40 * S - dm.x, y0 - 54 * S }, 28, kCream );
 	}
 
-	// power meter
+	// power meter (the comet always leaves at the same speed; and nothing of the cannon while riding it)
+	if ( m_camMode != CamMode::Pilot )
 	{
 		float h = 300 * S;
 		float w = 34 * S;
 		Rectangle rc{ W - 70 * S, H * 0.5f - h * 0.5f, w, h };
-		ui::Panel( { rc.x - 8 * S, rc.y - 8 * S, w + 16 * S, h + 16 * S }, Color{ 40, 30, 25, 170 }, Color{ 255, 220, 150, 110 }, 0.4f );
-		float fill = h * m_power;
-		for ( int i = 0; i < (int)fill; i += 2 )
+		bool fixed = m_selected == (int)Ammo::Comet;
+		if ( fixed == false )
 		{
-			float t = i / h;
-			Color c = ColorMix( Color{ 90, 200, 90, 255 }, Color{ 250, 200, 40, 255 }, t * 1.6f );
-			if ( t > 0.6f )
+			ui::Panel( { rc.x - 8 * S, rc.y - 8 * S, w + 16 * S, h + 16 * S }, Color{ 40, 30, 25, 170 }, Color{ 255, 220, 150, 110 }, 0.4f );
+			float fill = h * m_power;
+			for ( int i = 0; i < (int)fill; i += 2 )
 			{
-				c = ColorMix( Color{ 250, 200, 40, 255 }, Color{ 230, 60, 40, 255 }, ( t - 0.6f ) * 2.5f );
+				float t = i / h;
+				Color c = ColorMix( Color{ 90, 200, 90, 255 }, Color{ 250, 200, 40, 255 }, t * 1.6f );
+				if ( t > 0.6f )
+				{
+					c = ColorMix( Color{ 250, 200, 40, 255 }, Color{ 230, 60, 40, 255 }, ( t - 0.6f ) * 2.5f );
+				}
+				DrawRectangle( (int)rc.x, (int)( rc.y + h - i - 2 ), (int)w, 2, c );
 			}
-			DrawRectangle( (int)rc.x, (int)( rc.y + h - i - 2 ), (int)w, 2, c );
+			ui::TextCentered( TextFormat( "%d", (int)( m_power * 100.0f + 0.5f ) ), rc.x + w * 0.5f, rc.y + h + 14 * S, 30, WHITE );
+			ui::TextCentered( "POTENZA", rc.x + w * 0.5f - 10 * S, rc.y - 50 * S, 24, kCream );
 		}
-		ui::TextCentered( TextFormat( "%d", (int)( m_power * 100.0f + 0.5f ) ), rc.x + w * 0.5f, rc.y + h + 14 * S, 30, WHITE );
-		ui::TextCentered( "POTENZA", rc.x + w * 0.5f - 10 * S, rc.y - 50 * S, 24, kCream );
 
 		// where the cannon points: degrees off the line to the fortress, and elevation, so a shot can be repeated
 		// or corrected by a known amount
@@ -5834,7 +6167,7 @@ void Game::DrawHUD()
 		ui::TextCentered( hint, W * 0.5f, 150 * S, 30, WHITE );
 	}
 
-	ui::Text( "Mouse: mira  •  Rotellina/W-S: potenza  •  Tasto destro: zoom  •  1-7: munizioni  •  TAB: panoramica  •  R: ricomincia  •  ESC: pausa",
+	ui::Text( "Mouse: mira  •  Rotellina/W-S: potenza  •  Tasto destro: zoom  •  1-8: munizioni  •  TAB: panoramica  •  R: ricomincia  •  ESC: pausa",
 			  { 20 * S, H - 30 * S }, 20, Color{ 255, 255, 255, 150 } );
 
 	if ( m_camMode == CamMode::Aim && m_zoom )
@@ -6310,7 +6643,7 @@ void Game::DrawHowTo()
 		"Rotellina  -  potenza di 1 in 1 (con SHIFT di 5 in 5)   W-S  -  potenza continua (SHIFT: pi\u00f9 lenta)",
 		"Click sinistro  -  spara (e in volo: torna al cannone)",
 		"Click destro (tieni premuto)  -  cannocchiale",
-		"1 - 7  oppure  Q / E  -  scegli la munizione",
+		"1 - 8  oppure  Q / E  -  scegli la munizione",
 		"SPAZIO  -  abilità speciale del proiettile in volo",
 		"TAB  -  panoramica della fortezza    •    T  -  mira assistita",
 		"R  -  ricomincia    •    O  -  ombre    •    M  -  musica    •    F11  -  schermo intero",
@@ -6707,6 +7040,8 @@ bool Game::StartReplay()
 	m_rpLook = Vector3Add( m_cannonPos, { 0, 1.0f, 0 } );
 	m_rpCamPos = Vector3Add( m_cannonPos, Vector3Add( Vector3Scale( side, 9.0f ), Vector3Add( Vector3Scale( flat, -3.0f ), { 0, 3.0f, 0 } ) ) );
 	m_rpOrbit = 0.0f;
+	m_rpFlat = flat;
+	m_rpLastProj = Muzzle();
 	m_particles.Clear();
 	m_texts.clear();
 	m_screenFlash = 0.0f;
@@ -6870,7 +7205,7 @@ void Game::UpdateReplay( float dt )
 
 	// camera: follow the shot from the side, then circle the point of impact
 	Vector3 up{ 0, 1, 0 };
-	Vector3 flat = Vector3Normalize( { m_shotDir.x, 0.0f, m_shotDir.z } );
+	Vector3 flat = m_shotComet ? m_rpFlat : Vector3Normalize( { m_shotDir.x, 0.0f, m_shotDir.z } );
 	Vector3 side = Vector3CrossProduct( flat, up );
 	Vector3 proj{};
 	bool haveProj = false;
@@ -6895,9 +7230,26 @@ void Game::UpdateReplay( float dt )
 	}
 
 	bool beforeImpact = m_impactStep < 0 || m_rpGlobalStep < m_impactStep;
+	if ( m_shotComet && haveProj && beforeImpact )
+	{
+		// the way the comet is going now
+		Vector3 d{ proj.x - m_rpLastProj.x, 0.0f, proj.z - m_rpLastProj.z };
+		if ( Vector3Length( d ) > 0.01f )
+		{
+			m_rpFlat = Vector3Normalize( d );
+		}
+		m_rpLastProj = proj;
+	}
 	Vector3 look, camTarget;
 	float rate;
-	if ( haveProj && beforeImpact )
+	if ( haveProj && beforeImpact && m_shotComet )
+	{
+		// behind it, a little above, to see where it is turning
+		look = Vector3Add( proj, Vector3Scale( flat, 3.0f ) );
+		camTarget = Vector3Add( proj, Vector3Add( Vector3Scale( flat, -6.5f ), Vector3Add( Vector3Scale( side, 1.5f ), { 0, 2.6f, 0 } ) ) );
+		rate = 5.0f;
+	}
+	else if ( haveProj && beforeImpact )
 	{
 		look = proj;
 		camTarget = Vector3Add( proj, Vector3Add( Vector3Scale( side, 9.0f ), Vector3Add( Vector3Scale( flat, -3.5f ), { 0, 2.0f, 0 } ) ) );

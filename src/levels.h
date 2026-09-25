@@ -204,6 +204,8 @@ public:
 	void AimHint( Entity* king, Entity* via, Vector3 offset = { 0, 0, 0 }, float lob = 0.0f );
 	// Tells the autotest AI that `king` is reached off the rubber: it searches for a bank shot.
 	void BankHint( Entity* king );
+	// Tells the autotest AI that only a comet reaches `king`, steered through the points of `route`.
+	void GuideHint( Entity* king, const std::vector<Vector3>& route );
 	// The wind turns and changes strength after every shot, up to `strength` (the level's wind is the first one).
 	void ShiftingWind( float strength );
 
