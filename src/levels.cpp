@@ -3232,8 +3232,8 @@ static void LevelCometa( Builder& b )
 	b.Fortress( { 0, 2.0f, 37 }, 11.0f );
 }
 
-// Fucina: two furnaces with their doors at the back. The comet goes up one side, turns right round behind them
-// and comes back into the door.
+// Fucina: two furnaces at the sides of the island, their doors looking at each other across it. The comet goes up
+// the other side and makes a quarter turn into the door, as in La Cometa, but twice and between the fires.
 static void LevelFornaci( Builder& b )
 {
 	b.PlayerIsland();
@@ -3242,22 +3242,20 @@ static void LevelFornaci( Builder& b )
 	size_t from = b.scene.entities.size();
 	for ( int s = -1; s <= 1; s += 2 )
 	{
-		Vector3 fc{ s * 2.6f, 0, 38.0f };
-		DoorHouse( b, fc, 1.5f, 1.5f, 2.6f, 0.0f, kBasalt );
+		Vector3 fc{ s * 6.0f, 0, 38.0f };
+		DoorHouse( b, fc, 1.5f, 1.5f, 2.6f, -s * PI * 0.5f, kBasalt );
 		// the glow of the fire inside
-		b.Ledge( { fc.x, 0.03f, fc.z - 0.6f }, { 1.2f, 0.03f, 0.6f }, Mat::Plain, { 0, 0, 0, 1 }, Color{ 255, 120, 30, 255 } );
-		Entity* k = b.King( { fc.x, 0, fc.z + 0.3f }, s < 0 ? kCrimson : kTeal );
+		b.Ledge( { fc.x + s * 0.6f, 0.03f, fc.z }, { 0.6f, 0.03f, 1.2f }, Mat::Plain, { 0, 0, 0, 1 }, Color{ 255, 120, 30, 255 } );
+		Entity* k = b.King( fc, s < 0 ? kCrimson : kTeal );
 		b.Flag( { fc.x, 2.9f, fc.z }, s < 0 ? kCrimson : kTeal, 0.8f );
-		// up the far side, a half turn round a point beside the other furnace, and straight in
-		float r = 5.4f;
-		Vector3 centre{ fc.x - s * r, 1.3f, 45.0f };
-		std::vector<Vector3> route{ { fc.x - s * 2.0f * r, 1.3f, 38.0f } };
-		ArcRoute( route, centre, r, -s * PI * 0.5f, s * PI * 0.5f, 8 );
-		route.push_back( { fc.x, 1.3f, 41.5f } );
+		// up the other side of the island, then a quarter turn towards the door
+		std::vector<Vector3> route{ { -s * 2.9f, 1.3f, 26.0f } };
+		ArcRoute( route, { s * 2.5f, 1.3f, 32.6f }, 5.4f, -s * PI * 0.5f, 0.0f, 4 );
+		route.push_back( { s * 3.6f, 1.3f, 38.0f } );
 		b.GuideHint( k, route );
 	}
-	// and one in plain sight, on a column in front
-	Vector3 p = b.Scatter( { 0.0f, 0, 31.0f }, 1.0f, 0.5f );
+	// and one in plain sight, on a column at the back
+	Vector3 p = b.Scatter( { 0.0f, 0, 44.0f }, 1.0f, 0.5f );
 	float t = b.Column( p, 3, 0.5f, Mat::Stone );
 	b.Box( { p.x, t + 0.12f, p.z }, { 0.8f, 0.12f, 0.8f }, Mat::Stone );
 	Basalt( b, from );
@@ -4194,8 +4192,8 @@ static const LevelDef s_levels[] = {
 	{ "La Cometa", "La mia casa ha una porta sola, e guarda dall'altra parte. Furbo, eh?",
 	  "Il re nella casa di pietra si prende solo con la Cometa: dopo lo sparo muovi il mouse, falle fare la curva e infilala nella porta.",
 	  { 4, 0, 0, 0, 0, 0, 0, 2 }, 3, { 0, 0, 0 }, LevelCometa, "prati_cometa" },
-	{ "Le Fornaci", "Le mie fornaci si aprono sul retro. Il davanti \u00e8 per gli ospiti, e tu non sei invitato.",
-	  "Le porte delle fornaci guardano dall'altra parte: sali con la Cometa lungo un fianco, gira dietro e rientra dalla porta.",
+	{ "Le Fornaci", "Le mie fornaci si guardano in faccia. A te mostrano solo la schiena.",
+	  "Le porte delle fornaci si guardano: sali con la Cometa dal lato opposto e curva verso la porta, come nella casa di Re Bernardo.",
 	  { 3, 0, 0, 0, 0, 0, 0, 3 }, 3, { 0, 0, 0 }, LevelFornaci, "fucina_fornaci" },
 };
 

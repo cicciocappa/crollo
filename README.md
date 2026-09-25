@@ -75,7 +75,7 @@ Hai un cannone e poche munizioni: falli cadere, ribaltare o colpiscili in pieno.
   59. *La Fonderia*: un fantoccio dietro la paratia, una sfera dietro la ruota a pale e un re negli scudi orbitanti.
   60. *La Forgia dell'Imperatore*: il finale: l'Imperatore di Ferro siede su una leva, e il bersaglio che sgancia il peso è protetto da scudi che girano.
   61. *La Cometa*: debutta la **Cometa**, la palla che si guida in volo: il re sta in una casa di pietra con la porta sul fianco, e ci si entra solo curvando.
-  62. *Le Fornaci*: due fornaci con la porta sul retro: si sale lungo un fianco, si fa l'inversione dietro e si rientra dalla porta.
+  62. *Le Fornaci*: due fornaci ai lati dell'isola con le porte che si guardano: si sale dal lato opposto e si curva di 90° nella porta.
 - **Campagne**: i livelli sono divisi fra i regni del Regno di Sopra. Sei re hanno spezzato la Corona dei Venti che tiene
   in cielo le isole; ogni campagna ha il suo re, il suo bioma e un frammento da recuperare. La **mappa dei regni** apre
   una campagna quando nella precedente hai raccolto almeno metà delle stelle (e la lascia aperta se ci hai già vinto); dentro una campagna i livelli si sbloccano
