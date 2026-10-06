@@ -182,4 +182,9 @@ Con `--shot` metti `--debug` **dopo** gli altri argomenti (prima fa partire il g
 ## Nuovo PC
 - Build desktop: vedi README (`cmake -S . -B build -DCMAKE_BUILD_TYPE=Release`, poi `cmake --build build -j`).
   Il primo configure scarica Box3D e raylib da internet.
-- Build web: serve Emscripten (`emsdk`), poi `emcmake cmake -S . -B build-web ...` come nel README.
+- Windows (da ottobre 2026 si lavora su Windows 11, PowerShell): CMake, Git e Visual Studio 2022 Build Tools installati
+  con winget. `cmake -S . -B build -G "Visual Studio 17 2022" -A x64`, poi `cmake --build build --config Release -j 8`;
+  l'eseguibile è `build\Release\crollo.exe` (non `build/crollo`). In una shell appena aperta dopo l'installazione il PATH
+  può non avere ancora cmake e git. MSVC vuole `/utf-8` (già nel CMakeLists), o i gradi e le accentate escono "?".
+  La cartella `D:\crollo` non è ancora un repository git: va ricollegata a GitHub prima di committare.
+- Build web: su questa macchina Emscripten non è installato. Serve Emscripten (`emsdk`), poi `emcmake cmake -S . -B build-web ...` come nel README.

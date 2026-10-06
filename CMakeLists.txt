@@ -72,6 +72,11 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 	target_compile_options(crollo PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 endif()
 
+# The sources and the game's strings are UTF-8; MSVC would otherwise use the system code page.
+if(MSVC)
+	target_compile_options(crollo PRIVATE /utf-8)
+endif()
+
 if(EMSCRIPTEN)
 	# Produces crollo.js + crollo.wasm; the font is embedded in the wasm, so there is no data file.
 	# Single threaded on purpose: no SharedArrayBuffer, so any static host works.

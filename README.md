@@ -140,7 +140,18 @@ cmake --build build -j
 
 Su Linux servono gli header di X11/OpenGL/ALSA per raylib (su Ubuntu:
 `sudo apt install libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev libasound2-dev`).
-Il gioco è stato sviluppato e verificato su Linux; su Windows e macOS lo stesso procedimento CMake dovrebbe bastare, ma non l'ho provato.
+Il gioco è stato sviluppato su Linux ed è verificato anche su Windows 11 con Visual Studio 2022 Build Tools (MSVC) e CMake;
+su macOS lo stesso procedimento CMake dovrebbe bastare, ma non l'ho provato.
+
+Su Windows (PowerShell), dopo `winget install Kitware.CMake` e i Build Tools con il carico di lavoro C++:
+
+```bash
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release -j 8
+.\build\Release\crollo.exe
+```
+
+L'eseguibile finisce in `build\Release\`: negli esempi di questo file `./build/crollo` diventa `.\build\Release\crollo.exe`.
 
 Gli asset (un solo font, Lilita One, licenza OFL) vengono copiati accanto all'eseguibile dopo la build.
 

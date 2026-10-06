@@ -291,6 +291,11 @@ int main( int argc, char** argv )
 				printf( "frames %d  avg %.2f ms  worst %.2f ms\n", frame, 1000.0 * ( GetTime() - benchStart ) / frame, 1000.0 * worst );
 			}
 			Image img = LoadImageFromScreen();
+			// On a scaled display (Windows at 125%) raylib reads more than the framebuffer: keep the real part.
+			if ( img.width > GetRenderWidth() || img.height > GetRenderHeight() )
+			{
+				ImageCrop( &img, Rectangle{ 0.0f, (float)( img.height - GetRenderHeight() ), (float)GetRenderWidth(), (float)GetRenderHeight() } );
+			}
 			ExportImage( img, shotFile );
 			UnloadImage( img );
 			break;
